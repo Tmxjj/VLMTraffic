@@ -59,6 +59,12 @@ Please refer to `requirements.txt`.
 ## Getting Started
 
 1.  **Environment Setup**: Install dependencies.
+```bash
+pip install -r requirement.txt
+git clone https://github.com/Traffic-Alpha/TransSimHub.git
+cd TransSimHub # This study is based on secondary development of https://github.com/Traffic-Alpha/TransSimHub.git
+pip install -e ".[all]"
+```
 2.  **Model Download**: Run `python scripts/download_model.py` to fetch the base VLM.
 3.  **Simulation & BEV Generation**: The BEV generation relies on `VLMLight`. Ensure `VLMLight` is accessible.
 4.  **Training**: Use `src/training/sft_trainer.py` and `src/training/dpo_trainer.py`.
@@ -71,3 +77,13 @@ The system evaluates:
 - Average Queue Length (AQL)
 - Average Waiting Time (AWT)
 - Metrics for special vehicles (Ambulance, Fire trucks, etc.)
+
+## 3D Model Asset Download
+
+1. **Map 3D Assets**:
+Download URL: https://drive.google.com/drive/folders/1oTIScFrKsmmwSaG6bGCBmkSHD3fWdq86?usp=sharing
+Installation Path: `data/raw/Hongkong_YMT/3d_assets`
+
+2. **Vehicle 3D Assets**:
+Download URL: https://github.com/Traffic-Alpha/TransSimHub/releases/download/v5/vehicles_models.zip
+Installation Path: `TransSimHub/tshub/tshub_env3d/_assets_3d`
