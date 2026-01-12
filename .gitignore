@@ -5,19 +5,20 @@ __pycache__/
 # 仿真生成的数据 (根据你的代码逻辑)
 results/
 log/
+TransSimHub/
 *.log
-*.out.xml
+*.output.xml
 
 # 3D 模型文件
 *.glb
 
 # 生成的图片数据 
-*/bev_aircraft.jpg
-*/*.jpg
+
 data/bev_images/
+data/test/
 
 # VS Code 配置 (个人配置通常不上传，团队协作除外)
-.vscode/
+# .vscode/
 
 # 系统文件
 .DS_Store
