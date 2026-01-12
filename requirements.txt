@@ -1,0 +1,12 @@
+torch
+transformers
+modelscope
+sumolib
+traci
+numpy
+pandas
+pillow
+scikit-learn
+accelerate
+sft
+# Add other specific dependencies as needed

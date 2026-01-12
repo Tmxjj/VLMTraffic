@@ -1,0 +1,23 @@
+# Python 缓存
+__pycache__/
+*.pyc
+
+# 仿真生成的数据 (根据你的代码逻辑)
+results/
+log/
+*.log
+*.out.xml
+
+# 3D 模型文件
+*.glb
+
+# 生成的图片数据 
+*/bev_aircraft.jpg
+*/*.jpg
+data/bev_images/
+
+# VS Code 配置 (个人配置通常不上传，团队协作除外)
+.vscode/
+
+# 系统文件
+.DS_Store

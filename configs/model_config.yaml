@@ -1,0 +1,17 @@
+# Vision-Language Model Configuration
+
+base_model:
+  name: "qwen/Qwen-VL-Chat"
+  source: "modelscope"
+  local_path: "models/base_models/Qwen-VL-Chat"
+
+inference:
+  device: "cuda"
+  # precision: "fp16" # Optional
+
+lora:
+  r: 8
+  lora_alpha: 32
+  lora_dropout: 0.1
+  bias: "none"
+  task_type: "CAUSAL_LM"

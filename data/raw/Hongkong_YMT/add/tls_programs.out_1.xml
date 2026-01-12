@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- generated on 2026-01-06T19:51:55.055538+08:00 by Eclipse SUMO libsumo 1.25.0
+<libsumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/libsumoConfiguration.xsd">
+
+    <input>
+        <net-file value="/home/jyf/code/trafficVLM/code/VLMLight/vlm_tsc_en/../sim_envs/Hongkong_YMT/./env/YMT.net.xml"/>
+        <route-files value="/home/jyf/code/trafficVLM/code/VLMLight/vlm_tsc_en/../sim_envs/Hongkong_YMT/./env/YMT.rou.xml"/>
+        <additional-files value="/home/jyf/code/trafficVLM/code/VLMLight/vlm_tsc_en/../sim_envs/Hongkong_YMT/add/e2.add.xml,/home/jyf/code/trafficVLM/code/VLMLight/vlm_tsc_en/../sim_envs/Hongkong_YMT/add/tls_programs.add.xml"/>
+    </input>
+
+    <output>
+        <tripinfo-output value="/home/jyf/code/trafficVLM/code/VLMLight/vlm_tsc_en/./results/Hongkong_YMT/tripinfo.out.xml"/>
+        <tripinfo-output.write-unfinished value="true"/>
+    </output>
+
+    <processing>
+        <time-to-teleport value="-1"/>
+        <waiting-time-memory value="10000"/>
+        <max-depart-delay value="100000"/>
+    </processing>
+
+    <report>
+        <no-warnings value="true"/>
+        <no-step-log value="true"/>
+    </report>
+
+    <emissions>
+        <device.emissions.probability value="1.0"/>
+    </emissions>
+
+    <random_number>
+        <random value="true"/>
+    </random_number>
+
+</libsumoConfiguration>
+-->
+
+<additional xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/additional_file.xsd">
+    <tlLogic id="J1" type="static" programID="0">
+        <phase duration="5.00"  state="GGGGrrrrrrrrrrr"/>
+        <phase duration="3.00"  state="yyyyrrrrrrrrrrr"/>
+        <phase duration="5.00"  state="rrrrrrrrrrrrGGG"/>
+        <phase duration="3.00"  state="rrrrrrrrrrrryyy"/>
+        <phase duration="10.00" state="GGGGrrrrrrrrrrr"/>
+        <phase duration="3.00"  state="yyyyrrrrrrrrrrr"/>
+        <phase duration="5.00"  state="rrrrrrrrrrrrGGG"/>
+    </tlLogic>
+</additional>
