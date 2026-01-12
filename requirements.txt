@@ -9,4 +9,5 @@ pillow
 scikit-learn
 accelerate
 sft
+mpmath
 # Add other specific dependencies as needed

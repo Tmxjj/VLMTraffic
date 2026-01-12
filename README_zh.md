@@ -1,9 +1,9 @@
 <!--
  * @Author: yufei Ji
  * @Date: 2026-01-12 16:54:26
- * @LastEditTime: 2026-01-12 17:15:30
+ * @LastEditTime: 2026-01-12 19:55:24
  * @Description: this script is used to 
- * @FilePath: /code/VLMTraffic/README_zh.md
+ * @FilePath: /VLMTraffic/README_zh.md
 -->
 # VLMTraffic
 
@@ -38,7 +38,7 @@
 ## 数据流向 (Data Flow)
 
 1.  **仿真与数据生成**:
-    - `TrafficEnvWrapper` (src/simulation) 与 SUMO 交互。
+    - 基于sumo仿真
     - `BEVGenerator` (src/bev_generation) 基于仿真状态数据生成 BEV 图像。
 2.  **数据集构建**:
     - 原始数据和专家决策由 `src/dataset` 下的生成器处理，构建 SFT 和 DPO 数据集，保存在 `data/` 中。
@@ -59,6 +59,12 @@
 ## 快速开始
 
 1.  **环境设置**: 安装依赖项。
+```bash
+pip install -r requirement.txt
+git clone https://github.com/Traffic-Alpha/TransSimHub.git
+cd TransSimHub # 原地址为https://github.com/Traffic-Alpha/TransSimHub.git，本研究基于此进行了二次开发
+pip install -e ".[all]"
+```
 2.  **模型下载**: 运行 `python scripts/download_model.py` 获取基础 VLM 模型。
 3.  **仿真 & BEV 生成**: BEV 生成依赖于 `VLMLight` 项目。请确保 `VLMLight` 可访问。
 4.  **训练**: 使用 `src/training/sft_trainer.py` 和 `src/training/dpo_trainer.py` 进行训练。
@@ -71,3 +77,13 @@
 - 平均队列长度 (Average Queue Length, AQL)
 - 平均等待时间 (Average Waiting Time, AWT)
 - 特殊车辆 (救护车、消防车等) 的相关指标
+
+## 3D模型文件下载
+
+1. **地图3D文件**：
+下载地址：https://drive.google.com/drive/folders/1oTIScFrKsmmwSaG6bGCBmkSHD3fWdq86?usp=sharing
+安装路径：data/raw/Hongkong_YMT/3d_assets
+
+2、**车辆3D文件**：
+下载地址：https://github.com/Traffic-Alpha/TransSimHub/releases/download/v5/vehicles_models.zip
+安装路径：TransSimHub/tshub/tshub_env3d/_assets_3d
