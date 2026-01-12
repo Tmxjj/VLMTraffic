@@ -1,9 +1,9 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-01-12 17:46:23
+LastEditTime: 2026-01-12 21:46:27
 Description: this script is used to generate BEV images from 3D TSC env
-FilePath: /code/VLMTraffic/src/bev_generation/bev_generator.py
+FilePath: /VLMTraffic/src/bev_generation/bev_generator.py
 '''
 
 import os
@@ -22,11 +22,11 @@ display.start()
 import re
 import cv2
 import numpy as np
-
 from tshub.utils.get_abs_path import get_abs_path
 from tshub.utils.init_log import set_logger
-from utils.make_tsc_env import make_env
+
 from configs.env_config import SCENARIO_CONFIGS
+from utils.make_tsc_env import make_env
 from utils.tools import save_to_json, create_folder, append_response_to_file
 
 def convert_rgb_to_bgr(image):
