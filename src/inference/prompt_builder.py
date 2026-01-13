@@ -1,28 +1,72 @@
+'''
+Author: yufei Ji
+Date: 2026-01-12 16:48:42
+LastEditTime: 2026-01-13 22:16:52
+Description: Optimized Prompt Builder (Visual-Only Analysis)
+FilePath: /VLMTraffic/src/inference/prompt_builder.py
+'''
+
 class PromptBuilder:
     """
     Constructs text prompts for the VLM based on traffic states.
     """
     
     @staticmethod
-    def build_decision_prompt(traffic_state_description: str = ""):
+    def build_decision_prompt(current_phase_id: int, phase_explanation: str) -> str:
         """
-        Creates the prompt for the signal control decision task.
+        Build a prompt for the VLM to make traffic signal decisions based solely on Visual Input and Phase Info.
+        
+        Args:
+            current_phase_id (int): The index of the currently active traffic signal phase.
+            phase_explanation (str): A description of what each phase ID represents.
         """
-        base_prompt = (
-            "You are a traffic signal control expert. "
-            "Analyze the provided Bird's Eye View (BEV) image of the intersection. "
-            "Identify the congestion levels and queue lengths on each lane. "
-            "Decide the next phase for the traffic light to minimize average travel time and waiting time. "
-            "Output your decision as the phase index (e.g., 'Phase 1')."
-        )
-        if traffic_state_description:
-            base_prompt += f"\nAdditional Context: {traffic_state_description}"
-            
-        return base_prompt
+        
+        prompt = f"""
+            ### 1. Role Description
+            You are an expert in traffic management and computer vision. You use your knowledge of traffic engineering (commonsense) to solve traffic signal control tasks. Your goal is to maximize intersection efficiency by analyzing visual data.
 
-    @staticmethod
-    def build_explanation_prompt(decision: str):
+            ### 2. Task Definition
+            You are provided with a **Bird's-Eye-View (BEV) image** of a 4-way intersection. 
+            Your task is to:
+            1.  **Visually Analyze** the image to identify vehicle queues, congestion levels, and empty lanes on all approaches (North, South, East, West).
+            2.  **Evaluate** the current signal state.
+            3.  **Select** the next optimal signal phase index (Action) to activate.
+
+            ### 3. Action Space (Phase Definitions)
+            The intersection operates on the following discrete signal phases. You must choose one index:
+            {phase_explanation}
+
+            ### 4. Current State
+            **Currently Active Phase**: **[ Phase {current_phase_id} ]**
+                *(Instruction: Look at the image. Is this current phase effective? Are the lanes served by Phase {current_phase_id} empty? If so, you should switch.)*
+
+            ### 5. Knowledge Injection (Traffic Commonsense)
+            Use these rules to guide your visual reasoning:
+            * **Queue Length (Pressure)**: Give priority to the phase serving the longest visible queue of vehicles.
+            * **Green Time Utilization**: Do not select a phase if its corresponding lanes are empty in the image.
+            * **Anti-Congestion**: If one direction is heavily blocked (gridlock), prioritize clearing it to prevent spillover.
+            * **Inertia**: If the current phase still has a continuous flow of cars crossing the stop line, maintain it.
+
+            ### 6. Chain-of-Thought Reasoning
+            You must think step-by-step. The output format must be strictly as follows:
+
+            **Thought:** [
+            1. Visual Observation: Describe what you see in the image. Which lanes have the most cars? Which are empty?
+            2. Current Phase Analysis: Is Phase {current_phase_id} wasting time?
+            3. Selection Logic: Based on "Queue Length" rules, Phase X is the best choice because...
+            ]
+            **Action:** [The Selected Phase Index, e.g., 0]
         """
-        Creates a prompt asking for an explanation of a previous decision.
-        """
-        return f"Explain why you chose {decision} for this traffic situation."
+        return prompt.strip()
+
+if __name__ == "__main__":
+    # 测试生成的 Prompt
+    test_phase_id = 1
+    test_phase_exp = (
+        "- Phase 0: NS Straight\n"
+        "- Phase 1: NS Left\n"
+        "- Phase 2: EW Straight\n"
+        "- Phase 3: EW Left"
+    )
+    
+    print(PromptBuilder.build_decision_prompt(test_phase_id, test_phase_exp))

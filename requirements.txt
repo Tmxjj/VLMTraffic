@@ -10,4 +10,5 @@ scikit-learn
 accelerate
 sft
 mpmath
+google-genai
 # Add other specific dependencies as needed
