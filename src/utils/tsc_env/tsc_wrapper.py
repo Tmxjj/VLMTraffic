@@ -4,12 +4,13 @@
 @Description: 处理 TSCHub ENV 中的 state, reward (处理后的 state 作为 RL 的输入)
 + state: 5 个时刻的每一个 movement 的 queue length
 + reward: 路口总的 waiting time
-LastEditTime: 2025-05-09 12:56:29
+LastEditTime: 2026-01-13 11:37:18
 '''
 import numpy as np
 import gymnasium as gym
 from gymnasium.core import Env
 from collections import deque
+import copy
 from typing import Any, SupportsFloat, Tuple, Dict, List
 
 class OccupancyList:
@@ -120,6 +121,13 @@ class TSCEnvWrapper(gym.Wrapper):
             self.occupancy.add_element(occupancy)
         
         # 处理好的时序的 state
+        render_json = states.copy()
+        if 'vehicle' in render_json and isinstance(render_json['vehicle'], dict):
+            render_json['vehicle'] = {k: v.copy() for k, v in render_json['vehicle'].items()}
+            for vehicle_info in render_json['vehicle'].values():
+                if 'next_tls' in vehicle_info:
+                    del vehicle_info['next_tls']
+
         avg_occupancy = self.occupancy.calculate_average()
         rewards = self.reward_wrapper(states=states) # 计算 vehicle waiting time
         infos = self.info_wrapper(infos, occupancy=avg_occupancy) # info 里面包含每个 phase 的排队
@@ -127,7 +135,7 @@ class TSCEnvWrapper(gym.Wrapper):
         self.states.append(avg_occupancy)
         state = self.get_state() # 得到 state
 
-        return state, rewards, truncated, dones, infos
+        return state, rewards, truncated, dones, infos, render_json
     
     def close(self) -> None:
         return super().close()

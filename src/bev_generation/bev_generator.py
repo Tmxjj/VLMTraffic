@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-01-12 21:46:27
+LastEditTime: 2026-01-13 12:02:28
 Description: this script is used to generate BEV images from 3D TSC env
 FilePath: /VLMTraffic/src/bev_generation/bev_generator.py
 '''
@@ -71,6 +71,7 @@ if __name__ == '__main__':
         'use_gui':False,
         'renderer_cfg': RENDERER_CFG,
         'sensor_cfg': SENSOR_CFG,
+        'is_render': True
     }
     env = make_env(**params)()
 
@@ -83,11 +84,8 @@ if __name__ == '__main__':
         env_action = 0
 
         # 本步交互
-        obs, rewards, truncated, dones, infos = env.step(env_action)
+        obs, rewards, truncated, dones, infos, render_json = env.step(env_action)
 
-        # ##########
-        # 新建文件夹 (存储每一个 step 的信息)
-        # ##########
         time_step += 1
         _save_folder = path_convert(f"../../data/test/{SCENARIO_NAME}/{time_step}/")
         create_folder(_save_folder) # 每次交互存储对话
@@ -99,22 +97,22 @@ if __name__ == '__main__':
         # ##############################
         sensor_datas = infos['3d_data']
 
-        # 保存 3D 场景数据
-        vehicle_elements = sensor_datas['veh_elements'] # 车辆数据
-        save_to_json(vehicle_elements, _veh_json_file)
+        # 保存车辆 JSON 数据，用于后续离线渲染
+        save_to_json(render_json, _veh_json_file)
 
         # 保存图片数据
-        sensor_data = sensor_datas['image'] # 获得图片数据
-        for phase_index in range(PHASE_NUMBER):
-            image_path = os.path.join(_save_folder, f"./{phase_index}.jpg") # 保存的图像数据
-            camera_data = sensor_data[f"{JUNCTION_NAME}_{phase_index}"]['junction_front_all']
-            cv2.imwrite(image_path, convert_rgb_to_bgr(camera_data))
-        
-        # 空中 BEV 视角（aircraft_all）
-        aircraft_img = sensor_data['junction_cam_1'].get('aircraft_all')
-        if aircraft_img is not None:
-            bev_aircraft_path = os.path.join(_save_folder, "./bev_aircraft.jpg")
-            cv2.imwrite(bev_aircraft_path, convert_rgb_to_bgr(aircraft_img))
+        sensor_data_imgs = sensor_datas['image'] # 获得图片数据
+        if sensor_data_imgs is not None:
+            for phase_index in range(PHASE_NUMBER):
+                image_path = os.path.join(_save_folder, f"./{phase_index}.jpg") # 保存的图像数据
+                camera_data = sensor_data_imgs[f"{JUNCTION_NAME}_{phase_index}"]['junction_front_all']
+                cv2.imwrite(image_path, convert_rgb_to_bgr(camera_data))
+            
+            # 空中 BEV 视角（aircraft_all）
+            aircraft_img = sensor_data_imgs['junction_cam_1'].get('aircraft_all')
+            if aircraft_img is not None:
+                bev_aircraft_path = os.path.join(_save_folder, "./bev_aircraft.jpg")
+                cv2.imwrite(bev_aircraft_path, convert_rgb_to_bgr(aircraft_img))
 
         # 结束条件：任意环境完成
         if dones or truncated:

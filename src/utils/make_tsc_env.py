@@ -2,7 +2,7 @@
 @Author: WANG Maonan
 @Date: 2023-09-08 17:45:54
 @Description: 创建 TSC Env + Wrapper
-LastEditTime: 2025-06-30 15:24:23
+LastEditTime: 2026-01-13 10:27:51
 '''
 import gymnasium as gym
 from typing import List, Optional
@@ -13,7 +13,8 @@ def make_env(
         tls_id:str, num_seconds:int, number_phases:int, 
         sumo_cfg:str, scenario_glb_dir:str, use_gui:bool,
         trip_info:str=None, tls_state_add:List=None,
-    renderer_cfg: Optional[dict] = None, sensor_cfg: Optional[dict] = None,
+        renderer_cfg: Optional[dict] = None, sensor_cfg: Optional[dict] = None,
+        is_render: bool = True, #是否渲染
     ):
     def _init() -> gym.Env: 
         tsc_scenario = TSC3DEnvironment(
@@ -27,6 +28,7 @@ def make_env(
             use_gui=use_gui,
             renderer_cfg=renderer_cfg,
             sensor_cfg=sensor_cfg,
+            is_render = is_render,
         )
         tsc_wrapper = TSCEnvWrapper(tsc_scenario, tls_id=tls_id, number_phases=number_phases)
         return tsc_wrapper

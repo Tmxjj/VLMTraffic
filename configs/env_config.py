@@ -1,9 +1,9 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-01-12 17:20:15
+LastEditTime: 2026-01-13 12:01:03
 Description: this script is used to store the env config
-FilePath: /code/VLMTraffic/configs/env_config.py
+FilePath: /VLMTraffic/configs/env_config.py
 '''
 SCENARIO_CONFIGS = {
     "Hongkong_YMT": {
@@ -18,16 +18,16 @@ SCENARIO_CONFIGS = {
             #BUG: 变焦作用，胶片（传感器）越小：不仅拍摄到的范围变小了，为了填满同样的屏幕（1920x1080），画面会被放大（Zoom In）。 但实测下来没什么作用（暂不影响）
             "resolution": 2,
             "vehicle_model": "high",
-            "render_mode": "offscreen",
+            "render_mode": "offscreen", # onscreen or offscreen 服务器端必须是 offscreen
             "should_count_vehicles": True,
             "debuger_print_node": False,
             "debuger_spin_camera": False
         },
         "SENSOR_CFG": {
-            "tls": {
-                "sensor_types": ["junction_front_all"],
-                "tls_camera_height": 15
-            },
+            # "tls": {
+            #     "sensor_types": ["junction_front_all"], # 从路口红绿灯角度拍摄
+            #     "tls_camera_height": 15
+            # },
             "aircraft": {
                 "junction_cam_1": {
                     "sensor_types": ["aircraft_all"],

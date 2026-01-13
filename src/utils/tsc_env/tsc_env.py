@@ -2,7 +2,7 @@
 @Author: WANG Maonan
 @Date: 2023-09-04 20:43:53
 @Description: 信号灯控制环境 (3D)
-LastEditTime: 2026-01-07 21:52:14
+LastEditTime: 2026-01-13 10:44:21
 '''
 import gymnasium as gym
 
@@ -16,6 +16,7 @@ class TSC3DEnvironment(gym.Env):
                  tls_action_type:str, use_gui:bool=False, 
                  trip_info:str=None, tls_state_add:List=None,
                  renderer_cfg: Optional[dict] = None, sensor_cfg: Optional[dict] = None,
+                 is_render: bool = True, #是否渲染
                 ) -> None:
         super().__init__()
 
@@ -81,7 +82,8 @@ class TSC3DEnvironment(gym.Env):
             sensor_config={
                 'tls': tls_sensors_map,
                 'aircraft': aircraft_cfg,
-            }
+            },
+            is_render = is_render, # 是否渲染
         )
 
     def reset(self):
