@@ -4,7 +4,7 @@
 @Description: 处理 TSCHub ENV 中的 state, reward (处理后的 state 作为 RL 的输入)
 + state: 5 个时刻的每一个 movement 的 queue length
 + reward: 路口总的 waiting time
-LastEditTime: 2026-01-13 11:37:18
+LastEditTime: 2026-01-13 16:10:28
 '''
 import numpy as np
 import gymnasium as gym
@@ -113,6 +113,7 @@ class TSCEnvWrapper(gym.Wrapper):
 
     def step(self, action: int) -> Tuple[Any, SupportsFloat, bool, bool, Dict[str, Any]]:
         can_perform_action = False
+        # NOTE: can_perform_action 当前仿真时间 (sim_step) 等于 预定的下一次动作时间 (sim_step+delta_time) 时，该标志位变为 True。
         while not can_perform_action:
             action = {self.tls_id: action} # 构建单路口 action 的动作
             states, rewards, truncated, dones, infos, sensor_data = super().step(action) # 与环境交互

@@ -38,8 +38,7 @@ class OfflineBEVGenerator:
                 "--------------------------------------------------------------------------------------\n"
             )
             print(f"\033[91m{warning_msg}\033[0m") # 使用红色字体打印
-            # 也可以选择直接报错，强制用户修改
-            # raise RuntimeError("Panda3D imported too early. See warning above.")
+            raise RuntimeError("Panda3D imported too early. See warning above.")
 
       
         print("Initializing Virtual Display inside class...")
@@ -109,7 +108,7 @@ class OfflineBEVGenerator:
 
 if __name__ == '__main__':
     # 这里的 import 是安全的，因为 __name__ == '__main__' 只有直接运行此脚本时才执行
-    from configs.env_config import SCENARIO_CONFIGS
+    from configs.scenairo_config import SCENARIO_CONFIGS
     from tshub.utils.get_abs_path import get_abs_path
 
     path_convert = get_abs_path(__file__)

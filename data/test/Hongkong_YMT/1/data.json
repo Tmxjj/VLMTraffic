@@ -8,24 +8,24 @@
             "width": 1.8,
             "heading": 350.60235749634,
             "position": [
-                184.00138313265342,
-                104.12098131971305
+                174.992323378152,
+                158.55419950244584
             ],
-            "speed": 5.62038936985191,
+            "speed": 14.362502023624254,
             "road_id": "30658263#0",
             "lane_id": "30658263#0_1",
             "lane_index": 1,
-            "lane_position": 15.913113308884203,
+            "lane_position": 71.08176494096405,
             "edges": [
                 "30658263#0",
                 "102640453#0"
             ],
             "waiting_time": 0.0,
             "accumulated_waiting_time": 0.0,
-            "distance": 10.813113308884203,
-            "co2_emission": 5284.05136264542,
-            "fuel_consumption": 1712.9819028726506,
-            "speed_without_traci": 5.62038936985191,
+            "distance": 65.98176494096406,
+            "co2_emission": 7421.408190192855,
+            "fuel_consumption": 2405.9012863782555,
+            "speed_without_traci": 14.362502023624254,
             "leader": [
                 "",
                 -1.0
@@ -37,14 +37,227 @@
             "vehicle_type": "background",
             "length": 5.0,
             "width": 1.8,
-            "heading": 252.05118551925787,
+            "heading": 260.25898071766807,
             "position": [
-                248.23946154810832,
-                208.2587538616757
+                222.1829301142057,
+                199.27552863958275
+            ],
+            "speed": 9.825363913853652,
+            "road_id": "1200878753#0",
+            "lane_id": "1200878753#0_2",
+            "lane_index": 2,
+            "lane_position": 32.58858403242193,
+            "edges": [
+                "1200878753#0",
+                "102640426#0"
+            ],
+            "waiting_time": 0.0,
+            "accumulated_waiting_time": 0.0,
+            "distance": 27.488584032421926,
+            "co2_emission": 6901.941011074141,
+            "fuel_consumption": 2237.4952382639585,
+            "speed_without_traci": 9.825363913853652,
+            "leader": [
+                "",
+                -1.0
+            ]
+        },
+        "960661806#0__0__background.0": {
+            "id": "960661806#0__0__background.0",
+            "action_type": "lane",
+            "vehicle_type": "background",
+            "length": 5.0,
+            "width": 1.8,
+            "heading": 170.32803550640946,
+            "position": [
+                167.69887260973132,
+                266.72651015528726
+            ],
+            "speed": 8.249233074788934,
+            "road_id": "960661806#0",
+            "lane_id": "960661806#0_1",
+            "lane_index": 1,
+            "lane_position": 24.70792983709834,
+            "edges": [
+                "960661806#0",
+                "102640426#0"
+            ],
+            "waiting_time": 0.0,
+            "accumulated_waiting_time": 0.0,
+            "distance": 19.60792983709834,
+            "co2_emission": 6157.418696679899,
+            "fuel_consumption": 1996.1289836392382,
+            "speed_without_traci": 8.249233074788934,
+            "leader": [
+                "",
+                -1.0
+            ]
+        },
+        "30658263#0__0__background.1": {
+            "id": "30658263#0__0__background.1",
+            "action_type": "lane",
+            "vehicle_type": "background",
+            "length": 5.0,
+            "width": 1.8,
+            "heading": 350.60235749634,
+            "position": [
+                183.90364168171374,
+                104.71154036466095
+            ],
+            "speed": 5.837613165774384,
+            "road_id": "30658263#0",
+            "lane_id": "30658263#0_1",
+            "lane_index": 1,
+            "lane_position": 16.51165124778636,
+            "edges": [
+                "30658263#0",
+                "102640453#0"
+            ],
+            "waiting_time": 0.0,
+            "accumulated_waiting_time": 0.0,
+            "distance": 11.411651247786361,
+            "co2_emission": 4442.684394256486,
+            "fuel_consumption": 1440.2350220785095,
+            "speed_without_traci": 5.837613165774384,
+            "leader": [
+                "30658263#0__0__background.0",
+                47.07011369317769
+            ]
+        },
+        "960661806#0__0__background.1": {
+            "id": "960661806#0__0__background.1",
+            "action_type": "lane",
+            "vehicle_type": "background",
+            "length": 5.0,
+            "width": 1.8,
+            "heading": 170.42371318938382,
+            "position": [
+                169.47632511739957,
+                275.4010547586862
+            ],
+            "speed": 6.05292690815404,
+            "road_id": "960661806#0",
+            "lane_id": "960661806#0_2",
+            "lane_index": 2,
+            "lane_position": 16.45869676230941,
+            "edges": [
+                "960661806#0",
+                "102640426#0"
+            ],
+            "waiting_time": 0.0,
+            "accumulated_waiting_time": 0.0,
+            "distance": 11.358696762309409,
+            "co2_emission": 5412.482643725106,
+            "fuel_consumption": 1754.6206214775661,
+            "speed_without_traci": 6.05292690815404,
+            "leader": [
+                "",
+                -1.0
+            ]
+        },
+        "1200878753#0__0__background.1": {
+            "id": "1200878753#0__0__background.1",
+            "action_type": "lane",
+            "vehicle_type": "background",
+            "length": 5.0,
+            "width": 1.8,
+            "heading": 252.04307400281985,
+            "position": [
+                243.57246621132518,
+                203.38462652966084
+            ],
+            "speed": 3.7056553364731375,
+            "road_id": "1200878753#0",
+            "lane_id": "1200878753#0_2",
+            "lane_index": 2,
+            "lane_position": 10.959163512499071,
+            "edges": [
+                "1200878753#0",
+                "102640426#0"
+            ],
+            "waiting_time": 0.0,
+            "accumulated_waiting_time": 0.0,
+            "distance": 5.859163512499071,
+            "co2_emission": 3499.0649982863138,
+            "fuel_consumption": 1134.321427645225,
+            "speed_without_traci": 3.7056553364731375,
+            "leader": [
+                "1200878753#0__0__background.0",
+                14.129420519922856
+            ]
+        },
+        "1200878753#0__0__background.2": {
+            "id": "1200878753#0__0__background.2",
+            "action_type": "lane",
+            "vehicle_type": "background",
+            "length": 5.0,
+            "width": 1.8,
+            "heading": 252.03086025984297,
+            "position": [
+                242.28707085390678,
+                209.6941851418076
+            ],
+            "speed": 3.7296390150906515,
+            "road_id": "1200878753#0",
+            "lane_id": "1200878753#0_0",
+            "lane_index": 0,
+            "lane_position": 10.405769854155368,
+            "edges": [
+                "1200878753#0",
+                "102640412#0",
+                "102640412#0.25",
+                "102640412#2"
+            ],
+            "waiting_time": 0.0,
+            "accumulated_waiting_time": 0.0,
+            "distance": 5.305769854155368,
+            "co2_emission": 4249.35162647003,
+            "fuel_consumption": 1377.5387858298843,
+            "speed_without_traci": 3.7296390150906515,
+            "leader": [
+                "",
+                -1.0
+            ]
+        },
+        "30658263#0__0__background.2": {
+            "id": "30658263#0__0__background.2",
+            "action_type": "lane",
+            "vehicle_type": "background",
+            "length": 5.0,
+            "width": 1.8,
+            "heading": 350.5966494888339,
+            "position": [
+                188.92665320137345,
+                93.97201373459907
             ],
             "speed": 0.0,
-            "road_id": "1200878753#0",
-            "lane_id": "1200878753#0_1",
+            "road_id": "30658263#0",
+            "lane_id": "30658263#0_0",
+            "lane_index": 0,
+            "lane_position": 5.1,
+            "edges": [],
+            "waiting_time": 0,
+            "accumulated_waiting_time": 0,
+            "distance": 0,
+            "co2_emission": 0,
+            "fuel_consumption": 0,
+            "speed_without_traci": 0,
+            "leader": []
+        },
+        "960661806#0__0__background.2": {
+            "id": "960661806#0__0__background.2",
+            "action_type": "lane",
+            "vehicle_type": "background",
+            "length": 5.0,
+            "width": 1.8,
+            "heading": 170.4237131893842,
+            "position": [
+                164.4284832820182,
+                286.0608081829467
+            ],
+            "speed": 0.0,
+            "road_id": "960661806#0",
+            "lane_id": "960661806#0_1",
             "lane_index": 1,
             "lane_position": 5.1,
             "edges": [],
@@ -57,18 +270,36 @@
             "leader": []
         }
     },
+    "aircraft": {
+        "junction_cam_1": {
+            "position": [
+                173.15741666666668,
+                200.56591666666665,
+                50.0
+            ],
+            "heading": [
+                0.0,
+                1.0,
+                0.0
+            ]
+        }
+    },
     "tls": {
         "J1": {
             "id": "J1",
             "action_type": "choose_next_phase",
-            "delta_time": 5,
+            "delta_time": 10,
             "this_phase_index": 0,
             "last_step_vehicle_id_list": [
                 [],
+                [
+                    "1200878753#0__0__background.0"
+                ],
                 [],
                 [],
-                [],
-                [],
+                [
+                    "30658263#0__0__background.0"
+                ],
                 [],
                 [],
                 [],
@@ -79,10 +310,10 @@
             ],
             "last_step_mean_speed": [
                 -1.0,
+                9.825363913853652,
                 -1.0,
                 -1.0,
-                -1.0,
-                -1.0,
+                6.681251011812127,
                 -1.0,
                 0.0,
                 0.0,
@@ -121,10 +352,10 @@
             ],
             "last_step_occupancy": [
                 0.0,
+                11.086474501108647,
                 0.0,
                 0.0,
-                0.0,
-                0.0,
+                5.555555555555556,
                 0.0,
                 0.0,
                 0.0,
@@ -358,8 +589,8 @@
             },
             "movement_lane_ids": {
                 "1200878753#0--s": [
-                    "1200878753#0_0",
-                    "1200878753#0_1"
+                    "1200878753#0_1",
+                    "1200878753#0_0"
                 ],
                 "1200878753#0--l": [
                     "1200878753#0_2"
@@ -377,9 +608,9 @@
                     "102454134#0_1"
                 ],
                 "960661806#0--s": [
-                    "960661806#0_2",
+                    "960661806#0_1",
                     "960661806#0_0",
-                    "960661806#0_1"
+                    "960661806#0_2"
                 ]
             },
             "movement_lane_numbers": {
@@ -400,8 +631,8 @@
             ],
             "phase2movements": {
                 "0": [
-                    "1200878753#0--s",
-                    "1200878753#0--l"
+                    "1200878753#0--l",
+                    "1200878753#0--s"
                 ],
                 "1": [
                     "30658263#0--r",
@@ -417,19 +648,5 @@
             "can_perform_action": true
         }
     },
-    "person": {},
-    "aircraft": {
-        "junction_cam_1": {
-            "position": [
-                173.15741666666668,
-                200.56591666666665,
-                50.0
-            ],
-            "heading": [
-                0.0,
-                1.0,
-                0.0
-            ]
-        }
-    }
+    "person": {}
 }

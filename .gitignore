@@ -8,7 +8,7 @@ log/
 TransSimHub/
 *.log
 *json
-*jpg
+# *jpg
 
 # 3D 模型文件
 *.glb

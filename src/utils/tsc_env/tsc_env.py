@@ -2,7 +2,7 @@
 @Author: WANG Maonan
 @Date: 2023-09-04 20:43:53
 @Description: 信号灯控制环境 (3D)
-LastEditTime: 2026-01-13 10:44:21
+LastEditTime: 2026-01-13 16:47:36
 '''
 import gymnasium as gym
 
@@ -11,12 +11,11 @@ from tshub.tshub_env3d.tshub_env3d import Tshub3DEnvironment
 
 class TSC3DEnvironment(gym.Env):
     def __init__(self, 
-                 sumo_cfg:str, scenario_glb_dir:str,
-                 num_seconds:int, tls_ids:List[str], 
+                 sumo_cfg:str, scenario_glb_dir:str, tls_ids:List[str], 
                  tls_action_type:str, use_gui:bool=False, 
                  trip_info:str=None, tls_state_add:List=None,
                  renderer_cfg: Optional[dict] = None, sensor_cfg: Optional[dict] = None,
-                 is_render: bool = True, #是否渲染
+                 tshub_env_cfg: Optional[dict] = None, # New param
                 ) -> None:
         super().__init__()
 
@@ -28,6 +27,7 @@ class TSC3DEnvironment(gym.Env):
         _should_count_vehicles = True
         _debuger_print_node = False
         _debuger_spin_camera = False
+        _is_render = True
         if renderer_cfg:
             _preset = renderer_cfg.get('preset', _preset)
             _resolution = renderer_cfg.get('resolution', _resolution)
@@ -36,6 +36,7 @@ class TSC3DEnvironment(gym.Env):
             _should_count_vehicles = renderer_cfg.get('should_count_vehicles', _should_count_vehicles)
             _debuger_print_node = renderer_cfg.get('debuger_print_node', _debuger_print_node)
             _debuger_spin_camera = renderer_cfg.get('debuger_spin_camera', _debuger_spin_camera)
+            _is_render = renderer_cfg.get('is_render', _is_render)
 
         # Sensor configuration defaults
         tls_sensor_types = ['junction_front_all']
@@ -58,18 +59,50 @@ class TSC3DEnvironment(gym.Env):
             'tls_camera_height': tls_camera_height,
         } for tid in tls_ids}
 
+        # Load default TSHub config if provided, else empty dict (will use method defaults if not passed)
+        if tshub_env_cfg is None:
+            from configs.env_config import TSHUB_ENV_CONFIG
+            tshub_env_cfg = TSHUB_ENV_CONFIG.copy()
+
         self.tsc_env = Tshub3DEnvironment(
+            # TshubEnvironment 的参数 (与 SUMO 交互)
+            # 1、由脚本调用时传入的参数
             sumo_cfg=sumo_cfg,
-            is_aircraft_builder_initialized=False, 
-            is_vehicle_builder_initialized=True, # 用于获得 vehicle 的 waiting time 来计算 reward
-            is_traffic_light_builder_initialized=True,
             tls_ids=tls_ids, 
-            trip_info=trip_info, # 输出 tripinfo
-            tls_state_add=tls_state_add, # 输出信号灯变化
-            num_seconds=num_seconds,
-            tls_action_type=tls_action_type,
-            use_gui=use_gui,
-            is_libsumo=(not use_gui), # 如果不开界面, 就是用 libsumo
+            trip_info=trip_info, # Passed from args 
+            tls_action_type=tls_action_type, # Passed from args
+            tls_state_add=tls_state_add, # Passed from args
+            use_gui=use_gui, # Passed from args
+            is_libsumo=(not use_gui), # Derived
+
+            # 2、由 env_config 提供的参数
+            is_map_builder_initialized=tshub_env_cfg.get('is_map_builder_initialized', False),
+            is_vehicle_builder_initialized=tshub_env_cfg.get('is_vehicle_builder_initialized', True),
+            is_aircraft_builder_initialized=tshub_env_cfg.get('is_aircraft_builder_initialized', True),
+            is_traffic_light_builder_initialized=tshub_env_cfg.get('is_traffic_light_builder_initialized', True),
+            is_person_builder_initialized=tshub_env_cfg.get('is_person_builder_initialized', True),
+            poly_file=tshub_env_cfg.get('poly_file', None),
+            osm_file=tshub_env_cfg.get('osm_file', None),
+            radio_map_files=tshub_env_cfg.get('radio_map_files', None),
+            aircraft_inits=tshub_env_cfg.get('aircraft_inits', None),
+            vehicle_action_type=tshub_env_cfg.get('vehicle_action_type', 'lane'),
+            hightlight=tshub_env_cfg.get('hightlight', False),
+            delta_time=tshub_env_cfg.get('delta_time', 5),
+            net_file=tshub_env_cfg.get('net_file', None),
+            route_file=tshub_env_cfg.get('route_file', None),
+            statistic_output=tshub_env_cfg.get('statistic_output', None),
+            summary=tshub_env_cfg.get('summary', None),
+            queue_output=tshub_env_cfg.get('queue_output', None),
+            begin_time=tshub_env_cfg.get('begin_time', 0),
+            num_seconds=tshub_env_cfg.get('num_seconds', 20000),
+            max_depart_delay=tshub_env_cfg.get('max_depart_delay', 100000),
+            time_to_teleport=tshub_env_cfg.get('time_to_teleport', -1),
+            sumo_seed=tshub_env_cfg.get('sumo_seed', 'random'),
+            tripinfo_output_unfinished=tshub_env_cfg.get('tripinfo_output_unfinished', True),
+            collision_action=tshub_env_cfg.get('collision_action', None),
+            remote_port=tshub_env_cfg.get('remote_port', None),
+            num_clients=tshub_env_cfg.get('num_clients', 1),
+            
             # 用于 TSHubRenderer 渲染的参数 （TransSimHub/tshub/tshub_env3d/vis3d_renderer/tshub_render.py）
             preset = _preset, 
             resolution = _resolution,
@@ -79,11 +112,13 @@ class TSC3DEnvironment(gym.Env):
             should_count_vehicles=_should_count_vehicles,
             debuger_print_node=_debuger_print_node,
             debuger_spin_camera=_debuger_spin_camera,
+            is_render = _is_render, # 是否渲染
+
+            # 传感器配置
             sensor_config={
                 'tls': tls_sensors_map,
                 'aircraft': aircraft_cfg,
             },
-            is_render = is_render, # 是否渲染
         )
 
     def reset(self):

@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-01-13 12:02:28
+LastEditTime: 2026-01-13 16:47:41
 Description: this script is used to generate BEV images from 3D TSC env
 FilePath: /VLMTraffic/src/bev_generation/bev_generator.py
 '''
@@ -25,7 +25,8 @@ import numpy as np
 from tshub.utils.get_abs_path import get_abs_path
 from tshub.utils.init_log import set_logger
 
-from configs.env_config import SCENARIO_CONFIGS
+from configs.scenairo_config import SCENARIO_CONFIGS
+from configs.env_config import TSHUB_ENV_CONFIG
 from utils.make_tsc_env import make_env
 from utils.tools import save_to_json, create_folder, append_response_to_file
 
@@ -45,8 +46,8 @@ NETFILE = config["NETFILE"] # sumocfg 文件, 加载 eval 文件
 JUNCTION_NAME = config["JUNCTION_NAME"] # sumo net 对应的路口 ID
 PHASE_NUMBER = config["PHASE_NUMBER"] # 绿灯相位数量
 SENSOR_INDEX_2_PHASE_INDEX = config["SENSOR_INDEX_2_PHASE_INDEX"] # 传感器与 Traffic Phase 的对应关系
-RENDERER_CFG = config.get("RENDERER_CFG")
-SENSOR_CFG = config.get("SENSOR_CFG")
+RENDERER_CFG = config.get("RENDERER_CFG") # 渲染器配置
+SENSOR_CFG = config.get("SENSOR_CFG") # 传感器配置
 
 if __name__ == '__main__':
     # #########
@@ -62,7 +63,6 @@ if __name__ == '__main__':
     ]
     params = {
         'tls_id':JUNCTION_NAME,
-        'num_seconds':30,
         'number_phases':PHASE_NUMBER,
         'sumo_cfg':sumo_cfg,
         'scenario_glb_dir': scenario_glb_dir, # 场景 3D 素材
@@ -71,7 +71,7 @@ if __name__ == '__main__':
         'use_gui':False,
         'renderer_cfg': RENDERER_CFG,
         'sensor_cfg': SENSOR_CFG,
-        'is_render': True
+        'tshub_env_cfg': TSHUB_ENV_CONFIG,
     }
     env = make_env(**params)()
 
