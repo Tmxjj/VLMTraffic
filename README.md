@@ -1,9 +1,9 @@
 <!--
  * @Author: yufei Ji
  * @Date: 2026-01-12 16:48:03
- * @LastEditTime: 2026-01-12 17:15:42
+ * @LastEditTime: 2026-01-14 16:34:46
  * @Description: this script is used to 
- * @FilePath: /code/VLMTraffic/README.md
+ * @FilePath: /VLMTraffic/README.md
 -->
 # VLMTraffic
 
@@ -21,7 +21,6 @@ The framework processes BEV (Bird's Eye View) images from traffic intersections 
 - `models/`: Stores base models downloaded from ModelScope and trained checkpoints.
 - `src/`: Source code for the framework.
     - `bev_generation/`: Wraps the image generation logic from `VLMLight`.
-    - `simulation/`: Handles interaction with the traffic simulator (e.g., SUMO).
     - `inference/`: VLM inference and prompt construction.
     - `dataset/`: SFT and DPO dataset generation logic.
     - `training/`: Training scripts for Supervised Fine-Tuning and Direct Preference Optimization.
@@ -40,7 +39,7 @@ The project uses a unified YAML-based configuration system located in `src/confi
 ## Data Flow
 
 1.  **Simulation & Data Generation**:
-    - The `TrafficEnvWrapper` (src/simulation) interacts with SUMO.
+    - The `TSCEnvWrapper` (src/utils/tsc_env/tsc_wrapper.py) interacts with SUMO.
     - `BEVGenerator` (src/bev_generation) creates BEV images from simulation states data.
 2.  **Dataset Construction**:
     - Raw data and expert decisions are processed by `SFTDatasetGenerator` and `DPODatasetGenerator` (src/dataset) to create training data saved in `data/`.

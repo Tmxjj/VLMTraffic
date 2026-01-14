@@ -13,4 +13,5 @@ mpmath
 google-genai
 vllm==0.11.0
 accelerate
+tensorboard
 # Add other specific dependencies as needed

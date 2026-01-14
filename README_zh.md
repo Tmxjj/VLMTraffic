@@ -1,7 +1,7 @@
 <!--
  * @Author: yufei Ji
  * @Date: 2026-01-12 16:54:26
- * @LastEditTime: 2026-01-12 19:55:24
+ * @LastEditTime: 2026-01-14 16:34:38
  * @Description: this script is used to 
  * @FilePath: /VLMTraffic/README_zh.md
 -->
@@ -19,7 +19,6 @@
 - `models/`: 存储从 ModelScope 下载的基础模型和训练好的检查点 (checkpoints)。
 - `src/`: 框架源代码。
     - `bev_generation/`: 封装来自 `VLMLight` 的图像生成逻辑。
-    - `simulation/`: 处理与交通模拟器 (如 SUMO) 的交互。
     - `inference/`: VLM 推理和提示词 (prompt) 构建。
     - `dataset/`: SFT 和 DPO 数据集生成逻辑。
     - `training/`: 监督微调 (SFT) 和直接偏好优化 (DPO) 的训练脚本。
