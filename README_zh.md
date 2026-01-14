@@ -1,7 +1,7 @@
 <!--
  * @Author: yufei Ji
  * @Date: 2026-01-12 16:54:26
- * @LastEditTime: 2026-01-14 22:29:35
+ * @LastEditTime: 2026-01-14 22:33:13
  * @Description: this script is used to 
  * @FilePath: /VLMTraffic/README_zh.md
 -->
@@ -60,7 +60,7 @@
 1.  **环境设置**: 安装依赖项。
 ```bash
 pip install -r requirement.txt
-git clone https://github.com/Traffic-Alpha/TransSimHub.git
+git clone https://github.com/Tmxjj/TransSimHub.git
 cd TransSimHub # 原地址为https://github.com/Traffic-Alpha/TransSimHub.git，本研究基于此进行了二次开发
 pip install -e ".[all]"
 ```

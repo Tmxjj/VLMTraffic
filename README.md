@@ -1,7 +1,7 @@
 <!--
  * @Author: yufei Ji
  * @Date: 2026-01-12 16:48:03
- * @LastEditTime: 2026-01-14 22:29:17
+ * @LastEditTime: 2026-01-14 22:33:33
  * @Description: this script is used to 
  * @FilePath: /VLMTraffic/README.md
 -->
@@ -60,7 +60,7 @@ Please refer to `requirements.txt`.
 1.  **Environment Setup**: Install dependencies.
 ```bash
 pip install -r requirement.txt
-git clone https://github.com/Traffic-Alpha/TransSimHub.git
+git clone https://github.com/Tmxjj/TransSimHub.git
 cd TransSimHub # This study is based on secondary development of https://github.com/Traffic-Alpha/TransSimHub.git
 pip install -e ".[all]"
 ```
