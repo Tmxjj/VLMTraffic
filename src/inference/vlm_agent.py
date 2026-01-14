@@ -178,7 +178,7 @@ if __name__ == "__main__":
     # 官方 SDK (gemini) 
     agent_sdk = VLMAgent(
         api_type="gemini_sdk",
-        api_key="AIzaSyCzbhO4OaWDiXeQsYyaaDr-WGcPxyapLCI",
+        api_key="***",
         model_name="gemini-2.5-flash",
         
     )
