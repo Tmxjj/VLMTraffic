@@ -11,4 +11,6 @@ accelerate
 sft
 mpmath
 google-genai
+vllm==0.11.0
+accelerate
 # Add other specific dependencies as needed

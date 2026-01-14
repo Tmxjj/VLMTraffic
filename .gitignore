@@ -8,7 +8,7 @@ log/
 TransSimHub/
 *.log
 *json
-# *jpg
+*jpg
 
 # 3D 模型文件
 *.glb
@@ -17,6 +17,7 @@ TransSimHub/
 
 data/bev_images/
 data/test/
+models/
 
 # VS Code 配置 (个人配置通常不上传，团队协作除外)
 # .vscode/

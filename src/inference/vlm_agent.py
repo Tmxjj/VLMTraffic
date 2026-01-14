@@ -6,31 +6,39 @@ import base64
 import time
 from io import BytesIO
 from prompt_builder import PromptBuilder
+from configs.model_config import MODEL_CONFIG
+
 # 需要安装的库：
 # pip install transformers google openai requests
 
 class VLMAgent:
     """
     支持多种后端的 VLM Agent：
-    1. local_hf: 加载本地 HuggingFace 模型
+    1. local_model: 加载本地 HuggingFace 模型
     2. sdk: 使用官方 SDK (OpenAI / Gemini)
     3. requests: 使用原生 HTTP 请求 (本地API端口 或 远程通用API)
     """
-    def __init__(self, api_type="local_hf", **kwargs):
+    def __init__(self, api_type=None, **kwargs):
         """
         Args:
-            api_type: "local_hf", "openai_sdk", "gemini_sdk", "requests"
-            kwargs: 根据 api_type 传入不同的配置参数
-                - local_hf: model_path, device
-                - openai_sdk: api_key, base_url, model_name
-                - gemini_sdk: api_key, model_name
-                - requests: url, headers, model_name
+            api_type: "local_model", "openai_sdk", "gemini_sdk", "requests". If None, use config default.
+            kwargs: Override options from MODEL_CONFIG
         """
-        self.api_type = api_type
-        self.config = kwargs
+        # Determine API type: Arg > Config > Default
+        self.api_type = api_type or MODEL_CONFIG.get("api_type", "local_model")
+        
+        # Load configuration: Global Defaults -> Backend Specific -> User Overrides
+        backend_config = MODEL_CONFIG.get(self.api_type, {})
+        self.config = {**MODEL_CONFIG, **backend_config, **kwargs}
+        
+        # Common generation parameters
+        self.temperature = self.config.get("temperature", 0.7)
+        self.max_tokens = self.config.get("max_new_tokens", 100) # Compatible with max_new_tokens logic if needed
+
         self.client = None
         self.model = None
         self.tokenizer = None
+        self.processor = None
         
         self._initialize_backend()
 
@@ -38,12 +46,31 @@ class VLMAgent:
         """根据配置初始化对应的后端"""
         print(f"Initializing VLMAgent with backend: {self.api_type}...")
         
-        #  加载本地 HuggingFace 模型 ===
+        #  加载本地 模型 (支持 Qwen3-VL 和 通用 HF) ===
         if self.api_type == "local_model":
-            from transformers import AutoModelForCausalLM, AutoTokenizer
             model_path = self.config.get("model_path")
             device = self.config.get("device", "cuda")
+            
+            # 尝试作为 Qwen3-VL (ModelScope) 加载
+            if model_path and ("qwen3" in model_path.lower()):
+                try:
+                    from modelscope import Qwen3VLForConditionalGeneration, AutoProcessor
+                    self.processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
+                    self.model = Qwen3VLForConditionalGeneration.from_pretrained(
+                        model_path, 
+                        dtype="auto",
+                        device_map=device, 
+                        trust_remote_code=True
+                    ).eval()
+                    print("Local Qwen3-VL Model loaded successfully via ModelScope.")
+                    return
+                except Exception as e:
+                    print(f"Failed to load Qwen3-VL via ModelScope: {e}")
+                    print("Falling back to transformers...")
+
+            # Fallback / Default Transformers Logic
             try:
+                from transformers import AutoModelForCausalLM, AutoTokenizer
                 self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
                 self.model = AutoModelForCausalLM.from_pretrained(
                     model_path, 
@@ -91,15 +118,64 @@ class VLMAgent:
         try:
             # === 本地模型推理 ===
             if self.api_type == "local_model":
-                query = self.tokenizer.from_list_format([
-                    {'image': image_path},
-                    {'text': prompt},
-                ])
-                inputs = self.tokenizer(query, return_tensors='pt')
-                inputs = inputs.to(self.model.device)
-                pred = self.model.generate(**inputs, max_new_tokens=10)
-                raw_response = self.tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)
-                response = raw_response.strip()
+                # Check if using Processor (e.g. Qwen3-VL)
+                if hasattr(self, 'processor') and self.processor is not None:
+                    # Construct messages
+                    messages = [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "image", "image": image_path},
+                                {"type": "text", "text": prompt},
+                            ],
+                        }
+                    ]
+                    
+                    # Prepare inputs
+                    inputs = self.processor.apply_chat_template(
+                        messages,
+                        tokenize=True,
+                        add_generation_prompt=True, # 是否在输入末尾添加生成提示（如<|im_start|>assistant\n）
+                        return_dict=True,
+                        return_tensors="pt"
+                    )
+                    inputs= inputs.to(self.model.device)
+                    # Generate
+                    gen_kwargs = {
+                        "max_new_tokens": self.max_tokens,
+                        "temperature": self.temperature
+                    }
+                    if self.temperature > 0:
+                        gen_kwargs["do_sample"] = True
+                    generated_ids = self.model.generate(**inputs, **gen_kwargs)
+                    
+                    # Trim input tokens
+                    generated_ids_trimmed = [
+                        out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+                    ]
+                    response = self.processor.batch_decode(
+                        generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
+                    )[0].strip()
+                    
+                else: 
+                    # Default/Legacy logic (e.g. Qwen-VL v1, InternVL using AutoTokenizer)
+                    query = self.tokenizer.from_list_format([
+                        {'image': image_path},
+                        {'text': prompt},
+                    ])
+                    inputs = self.tokenizer(query, return_tensors='pt')
+                    inputs = inputs.to(self.model.device)
+                    
+                    gen_kwargs = {
+                        "max_new_tokens": self.max_tokens,
+                        "temperature": self.temperature
+                    }
+                    if self.temperature > 0:
+                        gen_kwargs["do_sample"] = True
+
+                    pred = self.model.generate(**inputs, **gen_kwargs)
+                    raw_response = self.tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)
+                    response = raw_response.strip()
     
             # === OpenAI SDK ===
             elif self.api_type == "openai_sdk":
@@ -120,16 +196,26 @@ class VLMAgent:
                             ],
                         }
                     ],
-                    max_tokens=10
+                    max_tokens=self.max_tokens,
+                    temperature=self.temperature
                 )
                 response = api_resp.choices[0].message.content.strip()
 
-            # === Gemini SDK ===
+            # === Gemini SDK === 
             elif self.api_type == "gemini_sdk":
+                from google.genai import types
                 model_name = self.config.get("model_name", "gemini-2.0-flash")
                 img = Image.open(image_path)
+                
+                config = types.GenerateContentConfig(
+                    temperature=self.temperature,
+                    max_output_tokens=self.max_tokens
+                )
+
                 api_resp = self.model.models.generate_content(
-                    model=model_name, contents=[prompt, img]
+                    model=model_name, 
+                    contents=[prompt, img],
+                    config=config
                 )            
                 response = api_resp.text.strip()
 
@@ -145,12 +231,15 @@ class VLMAgent:
                         }
                     ],
                     "image": base64_image,
-                    "prompt": prompt
+                    "prompt": prompt,
+                    "temperature": self.temperature,
+                    "max_tokens": self.max_tokens
                 }
                 
                 req_resp = requests.post(self.url, headers=self.headers, json=payload)
                 if req_resp.status_code == 200:
-                    response = req_resp.json().get("result", "").strip()
+                    result = req_resp.json()
+                    response = result['choices'][0]['message']['content']
                 else:
                     response = f"Error: {req_resp.status_code}"
 
@@ -173,27 +262,12 @@ if __name__ == "__main__":
         "- Phase 2: EW Straight\n"      
         "- Phase 3: EW Left"
     )
-    test_img = "data/test/Hongkong_YMT/1/bev_aircraft_offline.jpg"
+    test_img = "data/test/Hongkong_YMT/5/bev_aircraft_offline.jpg"
 
-    # 官方 SDK (gemini) 
-    agent_sdk = VLMAgent(
-        api_type="gemini_sdk",
-        api_key="***",
-        model_name="gemini-2.5-flash",
-        
-    )
-    print(agent_sdk.get_decision(test_img, prompt_text))
+    # 使用 configs/model_config.py 中的默认配置初始化
+    agent = VLMAgent()
+    
+    print(agent.get_decision(test_img, prompt_text))
 
-    # Python Requests (调用本地封装的 FastAPI 端口)
-    # agent_req = VLMAgent(
-    #     api_type="requests",
-    #     url="http://127.0.0.1:5000/predict",
-    #     model_name="custom-vlm"
-    # )
-    # print(agent_req.get_decision(test_img, prompt_text))
-
-    # 加载本地模型
-    # agent_local = VLMAgent(
-    #     api_type="local_model",
-    #     model_path="/path/to/local/model"
-    # )
+    # 也可以动态覆盖参数
+    # agent_custom = VLMAgent(api_type="requests", temperature=0.1)
