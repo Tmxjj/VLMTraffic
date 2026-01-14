@@ -5,8 +5,9 @@ import json
 import base64
 import time
 from io import BytesIO
-from prompt_builder import PromptBuilder
+from configs.prompt_builder import PromptBuilder
 from configs.model_config import MODEL_CONFIG
+import re
 
 # 需要安装的库：
 # pip install transformers google openai requests
@@ -107,6 +108,20 @@ class VLMAgent:
         """辅助函数：将图片转为 base64 字符串"""
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
+        
+    def _parse_action(self, response: str) -> int:
+        """From VLM text response to action index."""
+        try:
+            # Look for patterns like "Action: [0]", "Action: 0", "**Action:** [0]"
+            match = re.search(r"Action:?\s*\[?(\d+)\]?", response, re.IGNORECASE)
+            if match:
+                return int(match.group(1))
+            else:
+                print(f"Warning: Could not parse action from response: {response}. Defaulting to 0.")
+                return 0 # Default fallback
+        except Exception as e:
+            print(f"Error parsing action: {e}. Defaulting to 0.")
+            return 0
 
     def get_decision(self, image_path: str, prompt: str):
         """
@@ -251,17 +266,14 @@ class VLMAgent:
         latency = end_time - start_time
         print(f"Inference Time: {end_time - start_time:.2f} seconds")
 
-        return response, latency
+        action = self._parse_action(response)
+
+        return response, latency, action
 
 
 if __name__ == "__main__":
 
-    prompt_text = PromptBuilder.build_decision_prompt(current_phase_id=1, phase_explanation=
-        "- Phase 0: NS Straight\n"
-        "- Phase 1: NS Left\n"
-        "- Phase 2: EW Straight\n"      
-        "- Phase 3: EW Left"
-    )
+    prompt_text = PromptBuilder.build_decision_prompt(current_phase_id=1)
     test_img = "data/test/Hongkong_YMT/5/bev_aircraft_offline.jpg"
 
     # 使用 configs/model_config.py 中的默认配置初始化

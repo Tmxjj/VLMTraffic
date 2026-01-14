@@ -1,3 +1,10 @@
+'''
+Author: yufei Ji
+Date: 2026-01-12 17:09:21
+LastEditTime: 2026-01-14 22:05:21
+Description: this script is used to 
+FilePath: /VLMTraffic/configs/model_config.py
+'''
 """
 Model configuration for VLMAgent.
 """
@@ -23,7 +30,7 @@ MODEL_CONFIG = {
     },
     
     "gemini_sdk": {
-        "api_key": "***",  # the api don't need to upload to github
+        "api_key": "AIzaSyC26z6SyjJKf6G_h4MkdY2GonAKPVdRqBQ",  # the api don't need to upload to github
         "model_name": "gemini-2.0-flash" 
     },
     

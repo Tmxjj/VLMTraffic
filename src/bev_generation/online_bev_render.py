@@ -1,9 +1,9 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-01-13 16:47:41
+LastEditTime: 2026-01-14 21:27:02
 Description: this script is used to generate BEV images from 3D TSC env
-FilePath: /VLMTraffic/src/bev_generation/bev_generator.py
+FilePath: /VLMTraffic/src/bev_generation/online_bev_render.py
 '''
 
 import os

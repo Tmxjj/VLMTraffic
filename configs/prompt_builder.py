@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-01-13 22:16:52
+LastEditTime: 2026-01-14 19:36:19
 Description: Optimized Prompt Builder (Visual-Only Analysis)
 FilePath: /VLMTraffic/src/inference/prompt_builder.py
 '''
@@ -10,15 +10,22 @@ class PromptBuilder:
     """
     Constructs text prompts for the VLM based on traffic states.
     """
+
+    PHASE_EXPLANATION = '''
+        - Phase 0: NS Straight
+        - Phase 1: NS Left
+        - Phase 2: EW Straight
+        - Phase 3: EW Leff
+
+    '''
     
     @staticmethod
-    def build_decision_prompt(current_phase_id: int, phase_explanation: str) -> str:
+    def build_decision_prompt(current_phase_id: int) -> str:
         """
         Build a prompt for the VLM to make traffic signal decisions based solely on Visual Input and Phase Info.
         
         Args:
             current_phase_id (int): The index of the currently active traffic signal phase.
-            phase_explanation (str): A description of what each phase ID represents.
         """
         
         prompt = f"""
@@ -34,7 +41,7 @@ class PromptBuilder:
 
             ### 3. Action Space (Phase Definitions)
             The intersection operates on the following discrete signal phases. You must choose one index:
-            {phase_explanation}
+            {PromptBuilder.PHASE_EXPLANATION}
 
             ### 4. Current State
             **Currently Active Phase**: **[ Phase {current_phase_id} ]**
@@ -50,23 +57,17 @@ class PromptBuilder:
             ### 6. Chain-of-Thought Reasoning
             You must think step-by-step. The output format must be strictly as follows:
 
-            **Thought:** [
+            Thought: [
             1. Visual Observation: Describe what you see in the image. Which lanes have the most cars? Which are empty?
             2. Current Phase Analysis: Is Phase {current_phase_id} wasting time?
             3. Selection Logic: Based on "Queue Length" rules, Phase X is the best choice because...
             ]
-            **Action:** [The Selected Phase Index, e.g., 0]
+            Action: The Selected Phase Index, e.g., 0
         """
         return prompt.strip()
 
 if __name__ == "__main__":
     # 测试生成的 Prompt
     test_phase_id = 1
-    test_phase_exp = (
-        "- Phase 0: NS Straight\n"
-        "- Phase 1: NS Left\n"
-        "- Phase 2: EW Straight\n"
-        "- Phase 3: EW Left"
-    )
     
-    print(PromptBuilder.build_decision_prompt(test_phase_id, test_phase_exp))
+    print(PromptBuilder.build_decision_prompt(test_phase_id))

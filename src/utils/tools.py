@@ -1,12 +1,14 @@
 '''
 Author: Maonan Wang
 Date: 2025-05-09 11:41:49
-LastEditTime: 2025-06-30 15:24:32
-LastEditors: WANG Maonan
+LastEditTime: 2026-01-14 21:41:24
+LastEditors: Please set LastEditors
 Description: Useful Tools for VLMLight
 '''
 import os
 import json
+
+
 
 def save_to_json(data, filename):
     """保存每一个时刻的 3D 场景数据
@@ -18,6 +20,9 @@ def save_to_json(data, filename):
     except Exception as e:
         print(f"保存文件时出现错误: {e}")
 
+def convert_rgb_to_bgr(image):
+    # Convert an RGB image to BGR
+    return image[:, :, ::-1]
 
 def append_response_to_file(file_path: str, content: str) -> bool:
     """
