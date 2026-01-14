@@ -1,7 +1,7 @@
 <!--
  * @Author: yufei Ji
  * @Date: 2026-01-12 16:48:03
- * @LastEditTime: 2026-01-14 16:34:46
+ * @LastEditTime: 2026-01-14 22:29:17
  * @Description: this script is used to 
  * @FilePath: /VLMTraffic/README.md
 -->
@@ -65,8 +65,8 @@ cd TransSimHub # This study is based on secondary development of https://github.
 pip install -e ".[all]"
 ```
 2.  **Model Download**: Run `python scripts/download_model.py` to fetch the base VLM.
-3.  **Simulation & BEV Generation**: The BEV generation relies on `VLMLight`. Ensure `VLMLight` is accessible.
-4.  **Training**: Use `src/training/sft_trainer.py` and `src/training/dpo_trainer.py`.
+3.  **Simulation & BEV Generation**: 
+4.  **Training**: Use `src/training/sft_trainer.sh`.
 5.  **Evaluation**: Run `src/evaluation/evaluator.py`.
 
 ## Metrics

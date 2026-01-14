@@ -1,7 +1,7 @@
 <!--
  * @Author: yufei Ji
  * @Date: 2026-01-12 16:54:26
- * @LastEditTime: 2026-01-14 16:34:38
+ * @LastEditTime: 2026-01-14 22:29:35
  * @Description: this script is used to 
  * @FilePath: /VLMTraffic/README_zh.md
 -->
@@ -65,8 +65,8 @@ cd TransSimHub # 原地址为https://github.com/Traffic-Alpha/TransSimHub.git，
 pip install -e ".[all]"
 ```
 2.  **模型下载**: 运行 `python scripts/download_model.py` 获取基础 VLM 模型。
-3.  **仿真 & BEV 生成**: BEV 生成依赖于 `VLMLight` 项目。请确保 `VLMLight` 可访问。
-4.  **训练**: 使用 `src/training/sft_trainer.py` 和 `src/training/dpo_trainer.py` 进行训练。
+3.  **仿真 & BEV 生成**: 
+4.  **训练**: 使用 `src/training/sft_trainer.sh` 
 5.  **评估**: 运行 `src/evaluation/evaluator.py` 进行评估。
 
 ## 指标
