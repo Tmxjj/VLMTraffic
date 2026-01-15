@@ -2,7 +2,7 @@
 @Author: WANG Maonan
 @Date: 2023-09-04 20:43:53
 @Description: 信号灯控制环境 (3D)
-LastEditTime: 2026-01-13 16:47:36
+LastEditTime: 2026-01-15 16:53:32
 '''
 import gymnasium as gym
 
@@ -12,8 +12,10 @@ from tshub.tshub_env3d.tshub_env3d import Tshub3DEnvironment
 class TSC3DEnvironment(gym.Env):
     def __init__(self, 
                  sumo_cfg:str, scenario_glb_dir:str, tls_ids:List[str], 
-                 tls_action_type:str, use_gui:bool=False, 
-                 trip_info:str=None, tls_state_add:List=None,
+                 tls_action_type:str,
+                 trip_info:str=None, statistic_output:str=None, 
+                 summary:str=None, queue_output:str=None,
+                 tls_state_add:List=None,
                  renderer_cfg: Optional[dict] = None, sensor_cfg: Optional[dict] = None,
                  tshub_env_cfg: Optional[dict] = None, # New param
                 ) -> None:
@@ -37,6 +39,7 @@ class TSC3DEnvironment(gym.Env):
             _debuger_print_node = renderer_cfg.get('debuger_print_node', _debuger_print_node)
             _debuger_spin_camera = renderer_cfg.get('debuger_spin_camera', _debuger_spin_camera)
             _is_render = renderer_cfg.get('is_render', _is_render)
+            _is_every_frame = renderer_cfg.get('is_every_frame', False)
 
         # Sensor configuration defaults
         tls_sensor_types = ['junction_front_all']
@@ -72,8 +75,9 @@ class TSC3DEnvironment(gym.Env):
             trip_info=trip_info, # Passed from args 
             tls_action_type=tls_action_type, # Passed from args
             tls_state_add=tls_state_add, # Passed from args
-            use_gui=use_gui, # Passed from args
-            is_libsumo=(not use_gui), # Derived
+            statistic_output= statistic_output,
+            summary=summary,
+            queue_output=queue_output,
 
             # 2、由 env_config 提供的参数
             is_map_builder_initialized=tshub_env_cfg.get('is_map_builder_initialized', False),
@@ -90,9 +94,6 @@ class TSC3DEnvironment(gym.Env):
             delta_time=tshub_env_cfg.get('delta_time', 5),
             net_file=tshub_env_cfg.get('net_file', None),
             route_file=tshub_env_cfg.get('route_file', None),
-            statistic_output=tshub_env_cfg.get('statistic_output', None),
-            summary=tshub_env_cfg.get('summary', None),
-            queue_output=tshub_env_cfg.get('queue_output', None),
             begin_time=tshub_env_cfg.get('begin_time', 0),
             num_seconds=tshub_env_cfg.get('num_seconds', 20000),
             max_depart_delay=tshub_env_cfg.get('max_depart_delay', 100000),
@@ -102,6 +103,8 @@ class TSC3DEnvironment(gym.Env):
             collision_action=tshub_env_cfg.get('collision_action', None),
             remote_port=tshub_env_cfg.get('remote_port', None),
             num_clients=tshub_env_cfg.get('num_clients', 1),
+            use_gui=tshub_env_cfg.get('use_gui', False),
+            is_libsumo=tshub_env_cfg.get('is_libsumo',(not tshub_env_cfg.get('use_gui', False))), # Derived
             
             # 用于 TSHubRenderer 渲染的参数 （TransSimHub/tshub/tshub_env3d/vis3d_renderer/tshub_render.py）
             preset = _preset, 
@@ -113,6 +116,7 @@ class TSC3DEnvironment(gym.Env):
             debuger_print_node=_debuger_print_node,
             debuger_spin_camera=_debuger_spin_camera,
             is_render = _is_render, # 是否渲染
+            is_every_frame = _is_every_frame, # 是否每一帧都渲染
 
             # 传感器配置
             sensor_config={

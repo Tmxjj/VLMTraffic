@@ -8,6 +8,7 @@ from io import BytesIO
 from configs.prompt_builder import PromptBuilder
 from configs.model_config import MODEL_CONFIG
 import re
+from loguru import logger
 
 # 需要安装的库：
 # pip install transformers google openai requests
@@ -45,7 +46,7 @@ class VLMAgent:
 
     def _initialize_backend(self):
         """根据配置初始化对应的后端"""
-        print(f"Initializing VLMAgent with backend: {self.api_type}...")
+        logger.info(f"[EVAL] Initializing VLMAgent with backend: {self.api_type}...")
         
         #  加载本地 模型 (支持 Qwen3-VL 和 通用 HF) ===
         if self.api_type == "local_model":
@@ -63,11 +64,11 @@ class VLMAgent:
                         device_map=device, 
                         trust_remote_code=True
                     ).eval()
-                    print("Local Qwen3-VL Model loaded successfully via ModelScope.")
+                    logger.info("[EVAL] Local Qwen3-VL Model loaded successfully via ModelScope.")
                     return
                 except Exception as e:
-                    print(f"Failed to load Qwen3-VL via ModelScope: {e}")
-                    print("Falling back to transformers...")
+                    logger.warning(f"[EVAL] Failed to load Qwen3-VL via ModelScope: {e}")
+                    logger.info("[EVAL] Falling back to transformers...")
 
             # Fallback / Default Transformers Logic
             try:
@@ -78,9 +79,9 @@ class VLMAgent:
                     device_map=device, 
                     trust_remote_code=True
                 ).eval()
-                print("Local HF Model loaded successfully.")
+                logger.info("[EVAL] Local HF Model loaded successfully.")
             except Exception as e:
-                print(f"Failed to load local model: {e}")
+                logger.error(f"[EVAL] Failed to load local model: {e}")
 
         # 官方 SDK (OpenAI) 
         elif self.api_type == "openai_sdk":
@@ -117,10 +118,10 @@ class VLMAgent:
             if match:
                 return int(match.group(1))
             else:
-                print(f"Warning: Could not parse action from response: {response}. Defaulting to 0.")
+                logger.warning(f"[EVAL] Warning: Could not parse action from response: {response}. Defaulting to 0.")
                 return 0 # Default fallback
         except Exception as e:
-            print(f"Error parsing action: {e}. Defaulting to 0.")
+            logger.error(f"[EVAL] Error parsing action: {e}. Defaulting to 0.")
             return 0
 
     def get_decision(self, image_path: str, prompt: str):
@@ -130,6 +131,9 @@ class VLMAgent:
         """
         response = "ERROR"
         start_time = time.perf_counter()
+        input_tokens = 0
+        output_tokens = 0
+
         try:
             # === 本地模型推理 ===
             if self.api_type == "local_model":
@@ -162,12 +166,22 @@ class VLMAgent:
                     }
                     if self.temperature > 0:
                         gen_kwargs["do_sample"] = True
+                    
+                    # 记录 input tokens
+                    if "input_ids" in inputs:
+                        input_tokens = inputs.input_ids.shape[1]
+
                     generated_ids = self.model.generate(**inputs, **gen_kwargs)
                     
                     # Trim input tokens
                     generated_ids_trimmed = [
                         out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
                     ]
+
+                    # 记录 output tokens
+                    if len(generated_ids_trimmed) > 0:
+                        output_tokens = generated_ids_trimmed[0].shape[0]
+
                     response = self.processor.batch_decode(
                         generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
                     )[0].strip()
@@ -181,6 +195,10 @@ class VLMAgent:
                     inputs = self.tokenizer(query, return_tensors='pt')
                     inputs = inputs.to(self.model.device)
                     
+                    # 记录 input tokens
+                    if "input_ids" in inputs:
+                        input_tokens = inputs.input_ids.shape[1]
+
                     gen_kwargs = {
                         "max_new_tokens": self.max_tokens,
                         "temperature": self.temperature
@@ -189,6 +207,11 @@ class VLMAgent:
                         gen_kwargs["do_sample"] = True
 
                     pred = self.model.generate(**inputs, **gen_kwargs)
+                    
+                    # 记录 output tokens
+                    if "input_ids" in inputs:
+                        output_tokens = pred.shape[1] - inputs.input_ids.shape[1]
+
                     raw_response = self.tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)
                     response = raw_response.strip()
     
@@ -215,6 +238,9 @@ class VLMAgent:
                     temperature=self.temperature
                 )
                 response = api_resp.choices[0].message.content.strip()
+                if api_resp.usage:
+                    input_tokens = api_resp.usage.prompt_tokens
+                    output_tokens = api_resp.usage.completion_tokens
 
             # === Gemini SDK === 
             elif self.api_type == "gemini_sdk":
@@ -233,6 +259,9 @@ class VLMAgent:
                     config=config
                 )            
                 response = api_resp.text.strip()
+                if api_resp.usage_metadata:
+                    input_tokens = api_resp.usage_metadata.prompt_token_count
+                    output_tokens = api_resp.usage_metadata.candidates_token_count
 
             # === Requests ===
             elif self.api_type == "requests":
@@ -255,16 +284,21 @@ class VLMAgent:
                 if req_resp.status_code == 200:
                     result = req_resp.json()
                     response = result['choices'][0]['message']['content']
+                    # 尝试读取 usage
+                    if 'usage' in result:
+                        usage = result['usage']
+                        input_tokens = usage.get('prompt_tokens', 0)
+                        output_tokens = usage.get('completion_tokens', 0)
                 else:
                     response = f"Error: {req_resp.status_code}"
 
         except Exception as e:
-            print(f"Inference Error: {e}")
+            logger.error(f"[EVAL] Inference Error: {e}")
             response = "ERROR"
 
         end_time = time.perf_counter()
         latency = end_time - start_time
-        print(f"Inference Time: {end_time - start_time:.2f} seconds")
+        logger.info(f"[EVAL] Inference Time: {latency:.2f}s | Tokens: {input_tokens} in / {output_tokens} out")
 
         action = self._parse_action(response)
 

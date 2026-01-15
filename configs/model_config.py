@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-01-14 22:05:21
+LastEditTime: 2026-01-15 16:05:45
 Description: this script is used to 
 FilePath: /VLMTraffic/configs/model_config.py
 '''
@@ -15,7 +15,7 @@ MODEL_CONFIG = {
     
     # Global generation settings
     "temperature": 0.7, # 0.0 to 1.0
-    "max_new_tokens": 300, # Max tokens to generate
+    "max_new_tokens": 1000, # Max tokens to generate
 
     # Configuration for specific backends
     "local_model": {

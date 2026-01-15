@@ -46,18 +46,16 @@ TSHUB_ENV_CONFIG = {
     "net_file": None, 
     # 额外的 Route 文件路径（在 sumo.cfg 之外指定），默认为 None
     "route_file": None, 
-    # 统计信息输出文件路径，默认为 None
-    "statistic_output": None, 
-    # 仿真 summary 输出文件路径，默认为 None
-    "summary": None, 
-    # 队列信息输出文件路径，默认为 None
-    "queue_output": None,
 
     # Simulation settings
+    # sumo_gui or sumo
+    "use_gui": False,
+    # libsumo or Traci，默认为 （not use_gui），当你通过 use_gui=True 初始化环境时，通常会强制关闭 libsumo（使用 traci）；而当你进行后台大规模训练时，开启 libsumo 以获得最高效率。
+    # "is_libsumo": False, 
     # 仿真开始时间（秒）
     "begin_time": 0,
     # 仿真总时长（秒），到达该时间后仿真强制结束
-    "num_seconds": 100, 
+    "num_seconds": 20, 
     # 最大出发延迟（秒）：如果车辆积压太久无法进入路网，超过此时间可能会被丢弃
     "max_depart_delay": 100000,
     # 车辆瞬移等待时间（秒）：如果车辆拥堵不动超过此时间，会被瞬移或移除（-1 表示禁用）

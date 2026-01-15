@@ -4,7 +4,7 @@
 @Description: 处理 TSCHub ENV 中的 state, reward (处理后的 state 作为 RL 的输入)
 + state: 5 个时刻的每一个 movement 的 queue length
 + reward: 路口总的 waiting time
-LastEditTime: 2026-01-13 16:10:28
+LastEditTime: 2026-01-15 10:43:31
 '''
 import numpy as np
 import gymnasium as gym

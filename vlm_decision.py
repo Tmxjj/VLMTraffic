@@ -1,9 +1,9 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:49:26
-LastEditTime: 2026-01-14 22:20:07
+LastEditTime: 2026-01-15 17:10:42
 Description: this script is used to 
-FilePath: /VLMTraffic/src/evaluation/evaluator.py
+FilePath: /VLMTraffic/vlm_decision.py
 '''
 import os
 import re
@@ -24,13 +24,13 @@ display.start()
 from tshub.utils.get_abs_path import get_abs_path
 from tshub.utils.init_log import set_logger
 from utils.make_tsc_env import make_env
-from utils.tools import save_to_json, create_folder, append_response_to_file, convert_rgb_to_bgr
+from utils.tools import save_to_json, create_folder, append_response_to_file, convert_rgb_to_bgr, write_response_to_file
 from configs.scenairo_config import SCENARIO_CONFIGS
 from configs.env_config import TSHUB_ENV_CONFIG
 from configs.model_config import MODEL_CONFIG
-from inference.vlm_agent import VLMAgent
+from src.inference.vlm_agent import VLMAgent
 from configs.prompt_builder import PromptBuilder
-from metrics import MetricsCalculator
+from src.evaluation.metrics import MetricsCalculator
 
 class Evaluator:
     """
@@ -58,9 +58,12 @@ class Evaluator:
         self.junction_name = self.scenario_config["JUNCTION_NAME"]
         
         # Determine file paths
-        sumo_cfg = path_convert(f"../../data/raw/{self.scenario_name}/{self.scenario_config['NETFILE']}.sumocfg")
-        scenario_glb_dir = path_convert(f"../../data/raw/{self.scenario_name}/3d_assets/")
-        trip_info = path_convert(f"../../data/test/{self.scenario_name}/tripinfo.out.xml")
+        sumo_cfg = path_convert(f"data/raw/{self.scenario_name}/{self.scenario_config['NETFILE']}.sumocfg")
+        scenario_glb_dir = path_convert(f"data/raw/{self.scenario_name}/3d_assets/")
+        trip_info = path_convert(f"data/test/{self.scenario_name}/tripinfo.out.xml")
+        statistic_output = path_convert(f"data/eval/{self.scenario_name}/statistic_output.xml")
+        summary = path_convert(f"data/eval/{self.scenario_name}/summary.txt")
+        queue_output = path_convert(f"data/eval/{self.scenario_name}/queue_output.xml")
         
         # Checking file existence
         required_files = [sumo_cfg, scenario_glb_dir, trip_info]
@@ -69,12 +72,12 @@ class Evaluator:
                 logger.warning(f"[EVAL] File/Directory not found: {f}. Evaluation might fail.")
         
         # Ensure output folder exists (for consistent file structures)
-        self.output_folder = path_convert(f"../../data/eval/{self.scenario_name}/")
+        self.output_folder = path_convert(f"data/eval/{self.scenario_name}/")
         create_folder(self.output_folder)
         
         tls_add = [
-            path_convert(f"../../data/raw/{self.scenario_name}/add/e2.add.xml"),
-            path_convert(f"../../data/raw/{self.scenario_name}/add/tls_programs.add.xml")
+            path_convert(f"data/raw/{self.scenario_name}/add/e2.add.xml"),
+            path_convert(f"data/raw/{self.scenario_name}/add/tls_programs.add.xml")
         ]
 
         # Prepare Environment Parameters
@@ -84,14 +87,16 @@ class Evaluator:
             'sumo_cfg': sumo_cfg,
             'scenario_glb_dir': scenario_glb_dir,
             'trip_info': trip_info,
+            'statistic_output': statistic_output,
+            'summary': summary,
+            'queue_output': queue_output,
             'tls_state_add': tls_add,
-            'use_gui': False, # Forced False for evaluation
             'renderer_cfg': self.scenario_config.get("RENDERER_CFG"),
             'sensor_cfg': self.scenario_config.get("SENSOR_CFG"),
             'tshub_env_cfg': TSHUB_ENV_CONFIG,
         }
 
-        # [新增] 保存所有配置参数到日志
+        # 保存所有配置参数到日志
         self._log_configurations()
 
 
@@ -113,6 +118,13 @@ class Evaluator:
              raise e
 
         self.metrics_calc = MetricsCalculator()
+
+    def __del__(self):
+        if hasattr(self, 'env') and self.env is not None:
+            try:
+                self.env.close()
+            except (Exception, SystemExit):
+                pass
 
     def _log_configurations(self):
         """Helper to log all configurations with [CFG] tag"""
@@ -210,8 +222,8 @@ class Evaluator:
                     )
                     vlm_response, latency, action = self.agent.get_decision(BEV_image_path, prompt)
                     
-                    append_response_to_file(file_path=_response_txt_file, content=vlm_response)
-                    logger.info(f"[EVAL] RL Decision | Step: {decsion_step} | Sumo: {sumo_sim_step} | Phase: {current_phase_id} | Action: {action} | Latency: {latency:.2f}s")
+                    write_response_to_file(file_path=_response_txt_file, content=vlm_response)
+                    logger.info(f"[EVAL] VLM Decision | Step: {decsion_step} | Sumo: {sumo_sim_step} | Phase: {current_phase_id} | Action: {action} | Latency: {latency:.2f}s")
                     
                 except Exception as e:
                     logger.error(f"[EVAL] VLM Inference failed at step {decsion_step}: {e}. Skipping step with default action 0.")
@@ -261,11 +273,18 @@ class Evaluator:
             if decsion_step >= max_decsion_step:
                 logger.info(f"[EVAL] Reached maximum decision steps: {max_decsion_step}. Ending evaluation.")
                 break
-        
-        self.env.close()
         total_time = time.time() - current_time
         logger.info(f"[EVAL] Evaluation completed in {total_time:.2f} seconds.")
+        
+        # BUG:self.env.close() 时，libsumo 会触发底层的 C++ 清理逻辑以关闭仿真。
+        # 由于 libsumo 和你的 Python 脚本在同一个进程中，底层的退出或崩溃会直接导致整个 Python 脚本立即终止
+        # 方案1: 多进程隔离 (复杂)  -—>代码可读性差 ❌ 
+        # 方案2: 使用traci，而不是 libsumo ，但由于sumo版本问题，暂时无法切换 ❌
+        # 方案3: 后续单独计算指标 不写在日志中 不随evalutor.py运行✅
+        self.env.close()
 
+   
 if __name__ == "__main__":
     evaluator = Evaluator(scenario_key="Hongkong_YMT", log_dir="./log/eval_results")
     evaluator.run_eval(max_decsion_step=10)
+

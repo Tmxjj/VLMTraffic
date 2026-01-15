@@ -1,4 +1,6 @@
 import numpy as np
+import xml.etree.ElementTree as ET
+from loguru import logger
 
 class MetricsCalculator:
     """
@@ -29,7 +31,7 @@ class MetricsCalculator:
                 
     def compute_metrics(self):
         """
-        Computes the final metrics.
+        Computes the final metrics based on online updated data.
         """
         all_travel_times = [v['travel_time'] for v in self.vehicle_data.values()]
         all_waiting_times = [v['waiting_time'] for v in self.vehicle_data.values()]
@@ -47,6 +49,62 @@ class MetricsCalculator:
         
         metrics["Special_ATT"] = np.mean(special_travel_times) if special_travel_times else 0.0
         metrics["Special_AWT"] = np.mean(special_waiting_times) if special_waiting_times else 0.0
-        # Note: AQL is usually lane-based, not vehicle-based, so Special AQL might need specific lane filtering logic if required
         
+        return metrics
+
+    def calculate_from_files(self, statistic_file, queue_file):
+        """
+        Calculates metrics from SUMO output files.
+        
+        Args:
+            statistic_file (str): Path to statistic_output.xml
+            queue_file (str): Path to queue_output.xml
+            
+        Returns:
+            dict: {ATT, AWT, AQL}
+        """
+        metrics = {"ATT": 0.0, "AWT": 0.0, "AQL": 0.0}
+        
+        # 1. Parse Statistic Output for ATT and AWT
+        try:
+            tree = ET.parse(statistic_file)
+            root = tree.getroot()
+            # <vehicleTripStatistics count="31" duration="20.61" waitingTime="7.90" ... />
+            # duration is the average trip duration (ATT)
+            # waitingTime is the average waiting time (AWT)
+            veh_stats = root.find('vehicleTripStatistics')
+            if veh_stats is not None:
+                metrics["ATT"] = float(veh_stats.get('duration', 0.0))
+                metrics["AWT"] = float(veh_stats.get('waitingTime', 0.0))
+        except Exception as e:
+            logger.error(f"[EVAL] Error parsing statistic file: {e}")
+
+        # 2. Parse Queue Output for AQL
+        try:
+            tree = ET.parse(queue_file)
+            root = tree.getroot()
+            
+            total_queue_len = 0.0
+            step_count = 0
+            
+            for data in root.findall('data'):
+                # timestep = data.get('timestep')
+                lanes = data.find('lanes')
+                current_step_queue = 0.0
+                if lanes is not None:
+                    # Sum up queue length of all lanes in this step
+                    for lane in lanes.findall('lane'):
+                        # Use 'queueing_length' (meters)
+                        current_step_queue += float(lane.get('queueing_length', 0.0))
+                
+                total_queue_len += current_step_queue
+                step_count += 1
+            
+            # AQL = Average Total Queue Length over time
+            if step_count > 0:
+                metrics["AQL"] = total_queue_len / step_count
+                
+        except Exception as e:
+            logger.error(f"[EVAL] Error parsing queue file: {e}")
+            
         return metrics

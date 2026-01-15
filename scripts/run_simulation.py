@@ -5,7 +5,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from config import MODEL_PATH
-from evaluation.evaluator import Evaluator
+from vlm_decision import Evaluator
 
 def main():
     # Configuration stub

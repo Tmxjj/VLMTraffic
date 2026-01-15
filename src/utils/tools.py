@@ -1,7 +1,7 @@
 '''
 Author: Maonan Wang
 Date: 2025-05-09 11:41:49
-LastEditTime: 2026-01-14 21:41:24
+LastEditTime: 2026-01-15 16:08:56
 LastEditors: Please set LastEditors
 Description: Useful Tools for VLMLight
 '''
@@ -43,7 +43,30 @@ def append_response_to_file(file_path: str, content: str) -> bool:
     except Exception as e:
         print(f"Error writing to file: {e}")
         return False
-
+    
+def write_response_to_file(file_path: str, content: str) -> bool:
+    """
+    将回复内容写入文件中（会覆盖文件原有内容，文件不存在则自动创建）
+    
+    参数:
+        file_path (str): 文件路径
+        content (str): 要写入的字符串内容
+    
+    返回:
+        bool: 是否成功写入 (True/False)
+    """
+    # 注意：覆盖写入模式下，通常不需要像追加模式那样添加分隔符（如 ----），
+    # 但根据需求，你可以选择是否保留下面这行，或者只添加一个换行符
+    # content += '\n' 
+    
+    try:
+        # 将模式 'a' 改为 'w'，表示 Write (覆盖写入)
+        with open(file_path, 'w', encoding='utf-8') as file:
+            file.write(content)
+        return True
+    except Exception as e:
+        print(f"Error writing to file: {e}")
+        return False
 
 def create_folder(folder_path):
     """
