@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-01-15 16:05:45
+LastEditTime: 2026-01-19 19:52:00
 Description: this script is used to 
 FilePath: /VLMTraffic/configs/model_config.py
 '''
@@ -30,7 +30,7 @@ MODEL_CONFIG = {
     },
     
     "gemini_sdk": {
-        "api_key": "AIzaSyC26z6SyjJKf6G_h4MkdY2GonAKPVdRqBQ",  # the api don't need to upload to github
+        "api_key": "AIzaSyChHo3XaKqB5WYElQw-N6DVbBj0Spz6C8M",  # the api don't need to upload to github
         "model_name": "gemini-2.0-flash" 
     },
     

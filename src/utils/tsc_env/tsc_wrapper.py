@@ -4,7 +4,7 @@
 @Description: 处理 TSCHub ENV 中的 state, reward (处理后的 state 作为 RL 的输入)
 + state: 5 个时刻的每一个 movement 的 queue length
 + reward: 路口总的 waiting time
-LastEditTime: 2026-01-15 10:43:31
+LastEditTime: 2026-01-20 11:37:49
 '''
 import numpy as np
 import gymnasium as gym
@@ -110,9 +110,21 @@ class TSCEnvWrapper(gym.Wrapper):
         state = self.get_state()
         return state, {'step_time':0}
     
+    def compute_rollout_q_value(self, rewards_list:List[float], gamma:float=0.95) -> float:
+        """计算一段时间内的 rollout q value
+        """        
+        rollout_q_value = 0.0
+        if rewards_list:
+            for i, r_t in enumerate(rewards_list):
+                # enumerate i 从 0 开始，对应时刻 t = i + 1
+                discount = gamma ** (i + 1)
+                rollout_q_value += discount * r_t
+        return rollout_q_value
 
     def step(self, action: int) -> Tuple[Any, SupportsFloat, bool, bool, Dict[str, Any]]:
         can_perform_action = False
+        rewards_list=[]
+        
         # NOTE: can_perform_action 当前仿真时间 (sim_step) 等于 预定的下一次动作时间 (sim_step+delta_time) 时，该标志位变为 True。
         while not can_perform_action:
             action = {self.tls_id: action} # 构建单路口 action 的动作
@@ -120,6 +132,7 @@ class TSCEnvWrapper(gym.Wrapper):
             occupancy, can_perform_action = self.state_wrapper(state=states) # 处理每一帧的数据
             # 记录每一时刻的数据
             self.occupancy.add_element(occupancy)
+            rewards_list.append(rewards)
         
         # 处理好的时序的 state
         render_json = states.copy()
@@ -130,7 +143,9 @@ class TSCEnvWrapper(gym.Wrapper):
                     del vehicle_info['next_tls']
 
         avg_occupancy = self.occupancy.calculate_average()
-        rewards = self.reward_wrapper(states=states) # 计算 vehicle waiting time
+        # reward 1、车辆端，累计车辆的waiting time 2、路口端 通过检测器计算排队和速度
+        rewards = self.compute_rollout_q_value(rewards_list=rewards_list) # 计算一段时间的 reward（基于排队和速度）
+        # rewards = self.reward_wrapper(states=states) # 计算 vehicle waiting time
         infos = self.info_wrapper(infos, occupancy=avg_occupancy) # info 里面包含每个 phase 的排队
         infos['3d_data'] = sensor_data # info 包含传感器数据 (摄像机数据, 车辆位置)
         self.states.append(avg_occupancy)

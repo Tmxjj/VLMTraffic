@@ -2,7 +2,7 @@
 @Author: WANG Maonan
 @Date: 2023-09-04 20:43:53
 @Description: 信号灯控制环境 (3D)
-LastEditTime: 2026-01-15 16:53:32
+LastEditTime: 2026-01-19 19:38:18
 '''
 import gymnasium as gym
 
@@ -136,5 +136,13 @@ class TSC3DEnvironment(gym.Env):
 
         return states, rewards, truncated, dones, infos, sensor_data
     
+    def save_state(self, state_file: str) -> None:
+        """保存 SUMO 仿真状态"""
+        self.tsc_env.tshub_env._save_state(state_file)
+
+    def load_state(self, state_file: str) -> None:
+        """加载 SUMO 仿真状态"""
+        self.tsc_env.tshub_env._load_state(state_file)
+
     def close(self) -> None:
         self.tsc_env.close()
