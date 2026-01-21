@@ -39,7 +39,7 @@ TSHUB_ENV_CONFIG = {
     # 信号灯动作类型：'next_or_not' (切换/保持), 'choose_next_phase' (指定相位) 等
     "tls_action_type": 'next_or_not', 
     # 动作决策的时间间隔（秒），即每隔多少秒执行一次控制动作
-    "delta_time": 10,
+    "delta_time": 30,
     
     # Files
     # 额外的 NET 文件路径（在 sumo.cfg 之外指定），默认为 None
@@ -55,7 +55,7 @@ TSHUB_ENV_CONFIG = {
     # 仿真开始时间（秒）
     "begin_time": 0,
     # 仿真总时长（秒），到达该时间后仿真强制结束
-    "num_seconds": 20, 
+    "num_seconds": 120, 
     # 最大出发延迟（秒）：如果车辆积压太久无法进入路网，超过此时间可能会被丢弃
     "max_depart_delay": 100000,
     # 车辆瞬移等待时间（秒）：如果车辆拥堵不动超过此时间，会被瞬移或移除（-1 表示禁用）

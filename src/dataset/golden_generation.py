@@ -38,12 +38,12 @@ from src.inference.vlm_agent import VLMAgent
 from configs.prompt_builder import PromptBuilder
 
 class GoldenGenerator:
-    def __init__(self, scenario_key="Hongkong_YMT", output_dir="./data/golden_dataset"):
+    def __init__(self, scenario_key="Hongkong_YMT", log_dir="./log/golden_dataset"):
         self.scenario_key = scenario_key
-        self.output_dir = output_dir
-        create_folder(self.output_dir)
+        self.log_dir = log_dir
+        create_folder(self.log_dir)
         
-        self.logger_path = os.path.join(self.output_dir, "generation.log")
+        self.logger_path = os.path.join(self.log_dir, "generation.log")
         set_logger(self.logger_path, terminal_log_level='INFO')
         
         logger.info(f"[GOLDEN] Logging initialized at {self.logger_path}")
@@ -86,6 +86,8 @@ class GoldenGenerator:
             'tshub_env_cfg': TSHUB_ENV_CONFIG,
             # 'use_gui': False # Force False for automated generation
         }
+
+        self.output_dir = path_convert(f"data/golden_dataset/{self.scenario_name}/")
 
         # --- 2. Initialize Environment ---
         try:
@@ -312,5 +314,5 @@ class GoldenGenerator:
         logger.info("[GOLDEN] Generation complete.")
 
 if __name__ == "__main__":
-    generator = GoldenGenerator(scenario_key="Hongkong_YMT", output_dir="./data/golden_dataset")
+    generator = GoldenGenerator(scenario_key="Hongkong_YMT", log_dir="./data/golden_dataset")
     generator.generate(max_steps=10)

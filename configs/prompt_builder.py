@@ -1,9 +1,9 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-01-14 19:36:19
+LastEditTime: 2026-01-20 21:49:07
 Description: Optimized Prompt Builder (Visual-Only Analysis)
-FilePath: /VLMTraffic/src/inference/prompt_builder.py
+FilePath: /VLMTraffic/configs/prompt_builder.py
 '''
 
 class PromptBuilder:

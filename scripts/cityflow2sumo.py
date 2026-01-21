@@ -125,25 +125,10 @@ def parse_args():
                         default='cologne3/cologne3.sumocfg')
 
     # cityflow2sumo
-    # parser.add_argument("--or_cityflownet", type=str,
-    #                     default='hangzhou_1x1_bc-tyc_18041610_1h/roadnet.json')
-    # parser.add_argument("--sumonet", type=str,
-    #                     default='hangzhou_1x1_bc-tyc_18041610_1h/hangzhou_1x1_bc-tyc_18041610_1h.net.xml')
-    # parser.add_argument("--or_cityflowtraffic", type=str,
-    #                     default='hangzhou_1x1_bc-tyc_18041610_1h/flow.json')
-    # parser.add_argument("--sumotraffic", type=str,
-    #                     default='hangzhou_1x1_bc-tyc_18041610_1h/hangzhou_1x1_bc-tyc_18041610_1h.rou.xml')
-
-
-
-    # parser.add_argument("--or_cityflownet", type=str,
-    #                     default='hangzhou_4x4_gudang_18041610_1h/roadnet_4X4.json')
-    # parser.add_argument("--sumonet", type=str,
-    #                     default='hangzhou_4x4_gudang_18041610_1h/hangzhou_4x4_gudang_18041610_1h.net.xml')
-    # parser.add_argument("--or_cityflowtraffic", type=str,
-    #                     default='hangzhou_4x4_gudang_18041610_1h/hangzhou_4x4_gudang_18041610_1h.json')
-    # parser.add_argument("--sumotraffic", type=str,
-    #                     default='hangzhou_4x4_gudang_18041610_1h/hangzhou_4x4_gudang_18041610_1h.rou.xml')
+    parser.add_argument("--or_cityflownet", type=str, required=False, help="Input CityFlow roadnet file path")
+    parser.add_argument("--sumonet", type=str, required=False, help="Output SUMO net file path")
+    parser.add_argument("--or_cityflowtraffic", type=str, required=False, help="Input CityFlow flow file path")
+    parser.add_argument("--sumotraffic", type=str, required=False, help="Output SUMO route file path")
 
     return parser.parse_args()
 
@@ -782,10 +767,10 @@ def cityflow2sumo_flow(args):
     :param args: parameters related to converting
     :return: None
     '''
-    # parent dir of current dir
-    f_cwd = os.path.abspath(os.path.dirname(os.getcwd()) + os.path.sep + ".")
-    sumofile = os.path.join(f_cwd, 'data/raw_data', args.or_sumotraffic)
-    cityflowfile = os.path.join(f_cwd, 'data/raw_data', args.cityflowtraffic)
+    sumofile = args.sumotraffic
+    cityflowfile = args.or_cityflowtraffic
+    
+    print(f"Converting CityFlow Flow: {cityflowfile} -> SUMO Route: {sumofile}")
 
     data = json.load(open(cityflowfile, 'r', encoding="utf-8"))
     # sorted vehicle according to depart time
@@ -943,10 +928,17 @@ def cityflow2sumo_net(args):
     :param args: parameters related to converting
     :return: None
     '''
-    # parent dir of current dir
-    f_cwd = os.path.abspath(os.path.dirname(os.getcwd()) + os.path.sep + ".")
-    sumofile = os.path.join(f_cwd, 'data/raw_data', args.or_sumonet)
-    cityflowfile = os.path.join(f_cwd, 'data/raw_data', args.cityflownet)
+    # Using provided absolute paths
+    sumofile = args.sumonet
+    cityflowfile = args.or_cityflownet
+    
+    print(f"Converting CityFlow: {cityflowfile} -> SUMO: {sumofile}")
+
+    if not os.path.exists(cityflowfile):
+        raise FileNotFoundError(f"CityFlow file not found: {cityflowfile}")
+    
+    # Ensure output directory exists
+    os.makedirs(os.path.dirname(sumofile), exist_ok=True)
 
     sumo_node = get_filename(sumofile, 'nod')
     sumo_edge = get_filename(sumofile, 'edg')
@@ -1191,12 +1183,16 @@ def cityflow2sumo_cfg(args):
     :param args: parameters related to converting
     :return: None
     '''
-    # parent dir of current dir
-    f_cwd = os.path.abspath(os.path.dirname(os.getcwd()) + os.path.sep + ".")
-    sumofile = os.path.join(f_cwd, 'data/raw_data', args.or_sumonet)
-    sumo_cfg = get_filename(sumofile, typ='sumocfg')
-    sumo_net = get_filename(sumofile, typ='net', need_path=False)
-    sumo_route = get_filename(sumofile, typ='rou', need_path=False)
+    sumofile = args.sumonet
+    sumotraffic = args.sumotraffic
+    
+    # Generate sumocfg path based on net file path
+    sumo_cfg = sumofile.replace('.net.xml', '.sumocfg')
+    
+    # For content inside sumocfg, we use relative paths (filenames only)
+    # assuming all files are in the same directory
+    sumo_net = os.path.basename(sumofile)
+    sumo_route = os.path.basename(sumotraffic)
 
     doc = xml.dom.minidom.Document()
     root = doc.createElement('configuration')

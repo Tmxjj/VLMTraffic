@@ -1,20 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-01-15T17:13:55.435940+08:00 by Eclipse SUMO libsumo 1.25.0
+<!-- generated on 2026-01-20T11:42:05.620208+08:00 by Eclipse SUMO libsumo 1.25.0
 <libsumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/libsumoConfiguration.xsd">
 
     <input>
-        <net-file value="/home/jyf/code/trafficVLM/code/VLMTraffic/data/raw/Hongkong_YMT/./env/YMT.net.xml"/>
-        <route-files value="/home/jyf/code/trafficVLM/code/VLMTraffic/data/raw/Hongkong_YMT/./env/YMT.rou.xml"/>
-        <additional-files value="/home/jyf/code/trafficVLM/code/VLMTraffic/data/raw/Hongkong_YMT/add/e2.add.xml,/home/jyf/code/trafficVLM/code/VLMTraffic/data/raw/Hongkong_YMT/add/tls_programs.add.xml"/>
+        <net-file value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/raw/Hongkong_YMT/./env/YMT.net.xml"/>
+        <route-files value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/raw/Hongkong_YMT/./env/YMT.rou.xml"/>
+        <additional-files value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/raw/Hongkong_YMT/add/e2.add.xml,/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/raw/Hongkong_YMT/add/tls_programs.add.xml"/>
     </input>
 
     <output>
-        <queue-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/data/eval/Hongkong_YMT/queue_output.xml"/>
-        <summary-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/data/eval/Hongkong_YMT/summary.txt"/>
-        <tripinfo-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/data/test/Hongkong_YMT/tripinfo.out.xml"/>
+        <queue-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/eval/Hongkong_YMT/queue_output_golden.xml"/>
+        <summary-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/eval/Hongkong_YMT/summary_golden.txt"/>
+        <tripinfo-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/test/Hongkong_YMT/tripinfo_golden.out.xml"/>
         <tripinfo-output.write-unfinished value="true"/>
-        <statistic-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/data/eval/Hongkong_YMT/statistic_output.xml"/>
+        <statistic-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/eval/Hongkong_YMT/statistic_output_golden.xml"/>
     </output>
 
     <processing>
@@ -42,7 +42,5 @@
 <additional xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/additional_file.xsd">
     <tlLogic id="J1" type="static" programID="0">
         <phase duration="10.00" state="GGGGrrrrrrrrrrr"/>
-        <phase duration="3.00"  state="yyyyrrrrrrrrrrr"/>
-        <phase duration="10.00" state="rrrrrrrrrGGGrrr"/>
     </tlLogic>
 </additional>
