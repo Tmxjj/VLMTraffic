@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-01-21 22:07:15
+LastEditTime: 2026-01-22 22:25:48
 Description: this script is used to generate BEV images from 3D TSC env
 FilePath: /VLMTraffic/src/bev_generation/online_bev_render.py
 '''
@@ -80,7 +80,10 @@ if __name__ == '__main__':
 
     while True:
         # 固定控制动作，仅为驱动仿真以获取渲染图
-        env_action = 0
+        if isinstance(JUNCTION_NAME, list):
+            env_action = {jid: 0 for jid in JUNCTION_NAME}
+        else:
+            env_action = 0
 
         # 本步交互
         obs, rewards, truncated, dones, infos, render_json = env.step(env_action)
@@ -102,16 +105,14 @@ if __name__ == '__main__':
         # 保存图片数据
         sensor_data_imgs = sensor_datas['image'] # 获得图片数据
         if sensor_data_imgs is not None:
-            for phase_index in range(PHASE_NUMBER):
-                image_path = os.path.join(_save_folder, f"./{phase_index}.jpg") # 保存的图像数据
-                camera_data = sensor_data_imgs[f"{JUNCTION_NAME}_{phase_index}"]['junction_front_all']
-                cv2.imwrite(image_path, convert_rgb_to_bgr(camera_data))
+            # Handle list of junctions or single junction
+            junctions = JUNCTION_NAME if isinstance(JUNCTION_NAME, list) else [JUNCTION_NAME]
             
-            # 空中 BEV 视角（aircraft_all）
-            aircraft_img = sensor_data_imgs['junction_cam_1'].get('aircraft_all')
-            if aircraft_img is not None:
-                bev_aircraft_path = os.path.join(_save_folder, "./bev_aircraft.jpg")
-                cv2.imwrite(bev_aircraft_path, convert_rgb_to_bgr(aircraft_img))
+            for jid in sensor_data_imgs:
+                bev_junction_path = os.path.join(_save_folder, f"{jid}.jpg")
+                junction_img = sensor_data_imgs[jid].get('aircraft_all')
+                if junction_img is not None:
+                    cv2.imwrite(bev_junction_path, convert_rgb_to_bgr(junction_img))
 
         # 结束条件：任意环境完成
         if dones or truncated:

@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-01-21 22:25:47
+LastEditTime: 2026-01-22 21:48:38
 Description: this script is used to store the configuration of different TSC scenarios
 FilePath: /VLMTraffic/configs/scenairo_config.py
 '''
@@ -27,17 +27,11 @@ SCENARIO_CONFIGS = {
 
         },
         "SENSOR_CFG": {
-            # "tls": {
-            #     "sensor_types": ["junction_front_all"], # 从路口红绿灯角度拍摄
-            #     "tls_camera_height": 15
-            # },
             "aircraft": {
-                "junction_cam_1": {
-                    "sensor_types": ["aircraft_all"],
-                    "height": 55.0
-                }
+                "sensor_types": ["aircraft_all"],
+                "height": 55.0
             }
-        }
+        } # 传感器支持三类：vehicle, tls, aircraft
     },
     "SouthKorea_Songdo": {
         "SCENARIO_NAME": "SouthKorea_Songdo",
@@ -63,11 +57,9 @@ SCENARIO_CONFIGS = {
                 "tls_camera_height": 15
             },
             "aircraft": {
-                "junction_cam_1": {
-                    "sensor_types": ["aircraft_all"],
-                    "height": 50.0
-                }
-            }
+                "sensor_types": ["aircraft_all"],
+                "height": 55.0
+            }       
         }
     },
     "France_Massy": {
@@ -94,11 +86,9 @@ SCENARIO_CONFIGS = {
                 "tls_camera_height": 15
             },
             "aircraft": {
-                "junction_cam_1": {
-                    "sensor_types": ["aircraft_all"],
-                    "height": 50.0
-                }
-            }
+                "sensor_types": ["aircraft_all"],
+                "height": 55.0
+            }       
         }
     },
     "JiNan": {
@@ -121,16 +111,10 @@ SCENARIO_CONFIGS = {
             "is_every_frame": False # 是否每一帧都渲染
         },
         "SENSOR_CFG": {
-            # "tls": {
-            #     "sensor_types": ["junction_front_all"],
-            #     "tls_camera_height": 15
-            # },
             "aircraft": {
-                "junction_cam_1": {
-                    "sensor_types": ["aircraft_all"],
-                    "height": 50.0
-                }
-            }
+                "sensor_types": ["aircraft_all"],
+                "height": 55.0
+            }       
         }
     },
     "NewYork": {
@@ -155,17 +139,20 @@ SCENARIO_CONFIGS = {
         },
         "SENSOR_CFG": {
             "aircraft": {
-                "junction_cam_1": {
-                    "sensor_types": ["aircraft_all"],
-                    "height": 55.0
-                }
+                "sensor_types": ["aircraft_all"],
+                "height": 55.0
             }
         }
     },
     "Hangzhou": {
         "SCENARIO_NAME": "Hangzhou",
         "NETFILE": "Hangzhou",
-        "JUNCTION_NAME": "intersection_2_2",
+        "JUNCTION_NAME": [
+            "intersection_1_1", "intersection_1_2", "intersection_1_3", "intersection_1_4", 
+            "intersection_2_1", "intersection_2_2", "intersection_2_3", "intersection_2_4", 
+            "intersection_3_1", "intersection_3_2", "intersection_3_3", "intersection_3_4", 
+            "intersection_4_1", "intersection_4_2", "intersection_4_3", "intersection_4_4"
+        ],
         "PHASE_NUMBER": 4,
         "CENTER_COORDINATES": (172, 201, 100), # 这个参数不影响
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:0, 3:1}, # 路口传感器索引到信号灯相位的映射，对于BEV视角下不需要处理
@@ -183,16 +170,10 @@ SCENARIO_CONFIGS = {
 
         },
         "SENSOR_CFG": {
-            # "tls": {
-            #     "sensor_types": ["junction_front_all"], # 从路口红绿灯角度拍摄
-            #     "tls_camera_height": 15
-            # },
             "aircraft": {
-                "junction_cam_1": {
-                    "sensor_types": ["aircraft_all"],
-                    "height": 55.0
-                }
-            }
+                "sensor_types": ["aircraft_all"],
+                "height": 55.0
+            }   
         }
     },
 }

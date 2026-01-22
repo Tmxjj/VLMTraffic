@@ -22,20 +22,10 @@ class OfflineBEVGenerator:
         # ==================================================================
         # [安全检查] 检测 Panda3D 是否被提前导入
         # ==================================================================
-        # 如果 'panda3d.core' 已经在 sys.modules 中，说明在实例化本类之前，
-        # 外部脚本已经导入了 Panda3D。此时再启动 Display 可能已经晚了。
         if 'panda3d.core' in sys.modules or 'direct.showbase.ShowBase' in sys.modules:
             warning_msg = (
                 "\n"
                 "CRITICAL WARNING: Panda3D modules detected in memory BEFORE Virtual Display initialization!\n"
-                "--------------------------------------------------------------------------------------\n"
-                "You have imported 'tshub' or 'panda3d' related modules before instantiating OfflineBEVGenerator.\n"
-                "This usually causes Panda3D to detect 'No Display' and fall back to 'tinydisplay' (Software Rendering),\n"
-                "which DOES NOT support the textures used in this project.\n"
-                "\n"
-                "SOLUTION: Please move 'from offline_bev_render import OfflineBEVGenerator' to the top of your script,\n"
-                "and ensure you do not import other TSHub modules before creating this generator.\n"
-                "--------------------------------------------------------------------------------------\n"
             )
             print(f"\033[91m{warning_msg}\033[0m") # 使用红色字体打印
             raise RuntimeError("Panda3D imported too early. See warning above.")
@@ -78,7 +68,7 @@ class OfflineBEVGenerator:
             self.renderer.dummyTask, "dummyTask"
         )
 
-    def render_step(self, full_data_json, save_path=None):
+    def render_step(self, full_data_json, save_folder=None):
         # 组装 State 字典
         current_state = {
             'vehicle': full_data_json.get('vehicle', {}),
@@ -88,17 +78,20 @@ class OfflineBEVGenerator:
 
         # 调用渲染器的 Step
         sensor_data = self.renderer.step(current_state, should_count_vehicles=False)
-
-        # 提取并保存图片
-        if save_path:
-            aircraft_img = sensor_data.get('junction_cam_1', {}).get('aircraft_all')
-            
-            if aircraft_img is not None:
-                aircraft_img = aircraft_img[:, :, ::-1] # RGB -> BGR
-                cv2.imwrite(save_path, aircraft_img)
-                print(f"Saved: {save_path}")
+        
+        # 提取并保存图片 (遍历所有相机，自动处理多路口)
+        if save_folder:
+            if sensor_data:
+                for jid, junction_img_dict in sensor_data.items():
+                    # jid 通常是 "junction_cam_{tls_id}"
+                    junction_img = junction_img_dict.get('aircraft_all')
+                    
+                    if junction_img is not None:
+                        save_path = os.path.join(save_folder, f"{jid}_offline.jpg")
+                        aircraft_img = junction_img[:, :, ::-1] # RGB -> BGR
+                        cv2.imwrite(save_path, aircraft_img)
             else:
-                print(f"Warning: No aircraft image generated for {save_path}.")
+                 print(f"Warning: No images generated for step.")
         
         return sensor_data
 
@@ -112,12 +105,23 @@ if __name__ == '__main__':
     from tshub.utils.get_abs_path import get_abs_path
 
     path_convert = get_abs_path(__file__)
-    scenario_key = "JiNan" 
+    scenario_key = "Hangzhou" 
     
     config = SCENARIO_CONFIGS.get(scenario_key)
     SCENARIO_NAME = config["SCENARIO_NAME"]
+    JUNCTION_NAME = config["JUNCTION_NAME"]
     RENDERER_CFG = config.get("RENDERER_CFG", {})
     SENSOR_CFG = config.get("SENSOR_CFG", {})
+
+    # 仿照 tsc_env.py 的逻辑格式化 sensor_cfg
+    # { 'aircraft': { 'aircraft_{tid}': { ... } } }
+    formatted_sensor_cfg = {}
+    if 'aircraft' in SENSOR_CFG:
+        aircraft_cfg = SENSOR_CFG['aircraft']
+        tls_ids = JUNCTION_NAME if isinstance(JUNCTION_NAME, list) else [JUNCTION_NAME]
+        
+        aircraft_sensors_map = {f'aircraft_{tid}': aircraft_cfg for tid in tls_ids}
+        formatted_sensor_cfg['aircraft'] = aircraft_sensors_map
 
     scenario_glb_dir = path_convert(f"../../data/raw/{SCENARIO_NAME}/3d_assets/")
     data_root_folder = path_convert(f"../../data/test/{SCENARIO_NAME}/") 
@@ -127,7 +131,7 @@ if __name__ == '__main__':
     renderer = OfflineBEVGenerator(
         scenario_key=scenario_key,
         scenario_glb_dir=scenario_glb_dir,
-        sensor_cfg=SENSOR_CFG,
+        sensor_cfg=formatted_sensor_cfg,
         renderer_cfg=RENDERER_CFG
     )
 
@@ -146,8 +150,11 @@ if __name__ == '__main__':
                 try:
                     with open(json_path, 'r') as f:
                         full_data = json.load(f)
-                    save_img_path = os.path.join(data_root_folder, str(time_step), 'bev_aircraft_offline.jpg')
-                    renderer.render_step(full_data, save_path=save_img_path)
+                    
+                    # 修改：传入 folder 路径，render_step 内部决定文件名
+                    save_step_folder = os.path.join(data_root_folder, str(time_step))
+                    renderer.render_step(full_data, save_folder=save_step_folder)
+                    
                 except Exception as e:
                     print(f"Error processing step {time_step}: {e}")
             else:

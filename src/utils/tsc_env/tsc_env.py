@@ -2,7 +2,7 @@
 @Author: WANG Maonan
 @Date: 2023-09-04 20:43:53
 @Description: 信号灯控制环境 (3D)
-LastEditTime: 2026-01-19 19:38:18
+LastEditTime: 2026-01-22 21:51:37
 '''
 import gymnasium as gym
 
@@ -41,26 +41,29 @@ class TSC3DEnvironment(gym.Env):
             _is_render = renderer_cfg.get('is_render', _is_render)
             _is_every_frame = renderer_cfg.get('is_every_frame', False)
 
-        # Sensor configuration defaults
-        tls_sensor_types = ['junction_front_all']
-        tls_camera_height = 15
-        aircraft_cfg = {
-            'junction_cam_1': {
-                'sensor_types': ['aircraft_all'],
-                'height': 50.0,
-            }
-        }
+        # Sensor configuration defaults 
+        # tls_sensor_types = ['junction_front_all']
+        # tls_camera_height = 15
+        # aircraft_cfg = {
+        #     'junction_cam_1': {
+        #         'sensor_types': ['aircraft_all'],
+        #         'height': 50.0,
+        #     }
+        # }
+
         if sensor_cfg:
             if 'tls' in sensor_cfg:
                 tls_sensor_types = sensor_cfg['tls'].get('sensor_types', tls_sensor_types)
                 tls_camera_height = sensor_cfg['tls'].get('tls_camera_height', tls_camera_height)
             if 'aircraft' in sensor_cfg and isinstance(sensor_cfg['aircraft'], dict):
                 aircraft_cfg = sensor_cfg['aircraft']
+                
 
-        tls_sensors_map = {tid: {
-            'sensor_types': tls_sensor_types,
-            'tls_camera_height': tls_camera_height,
-        } for tid in tls_ids}
+        # tls_sensors_map = {tid: {
+        #     'sensor_types': tls_sensor_types,
+        #     'tls_camera_height': tls_camera_height,
+        # } for tid in tls_ids}
+        aircraft_sensors_map = {f'aircraft_{tid}':aircraft_cfg for tid in tls_ids}
 
         # Load default TSHub config if provided, else empty dict (will use method defaults if not passed)
         if tshub_env_cfg is None:
@@ -120,8 +123,8 @@ class TSC3DEnvironment(gym.Env):
 
             # 传感器配置
             sensor_config={
-                'tls': tls_sensors_map,
-                'aircraft': aircraft_cfg,
+                # 'tls': tls_sensors_map,
+                'aircraft': aircraft_sensors_map,
             },
         )
 
