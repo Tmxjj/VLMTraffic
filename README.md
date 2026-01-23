@@ -1,7 +1,7 @@
 <!--
  * @Author: yufei Ji
  * @Date: 2026-01-12 16:48:03
- * @LastEditTime: 2026-01-14 22:33:33
+ * @LastEditTime: 2026-01-23 12:09:37
  * @Description: this script is used to 
  * @FilePath: /VLMTraffic/README.md
 -->
@@ -81,7 +81,7 @@ The system evaluates:
 
 1. **Map 3D Assets**:
 Download URL: https://drive.google.com/drive/folders/1oTIScFrKsmmwSaG6bGCBmkSHD3fWdq86?usp=sharing
-Installation Path: `data/raw/Hongkong_YMT/3d_assets`
+Installation Path: `data/raw`
 
 2. **Vehicle 3D Assets**:
 Download URL: https://github.com/Traffic-Alpha/TransSimHub/releases/download/v5/vehicles_models.zip

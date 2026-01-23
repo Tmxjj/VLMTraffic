@@ -1,7 +1,7 @@
 <!--
  * @Author: yufei Ji
  * @Date: 2026-01-12 16:54:26
- * @LastEditTime: 2026-01-14 22:33:13
+ * @LastEditTime: 2026-01-23 12:09:23
  * @Description: this script is used to 
  * @FilePath: /VLMTraffic/README_zh.md
 -->
@@ -81,7 +81,7 @@ pip install -e ".[all]"
 
 1. **地图3D文件**：
 下载地址：https://drive.google.com/drive/folders/1oTIScFrKsmmwSaG6bGCBmkSHD3fWdq86?usp=sharing
-安装路径：data/raw/Hongkong_YMT/3d_assets
+安装路径：data/raw
 
 2、**车辆3D文件**：
 下载地址：https://github.com/Traffic-Alpha/TransSimHub/releases/download/v5/vehicles_models.zip
