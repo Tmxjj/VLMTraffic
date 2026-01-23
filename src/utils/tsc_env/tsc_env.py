@@ -2,7 +2,7 @@
 @Author: WANG Maonan
 @Date: 2023-09-04 20:43:53
 @Description: 信号灯控制环境 (3D)
-LastEditTime: 2026-01-22 21:51:37
+LastEditTime: 2026-01-23 11:41:37
 '''
 import gymnasium as gym
 
@@ -42,14 +42,14 @@ class TSC3DEnvironment(gym.Env):
             _is_every_frame = renderer_cfg.get('is_every_frame', False)
 
         # Sensor configuration defaults 
-        # tls_sensor_types = ['junction_front_all']
-        # tls_camera_height = 15
-        # aircraft_cfg = {
-        #     'junction_cam_1': {
-        #         'sensor_types': ['aircraft_all'],
-        #         'height': 50.0,
-        #     }
-        # }
+        tls_sensor_types = ['junction_front_all']
+        tls_camera_height = 15
+        aircraft_cfg = {
+            'junction_cam_1': {
+                'sensor_types': ['aircraft_all'],
+                'height': 50.0,
+            }
+        }
 
         if sensor_cfg:
             if 'tls' in sensor_cfg:
