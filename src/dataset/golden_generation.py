@@ -281,7 +281,7 @@ class GoldenGenerator:
                 # This tests "What if everyone does action X?"
                 # While not testing all combinatorial pairs, it is efficient (O(Phases)) and valid under local independence.
                 if self.is_multi_agent:
-                    current_rollout_action = {jid: 1 for jid in self.junctions}
+                    current_rollout_action = {jid: action_candidate for jid in self.junctions}
                 else:
                     current_rollout_action = action_candidate
                 
