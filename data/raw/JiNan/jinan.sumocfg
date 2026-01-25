@@ -2,7 +2,7 @@
 <configuration>
 	<input>
 		<net-file value="./env/jinan.net.xml"/>
-		<route-files value="./env/jinan.rou.xml"/>
+		<route-files value="./env/anon_3_4_jinan_real.rou.xml"/>
 	</input>
 	<time>
 		<begin value="0"/>

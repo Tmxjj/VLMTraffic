@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-01-23 11:59:14
+LastEditTime: 2026-01-24 19:11:43
 Description: this script is used to generate BEV images from 3D TSC env
 FilePath: /VLMTraffic/src/bev_generation/online_bev_render.py
 '''
@@ -37,7 +37,7 @@ def convert_rgb_to_bgr(image):
 path_convert = get_abs_path(__file__)
 
 # 全局变量
-scenario_key = "NewYork" # Hongkong_YMT, SouthKorea_Songdo, France_Massy，Hangzhou，NewYork，JiNan
+scenario_key = "Hongkong_YMT" # Hongkong_YMT, SouthKorea_Songdo, France_Massy，Hangzhou，NewYork，JiNan
 set_logger(path_convert(f'../../log/{scenario_key}/'))
 
 config = SCENARIO_CONFIGS.get(scenario_key) # 获取特定场景的配置
@@ -109,10 +109,16 @@ if __name__ == '__main__':
             junctions = JUNCTION_NAME if isinstance(JUNCTION_NAME, list) else [JUNCTION_NAME]
             
             for jid in sensor_data_imgs:
+                # aircraft_all
                 bev_junction_path = os.path.join(_save_folder, f"{jid}.jpg")
                 junction_img = sensor_data_imgs[jid].get('aircraft_all')
                 if junction_img is not None:
                     cv2.imwrite(bev_junction_path, convert_rgb_to_bgr(junction_img))
+                # junction_front_all
+                front_junction_path = os.path.join(_save_folder, f"{jid}_front.jpg")
+                front_img = sensor_data_imgs[jid].get('junction_front_all')
+                if front_img is not None:
+                    cv2.imwrite(front_junction_path, convert_rgb_to_bgr(front_img))
 
         # 结束条件：任意环境完成
         if dones or truncated:

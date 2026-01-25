@@ -2,7 +2,7 @@
 @Author: WANG Maonan
 @Date: 2023-09-04 20:43:53
 @Description: 信号灯控制环境 (3D)
-LastEditTime: 2026-01-23 11:41:37
+LastEditTime: 2026-01-25 19:49:00
 '''
 import gymnasium as gym
 
@@ -50,21 +50,21 @@ class TSC3DEnvironment(gym.Env):
                 'height': 50.0,
             }
         }
-
+        sensor_config={}
         if sensor_cfg:
             if 'tls' in sensor_cfg:
                 tls_sensor_types = sensor_cfg['tls'].get('sensor_types', tls_sensor_types)
                 tls_camera_height = sensor_cfg['tls'].get('tls_camera_height', tls_camera_height)
+                tls_sensors_map = {tid: {
+                    'sensor_types': tls_sensor_types,
+                    'tls_camera_height': tls_camera_height,
+                } for tid in tls_ids}
+                sensor_config['tls'] = tls_sensors_map
             if 'aircraft' in sensor_cfg and isinstance(sensor_cfg['aircraft'], dict):
                 aircraft_cfg = sensor_cfg['aircraft']
+                aircraft_sensors_map = {f'aircraft_{tid}':aircraft_cfg for tid in tls_ids}
+                sensor_config['aircraft'] = aircraft_sensors_map
                 
-
-        # tls_sensors_map = {tid: {
-        #     'sensor_types': tls_sensor_types,
-        #     'tls_camera_height': tls_camera_height,
-        # } for tid in tls_ids}
-        aircraft_sensors_map = {f'aircraft_{tid}':aircraft_cfg for tid in tls_ids}
-
         # Load default TSHub config if provided, else empty dict (will use method defaults if not passed)
         if tshub_env_cfg is None:
             from configs.env_config import TSHUB_ENV_CONFIG
@@ -122,10 +122,7 @@ class TSC3DEnvironment(gym.Env):
             is_every_frame = _is_every_frame, # 是否每一帧都渲染
 
             # 传感器配置
-            sensor_config={
-                # 'tls': tls_sensors_map,
-                'aircraft': aircraft_sensors_map,
-            },
+            sensor_config=sensor_config,
         )
 
     def reset(self):

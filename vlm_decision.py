@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:49:26
-LastEditTime: 2026-01-15 17:10:42
+LastEditTime: 2026-01-25 19:54:31
 Description: this script is used to 
 FilePath: /VLMTraffic/vlm_decision.py
 '''
@@ -36,7 +36,7 @@ class Evaluator:
     """
     Runs the end-to-end evaluation loop.
     """
-    def __init__(self, scenario_key="Hongkong_YMT", log_dir="./log/eval_results"):
+    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results"):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
         os.makedirs(self.log_dir, exist_ok=True)
@@ -140,139 +140,137 @@ class Evaluator:
         
         logger.info(f"[CFG] ===========================================")
 
-    def run_eval(self, max_decsion_step=10):
+    def run_eval(self, max_decision_step=10):
         
         logger.info(f"[EVAL] Start Evaluation Loop. Output folder: {self.output_folder}")
         
         # Simulation with environment
-        decsion_step = 0 
-        BEV_image_path = None # BEV图像路径
-        current_phase_id = None # 初始相位为None，标记未初始化
-
-            
         self.metrics_calc.reset()
         obs, _info = self.env.reset()
         
         dones, truncated = False, False
-        decsion_step = 0
+        decision_step = 0
         sumo_sim_step = 0
 
         current_time = time.time()
+        
+        # Identify Junctions (Single or List)
+        junctions = self.junction_name if isinstance(self.junction_name, list) else [self.junction_name]
+        is_multi_agent = isinstance(self.junction_name, list)
+
+        # 1. Warm-up Step: Execute one step with default actions to get initial state/images
+        logger.info("[EVAL] Executing Warm-up Step to get initial state...")
+        
+        # Construct initial action
+        if is_multi_agent:
+            init_action = {jid: 0 for jid in junctions}
+        else:
+            init_action = 0
+            
+        try:
+            # First step to get initial observation (images)
+            obs, rewards, truncated, dones, infos, render_json = self.env.step(init_action)
+            sumo_sim_step = infos.get('step_time', -1)
+        except Exception as e:
+            logger.critical(f"[EVAL] Warm-up step failed: {e}")
+            return # Exit evaluation
 
         while True:
-            
-            action = 0 # 初始动作
+            # Check exit conditions
+            if dones or truncated:
+                logger.info(f"[EVAL] Episode finished. Dones: {dones}, Truncated: {truncated}")
+                break
+            if decision_step >= max_decision_step:
+                logger.info(f"[EVAL] Reached maximum decision steps: {max_decision_step}. Ending evaluation.")
+                break
             
             # Create Step Directory
             try:
-                _step_dir = os.path.join(self.output_folder, f"step_{decsion_step}")
+                _step_dir = os.path.join(self.output_folder, f"step_{decision_step}")
                 os.makedirs(_step_dir, exist_ok=True)
-                _render_json_file = os.path.join(_step_dir, 'render.json') # 渲染数据
-                _response_txt_file = os.path.join(_step_dir, 'response.txt') # LLM 回复
+                _render_json_file = os.path.join(_step_dir, 'render.json')
             except OSError as e:
                 logger.error(f"[EVAL] Failed to create step directory {_step_dir}: {e}")
                 break
 
-            if BEV_image_path is None or current_phase_id is None:
-                logger.debug(f"[EVAL] Step {decsion_step}: Initializing / Warm-up step.")
+            # Save current vehicle/traffic state
+            save_to_json(render_json, _render_json_file)
+
+            # --- Decision Making Loop (Multi-Junction) ---
+            action_dict = {}
+            
+            # Get sensor data from previous step (or warmup)
+            sensor_datas = infos.get('3d_data', {})
+            sensor_imgs = sensor_datas.get('image', {})
+            
+            for jid in junctions:
+                jid_action = 0 # Default action
                 
-                # 初始化步骤，获取初始BEV图像和相位
+                # 1. Get Phase Info
+                current_phase_id = 0
                 try:
-                    obs, rewards, truncated, dones, infos, render_json = self.env.step(action)
+                    if 'tls' in render_json and jid in render_json['tls']:
+                         current_phase_id = render_json['tls'][jid]['this_phase_index']
+                    else:
+                         logger.warning(f"[EVAL] Phase info missing for {jid}, using 0")
                 except Exception as e:
-                     logger.error(f"[EVAL] Environment step failed at init: {e}")
-                     break
-                     
-                sumo_sim_step = infos.get('step_time', -1)
-                
-                # 保存车辆 JSON 数据
-                save_to_json(render_json, _render_json_file)
+                     logger.warning(f"[EVAL] Error extracting phase for {jid}: {e}")
 
-                # 保存图片数据 
-                sensor_datas = infos.get('3d_data', {})
-                sensor_data_imgs = sensor_datas.get('image') # 获得图片数据
-                
-                if sensor_data_imgs:
-                    # 空中 BEV 视角（aircraft_all）
-                    aircraft_sensor = sensor_data_imgs.get('junction_cam_1', {})
-                    if aircraft_sensor:
-                        aircraft_img = aircraft_sensor.get('aircraft_all')
-                        if aircraft_img is not None:
-                            BEV_image_path = os.path.join(_step_dir, "./bev_aircraft.jpg")
-                            try:
-                                cv2.imwrite(BEV_image_path, convert_rgb_to_bgr(aircraft_img))
-                            except Exception as e:
-                                logger.warning(f"[EVAL] Failed to save BEV image at init: {e}")
-                                BEV_image_path = None # Reset if failed
+                # 2. Get BEV Image
+                bev_image_path = None
+                aircraft_jid = f'aircraft_{jid}'
+                if sensor_imgs and aircraft_jid in sensor_imgs:
+                    # Logic adapted from online_bev_render.py
+                    # Assuming dictionary structure: sensor_imgs[jid]['aircraft_all']
+                    try:
+                        junction_img_data = sensor_imgs[aircraft_jid].get('aircraft_all')
+                        if junction_img_data is not None:
+                            bev_image_path = os.path.join(_step_dir, f"{aircraft_jid}_bev.jpg")
+                            cv2.imwrite(bev_image_path, convert_rgb_to_bgr(junction_img_data))
+                    except Exception as e:
+                         logger.warning(f"[EVAL] Failed to save image for {aircraft_jid}: {e}")
 
-                # 获取当前相位
-                try:
-                     current_phase_id = render_json['tls'][self.junction_name]['this_phase_index']
-                except KeyError as e:
-                     logger.warning(f"[EVAL] Failed to extract phase info at init: {e}. Defaulting to 0.")
-                     current_phase_id = 0
+                # 3. VLM Agent Decision
+                if bev_image_path:
+                    try:
+                        prompt = PromptBuilder.build_decision_prompt(
+                            current_phase_id=current_phase_id, 
+                        )
+                        # VLM Agent Inference
+                        vlm_response, latency, decided_action = self.agent.get_decision(bev_image_path, prompt)
+                        
+                        # Save Response per Junction
+                        _resp_file = os.path.join(_step_dir, f"response_{jid}.txt")
+                        write_response_to_file(file_path=_resp_file, content=vlm_response)
+                        
+                        logger.info(f"[EVAL] Step: {decision_step} | JID: {jid} | Phase: {current_phase_id} | Action: {decided_action} | Latency: {latency:.2f}s")
+                        jid_action = decided_action
+                        
+                    except Exception as e:
+                        logger.error(f"[EVAL] VLM Inference failed for {jid} at step {decision_step}: {e}")
+                        jid_action = 0 # Fallback
+                else:
+                    logger.warning(f"[EVAL] No BEV image available for {jid}, skipping VLM")
                 
-                decsion_step += 1
+                # Collect Action
+                action_dict[jid] = jid_action
 
+            # --- Environment Step ---
+            # Prepare final action payload
+            if is_multi_agent:
+                final_action = action_dict
             else:
-                # VLM决策
-                try:
-                    prompt = PromptBuilder.build_decision_prompt(
-                        current_phase_id=current_phase_id, 
-                    )
-                    vlm_response, latency, action = self.agent.get_decision(BEV_image_path, prompt)
-                    
-                    write_response_to_file(file_path=_response_txt_file, content=vlm_response)
-                    logger.info(f"[EVAL] VLM Decision | Step: {decsion_step} | Sumo: {sumo_sim_step} | Phase: {current_phase_id} | Action: {action} | Latency: {latency:.2f}s")
-                    
-                except Exception as e:
-                    logger.error(f"[EVAL] VLM Inference failed at step {decsion_step}: {e}. Skipping step with default action 0.")
-                    vlm_response = "Error"
-                    action = 0 # Fallback
-       
+                final_action = action_dict.get(self.junction_name, 0)
 
-                # Simulation
-                try:
-                    obs, rewards, truncated, dones, infos, render_json = self.env.step(action)
-                except Exception as e:
-                     logger.error(f"[EVAL] Environment step failed at {decsion_step}: {e}")
-                     break
-                
-                decsion_step += 1
+            try:
+                obs, rewards, truncated, dones, infos, render_json = self.env.step(final_action)
                 sumo_sim_step = infos.get('step_time', -1)
+            except Exception as e:
+                 logger.error(f"[EVAL] Environment step failed at {decision_step}: {e}")
+                 break
+            
+            decision_step += 1
 
-                # 更新 BEV_image_path 和 current_phase_id
-                save_to_json(render_json, _render_json_file)
-
-                # 保存图片数据 
-                sensor_datas = infos.get('3d_data', {})
-                sensor_data_imgs = sensor_datas.get('image') 
-                if sensor_data_imgs:
-                    aircraft_sensor = sensor_data_imgs.get('junction_cam_1', {})
-                    if aircraft_sensor:
-                        aircraft_img = aircraft_sensor.get('aircraft_all')
-                        if aircraft_img is not None:
-                            BEV_image_path = os.path.join(_step_dir, "./bev_aircraft.jpg")
-                            try:
-                                cv2.imwrite(BEV_image_path, convert_rgb_to_bgr(aircraft_img))
-                            except Exception as e:
-                                 logger.warning(f"[EVAL] Failed to save BEV image at step {decsion_step}: {e}")
-                
-                # 获取当前相位
-                try:
-                     current_phase_id = render_json['tls'][self.junction_name]['this_phase_index']
-                except KeyError:
-                     logger.warning(f"[EVAL] Failed to extract phase info at step {decsion_step}")
-                     current_phase_id = 0 # Fallback
-
-               
-            # 结束条件：任意环境完成
-            if dones or truncated:
-                logger.info(f"[EVAL] Episode finished. Dones: {dones}, Truncated: {truncated}")
-                break
-            if decsion_step >= max_decsion_step:
-                logger.info(f"[EVAL] Reached maximum decision steps: {max_decsion_step}. Ending evaluation.")
-                break
         total_time = time.time() - current_time
         logger.info(f"[EVAL] Evaluation completed in {total_time:.2f} seconds.")
         
@@ -285,6 +283,6 @@ class Evaluator:
 
    
 if __name__ == "__main__":
-    evaluator = Evaluator(scenario_key="Hongkong_YMT", log_dir="./log/eval_results")
-    evaluator.run_eval(max_decsion_step=10)
+    evaluator = Evaluator(scenario_key="JiNan", log_dir="./log/eval_results")
+    evaluator.run_eval(max_decision_step=10)
 

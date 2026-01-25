@@ -2,7 +2,7 @@
 <configuration>
 	<input>
 		<net-file value="./env/Hangzhou.net.xml"/>
-		<route-files value="./env/Hangzhou.rou.xml"/>
+		<route-files value="./env/anon_4_4_hangzhou_real.rou.xml"/>
 	</input>
 	<time>
 		<begin value="0"/>

@@ -88,6 +88,10 @@ class GoldenGenerator:
         }
 
         self.output_dir = path_convert(f"data/golden_dataset/{self.scenario_name}/")
+        
+        # Multi-intersection support
+        self.junctions = self.junction_name if isinstance(self.junction_name, list) else [self.junction_name]
+        self.is_multi_agent = isinstance(self.junction_name, list)
 
         # --- 2. Initialize Environment ---
         try:
@@ -133,7 +137,7 @@ class GoldenGenerator:
         self.env.occupancy.clear_elements()
         self.env.occupancy.elements = list(saved_state["occupancy_elements"])
 
-    def run_rollout(self, start_state_file, action):
+    def run_rollout(self, start_state_file, action, target_jid=None):
         """
         Loads the state, executes an action by stepping the environment, returns the metric.
         """
@@ -155,21 +159,14 @@ class GoldenGenerator:
             # TODO：设计这个reward
             # try:
             obs, rewards, truncated, dones, infos, render_json = self.env.step(action)
-                # metric: we want to minimize queue/waiting time.
-                # Wrapper returns reward = - total_waiting_time
-                # So metric = -reward (positive waiting time)
-            metric = -rewards
-                
-            # except Exception as e:
-            #     logger.error(f"Rollout failed: {e}")
-            #     metric = 99999
+               
         finally:
             # Always restore rendering state
             self.env.unwrapped.tsc_env.is_render = original_render_state
 
-        return metric
+        return rewards
 
-    def generate(self, max_steps=20):
+    def generate(self, max_decision_step=20):
         """
         Main loop to generate golden data.
         """
@@ -184,128 +181,181 @@ class GoldenGenerator:
         decision_step = 0
         
         # State variables
-        BEV_image_path = None 
-        current_phase_id = None 
+        bev_images = {} # {jid: image_path}
+        current_phases = {} # {jid: phase_index}
+        
+        # Initial Warm-up Step
+        logger.debug(f"[GOLDEN] Executing Warm-up Step...")
+        if self.is_multi_agent:
+            init_action = {jid: 0 for jid in self.junctions}
+        else:
+            init_action = 0
+            
+        try:
+            obs, rewards, truncated, dones, infos, render_json = self.env.step(init_action)
+        except Exception as e:
+            logger.error(f"[GOLDEN] Warm-up failed: {e}")
+            return
 
         while True:
-            action = 0 # Default action for init
-            
             # Check for termination
             if dones or truncated:
                 logger.info(f"[GOLDEN] Simulation finished. Dones: {dones}, Truncated: {truncated}")
                 break
-            if decision_step >= max_steps:
-                logger.info(f"[GOLDEN] Reached maximum decision steps: {max_steps}.")
+            if decision_step >= max_decision_step:
+                logger.info(f"[GOLDEN] Reached maximum decision steps: {max_decision_step}.")
                 break
-
-            # Logic Branch: Init vs Decision
-            if BEV_image_path is None or current_phase_id is None:
-                logger.debug(f"[GOLDEN] Step {decision_step}: Initializing / Warm-up step.")
-                
+            
+            # Create Step Directory
+            _step_dir = os.path.join(self.output_dir, f"step_{decision_step}")
+            create_folder(_step_dir)
+            
+            # 1. Process Sensor Data (Images & Phases) from Previous Step
+            sensor_datas = infos.get('3d_data', {})
+            sensor_imgs = sensor_datas.get('image', {})
+            
+            for jid in self.junctions:
+                # Extract Phase
                 try:
-                    obs, rewards, truncated, dones, infos, render_json = self.env.step(action)
-                except Exception as e:
-                    logger.error(f"[GOLDEN] Environment step failed at init: {e}")
-                    break
+                    current_phases[jid] = render_json['tls'][jid]['this_phase_index']
+                except KeyError:
+                    current_phases[jid] = 0
                 
-            else:
-                # --- Decision Step ---
+                # Extract Image
                 
-                # 1. VLM Reasoning (Student)
-                vlm_action_idx = -1
-                vlm_thought = ""
-                prompt = PromptBuilder.build_decision_prompt(current_phase_id=current_phase_id)
+                aircraft_key = f'aircraft_{jid}'
+                # Fallback for old single-agent configs if needed, but assuming multi-agent format
                 
-                try:
-                    vlm_thought, _, vlm_action_idx = self.agent.get_decision(BEV_image_path, prompt)
-                except Exception as e:
-                    logger.warning(f"[GOLDEN] VLM failed: {e}")
+                img_data = None
+                if sensor_imgs:
+                    if aircraft_key in sensor_imgs:
+                        img_data = sensor_imgs[aircraft_key].get('aircraft_all')
+                
+                if img_data is not None:
+                    img_path = os.path.join(_step_dir, f"{jid}_bev.jpg")
+                    cv2.imwrite(img_path, convert_rgb_to_bgr(img_data))
+                    bev_images[jid] = img_path
+                else:
+                    bev_images[jid] = None
 
-                # 2. Rollout (Teacher)
-                self.env.unwrapped.save_state(state_file)
-                wrapper_state_backup = self._save_wrapper_state()
+            # 2. VLM Inference Loop (Collect all VLM decisions first)
+            vlm_results = {} # {jid: {action, thought, ...}}
+            
+            for jid in self.junctions:
+                img_path = bev_images.get(jid)
+                phase_id = current_phases.get(jid, 0)
                 
-                possible_actions = range(self.scenario_config["PHASE_NUMBER"])
+                if img_path:
+                    prompt = PromptBuilder.build_decision_prompt(current_phase_id=phase_id)
+                    try:
+                        vlm_thought, _, vlm_action_idx = self.agent.get_decision(img_path, prompt)
+                        vlm_results[jid] = {
+                            "action": int(vlm_action_idx),
+                            "thought": vlm_thought,
+                            "prompt": prompt,
+                            "img_path": img_path,
+                            "phase": phase_id
+                        }
+                    except Exception as e:
+                        logger.warning(f"[GOLDEN] VLM failed for {jid}: {e}")
+                        vlm_results[jid] = {"action": 0, "thought": "Error", "img_path": img_path, "phase": phase_id}
+                else:
+                    vlm_results[jid] = {"action": 0, "thought": "No Image", "img_path": None, "phase": phase_id}
+
+            # 3. Golden Rollouts (Parallel Evaluation across Junctions)
+            # Instead of N x Phases rollouts, we perform Phases rollouts.
+            # In each rollout, ALL agents take action 'p'. 
+            # We assume local independence for the immediate reward calculation.
+            
+            # Save Base State ONCE
+            self.env.unwrapped.save_state(state_file)
+            wrapper_state_backup = self._save_wrapper_state()
+            
+            possible_actions = range(self.scenario_config["PHASE_NUMBER"])
+            
+            # Data structure to hold metrics: {jid: {action_str: metric}}
+            all_junction_metrics = {jid: {} for jid in self.junctions}
+            
+            for action_candidate in possible_actions:
+                # Construct Joint Action: Broadcast candidate to all agents
+                # This tests "What if everyone does action X?"
+                # While not testing all combinatorial pairs, it is efficient (O(Phases)) and valid under local independence.
+                if self.is_multi_agent:
+                    current_rollout_action = {jid: 1 for jid in self.junctions}
+                else:
+                    current_rollout_action = action_candidate
                 
-                best_action = -1
-                best_metric = float('inf')
-                action_metrics = {}
-                
-                for action_candidate in possible_actions:
-                    # Restore for each candidate
-                    self.env.unwrapped.load_state(state_file)
-                    self._restore_wrapper_state(wrapper_state_backup)
-                    
-                    metric = self.run_rollout(state_file, action_candidate)
-                    action_metrics[str(action_candidate)] = float(metric)
-                    
-                    if metric < best_metric:
-                        best_metric = metric
-                        best_action = action_candidate
-                
-                # 3. Restore to State BEFORE Rollout to continue simulation
+                # Restore & Rollout
                 self.env.unwrapped.load_state(state_file)
                 self._restore_wrapper_state(wrapper_state_backup)
-
-                # 4. Labeling & Saving
-                label = "accepted" if int(vlm_action_idx) == int(best_action) else "rejected"
+                
+                rewards = self.run_rollout(state_file, current_rollout_action)
+                
+                # Process rewards
+                if rewards is not None:
+                    if isinstance(rewards, dict):
+                        for jid, r in rewards.items():
+                            if jid in all_junction_metrics:
+                                # Metric = -Reward (Minimize Cost/Queue)
+                                all_junction_metrics[jid][str(action_candidate)] = float(-r)
+                    else:
+                        # Single agent scalar case
+                        jid = self.junctions[0]
+                        all_junction_metrics[jid][str(action_candidate)] = float(-rewards)
+            
+            # 4. Process Results & Save Data
+            for jid in self.junctions:
+                # If invalid image, skip
+                if bev_images.get(jid) is None:
+                    continue
+                
+                metrics = all_junction_metrics.get(jid, {})
+                if not metrics:
+                    logger.warning(f"No metrics for {jid}")
+                    continue
+                    
+                # Find Best Action
+                best_action = min(metrics, key=metrics.get) # Minimize metric (waiting time)
+                best_metric = metrics[best_action]
+                best_action = int(best_action)
+                
+                # Compare with VLM
+                vlm_info = vlm_results[jid]
+                label = "accepted" if int(vlm_info['action']) == best_action else "rejected"
                 
                 sample = {
-                    "image_path": os.path.abspath(BEV_image_path),
-                    "current_phase": int(current_phase_id),
-                    "prompt": prompt,
-                    "vlm_output_raw": vlm_thought,
-                    "vlm_action": int(vlm_action_idx),
-                    "optimal_action": int(best_action),
+                    "image_path": os.path.abspath(vlm_info['img_path']) if vlm_info['img_path'] else "",
+                    "current_phase": int(vlm_info['phase']),
+                    "prompt": vlm_info.get('prompt', ""),
+                    "vlm_output_raw": vlm_info['thought'],
+                    "vlm_action": int(vlm_info['action']),
+                    "optimal_action": best_action,
                     "label": label,
                     "metric_val": float(best_metric),
-                    "all_metrics": action_metrics,
+                    "all_metrics": metrics,
                     "scenario": self.scenario_key,
+                    "junction_id": jid,
                     "step": decision_step
                 }
                 
                 sample_file = os.path.join(self.output_dir, "dataset.jsonl")
                 append_response_to_file(sample_file, json.dumps(sample))
-                logger.info(f"Step {decision_step}: VLM({vlm_action_idx}) vs Golden({best_action}) -> {label}")
-                
-                # 5. Advance Real Simulation (Expert Policy)
-                action = vlm_action_idx
-                try:
-                    # 重新开启渲染，确保主循环画面正常
-                    self.env.unwrapped.tsc_env.is_render = True
-                    obs, rewards, truncated, dones, infos, render_json = self.env.step(action)
-                except Exception as e:
-                    logger.error(f"[GOLDEN] Environment step failed at {decision_step}: {e}")
-                    break
+                logger.info(f"Step {decision_step} | JID {jid}: VLM({vlm_info['action']}) vs Golden({best_action}) -> {label}")
 
-            # Post-Step Processing (Extract Info for NEXT Step)
+            # 5. Advance Real Simulation (Following VLM/Student Policy)
+            self.env.unwrapped.load_state(state_file)
+            self._restore_wrapper_state(wrapper_state_backup)
+
+            final_action = {k: v['action'] for k, v in vlm_results.items()} if self.is_multi_agent else vlm_results[self.junctions[0]]['action']
             
-            # Update counters
-            decision_step += 1
-            
-            # 1. Save Image
-            sensor_datas = infos.get('3d_data', {})
-            sensor_data_imgs = sensor_datas.get('image')
-            
-            if sensor_data_imgs:
-                aircraft_sensor = sensor_data_imgs.get('junction_cam_1', {})
-                if aircraft_sensor:
-                    aircraft_img = aircraft_sensor.get('aircraft_all')
-                    if aircraft_img is not None:
-                        img_filename = f"step{decision_step}.jpg"
-                        BEV_image_path = os.path.join(self.output_dir, img_filename)
-                        try:
-                            cv2.imwrite(BEV_image_path, convert_rgb_to_bgr(aircraft_img))
-                        except Exception as e:
-                            logger.warning(f"Failed to save image: {e}")
-                            BEV_image_path = None
-            
-            # 2. Extract Phase ID
             try:
-                current_phase_id = render_json['tls'][self.junction_name]['this_phase_index']
-            except KeyError:
-                logger.warning(f"[GOLDEN] Failed to extract phase info at step {decision_step}. Defaulting to 0.")
-                current_phase_id = 0
+                self.env.unwrapped.tsc_env.is_render = True
+                obs, rewards, truncated, dones, infos, render_json = self.env.step(final_action)
+            except Exception as e:
+                logger.error(f"[GOLDEN] Environment step failed at {decision_step}: {e}")
+                break
+
+            decision_step += 1
         
         # Cleanup
         if os.path.exists(state_file):
@@ -314,5 +364,5 @@ class GoldenGenerator:
         logger.info("[GOLDEN] Generation complete.")
 
 if __name__ == "__main__":
-    generator = GoldenGenerator(scenario_key="Hongkong_YMT", log_dir="./data/golden_dataset")
-    generator.generate(max_steps=10)
+    generator = GoldenGenerator(scenario_key="JiNan", log_dir="./data/golden_dataset")
+    generator.generate(max_decision_step=10)

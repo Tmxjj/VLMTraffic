@@ -2,7 +2,7 @@
 <configuration>
 	<input>
 		<net-file value="./env/NewYork.net.xml"/>
-		<route-files value="./env/NewYork.rou.xml"/>
+		<route-files value="./env/anon_28_7_newyork_real_double.rou.xml"/>
 	</input>
 	<time>
 		<begin value="0"/>

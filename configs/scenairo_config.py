@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-01-23 11:57:02
+LastEditTime: 2026-01-25 21:37:52
 Description: this script is used to store the configuration of different TSC scenarios
 FilePath: /VLMTraffic/configs/scenairo_config.py
 '''
@@ -10,7 +10,7 @@ SCENARIO_CONFIGS = {
         "SCENARIO_NAME": "Hongkong_YMT",
         "NETFILE": "ymt_eval",
         "JUNCTION_NAME": "J1",
-        "PHASE_NUMBER": 4,
+        "PHASE_NUMBER": 3,
         "CENTER_COORDINATES": (172, 201, 100), # 这个参数不影响
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:0, 3:1}, # 路口传感器索引到信号灯相位的映射，对于BEV视角下不需要处理
         "RENDERER_CFG": {
@@ -27,6 +27,10 @@ SCENARIO_CONFIGS = {
 
         },
         "SENSOR_CFG": {
+            "tls": {
+                "sensor_types": ["junction_front_all"],
+                "tls_camera_height": 15
+            },
             "aircraft": {
                 "sensor_types": ["aircraft_all"],
                 "height": 55.0

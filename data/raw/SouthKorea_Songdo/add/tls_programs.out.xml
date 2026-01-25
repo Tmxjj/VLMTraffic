@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-01-07T11:15:30.247730+08:00 by Eclipse SUMO libsumo 1.25.0
+<!-- generated on 2026-01-23T11:48:49.794688+08:00 by Eclipse SUMO libsumo 1.25.0
 <libsumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/libsumoConfiguration.xsd">
 
     <input>
-        <net-file value="/home/jyf/code/trafficVLM/code/VLMLight/vlm_tsc_en/../sim_envs/SouthKorea_Songdo/./env/songdo.net.xml"/>
-        <route-files value="/home/jyf/code/trafficVLM/code/VLMLight/vlm_tsc_en/../sim_envs/SouthKorea_Songdo/./env/songdo.rou.xml"/>
-        <additional-files value="/home/jyf/code/trafficVLM/code/VLMLight/vlm_tsc_en/../sim_envs/SouthKorea_Songdo/add/e2.add.xml,/home/jyf/code/trafficVLM/code/VLMLight/vlm_tsc_en/../sim_envs/SouthKorea_Songdo/add/tls_programs.add.xml"/>
+        <net-file value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/bev_generation/../../data/raw/SouthKorea_Songdo/./env/songdo.net.xml"/>
+        <route-files value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/bev_generation/../../data/raw/SouthKorea_Songdo/./env/songdo.rou.xml"/>
+        <additional-files value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/bev_generation/../../data/raw/SouthKorea_Songdo/add/e2.add.xml,/home/jyf/code/trafficVLM/code/VLMTraffic/src/bev_generation/../../data/raw/SouthKorea_Songdo/add/tls_programs.add.xml"/>
     </input>
 
     <output>
-        <tripinfo-output value="/home/jyf/code/trafficVLM/code/VLMLight/vlm_tsc_en/./results/SouthKorea_Songdo/tripinfo.out.xml"/>
+        <tripinfo-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/bev_generation/../../data/test/SouthKorea_Songdo/tripinfo.out.xml"/>
         <tripinfo-output.write-unfinished value="true"/>
     </output>
 
@@ -34,10 +34,3 @@
     </random_number>
 
 </libsumoConfiguration>
--->
-
-<additional xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/additional_file.xsd">
-    <tlLogic id="J2" type="static" programID="0">
-        <phase duration="35.00" state="rrrrrrGGGGGGGrrrrrrrrrrrrrrr"/>
-    </tlLogic>
-</additional>
