@@ -1,22 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2025-04-21 18:08:33 by Eclipse SUMO netedit Version 1.22.0
+<!-- generated on 2026-01-26T11:25:19.989427+08:00 by Eclipse SUMO netedit 1.25.0
 <neteditConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/neteditConfiguration.xsd">
 
     <input>
-        <sumocfg-file value="Massy.sumocfg"/>
-        <additional-files value="./add/massy.poly.xml"/>
-        <route-files value=""/>
-        <sumo-net-file value="./env/massy.net.xml"/>
+        <sumo-net-file value="/Users/zephyr/project/trafficvlm/code/raw/France_Massy/env/massy.net.xml"/>
     </input>
 
     <output>
-        <output-file value="./env/massy.net.xml"/>
+        <output-file value="/Users/zephyr/project/trafficvlm/code/raw/France_Massy/env/massy.net.xml"/>
         <output.street-names value="true"/>
     </output>
 
     <processing>
         <geometry.min-radius.fix.railways value="false"/>
+        <geometry.avoid-overlap value="false"/>
         <geometry.max-grade.fix value="false"/>
         <offset.disable-normalization value="true"/>
         <lefthand value="0"/>
@@ -33,14 +31,10 @@
         <walkingareas value="0"/>
     </pedestrian>
 
-    <netedit>
-        <ignore.routeelements value="false"/>
-    </netedit>
-
 </neteditConfiguration>
 -->
 
-<net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
+<net version="1.20" junctionCornerDetail="5" limitTurnSpeed="5.50" avoidOverlap="0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/net_file.xsd">
 
     <location netOffset="-444963.88,-5397182.80" convBoundary="0.00,0.00,311.95,391.78" origBoundary="2.251645,48.725267,2.255896,48.728773" projParameter="+proj=utm +zone=31 +ellps=WGS84 +datum=WGS84 +units=m +no_defs"/>
 
@@ -151,12 +145,10 @@
     </edge>
 
     <tlLogic id="INT1" type="static" programID="0" offset="0">
-        <phase duration="20" state="GGrrrr"/>
-        <phase duration="3"  state="yyrrrr"/>
-        <phase duration="20" state="rrGGrr"/>
-        <phase duration="3"  state="rryyrr"/>
-        <phase duration="20" state="rrrrGG"/>
-        <phase duration="3"  state="rrrryy"/>
+        <phase duration="30" state="GGGrGG"/>
+        <phase duration="3"  state="yyGrGy"/>
+        <phase duration="30" state="rrGGGr"/>
+        <phase duration="3"  state="rrGyGr"/>
     </tlLogic>
 
     <junction id="137572217" type="dead_end" x="311.95" y="0.00" incLanes="172801188#1_0 172801188#1_1" intLanes="" shape="311.95,0.00 307.99,-5.03 311.95,0.00"/>
