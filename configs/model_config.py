@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-01-20 19:59:20
+LastEditTime: 2026-01-26 21:45:40
 Description: this script is used to 
 FilePath: /VLMTraffic/configs/model_config.py
 '''
@@ -11,11 +11,11 @@ Model configuration for VLMAgent.
 
 MODEL_CONFIG = {
     # Default API type to use: "local_model", "openai_sdk", "gemini_sdk", "requests"
-    "api_type": "requests", 
+    "api_type": "gemini_sdk", 
     
     # Global generation settings
     "temperature": 0.7, # 0.0 to 1.0
-    "max_new_tokens": 1000, # Max tokens to generate
+    "max_new_tokens": 4096, # Max tokens to generate
 
     # Configuration for specific backends
     "local_model": {
@@ -30,7 +30,7 @@ MODEL_CONFIG = {
     },
     
     "gemini_sdk": {
-        "api_key": "AIzaSyChHo3XaKqB5WYElQw-N6DVbBj0Spz6C8M",  # the api don't need to upload to github
+        "api_key": "****",  # the api don't need to upload to github
         "model_name": "gemini-3-pro-preview" 
     },
     

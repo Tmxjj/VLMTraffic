@@ -43,7 +43,7 @@ class GoldenGenerator:
         self.log_dir = log_dir
         create_folder(self.log_dir)
         
-        self.logger_path = os.path.join(self.log_dir, "generation.log")
+        self.logger_path = os.path.join(self.log_dir, self.scenario_key)
         set_logger(self.logger_path, terminal_log_level='INFO')
         
         logger.info(f"[GOLDEN] Logging initialized at {self.logger_path}")
@@ -58,17 +58,18 @@ class GoldenGenerator:
         self.junction_name = self.scenario_config["JUNCTION_NAME"]
         
         # Determine file paths
+        # input
         sumo_cfg = path_convert(f"../../data/raw/{self.scenario_name}/{self.scenario_config['NETFILE']}.sumocfg")
         scenario_glb_dir = path_convert(f"../../data/raw/{self.scenario_name}/3d_assets/")
-        trip_info = path_convert(f"../../data/test/{self.scenario_name}/tripinfo_golden.out.xml")
-        statistic_output = path_convert(f"../../data/eval/{self.scenario_name}/statistic_output_golden.xml")
-        summary = path_convert(f"../../data/eval/{self.scenario_name}/summary_golden.txt")
-        queue_output = path_convert(f"../../data/eval/{self.scenario_name}/queue_output_golden.xml")
-        
         tls_add = [
             path_convert(f"../../data/raw/{self.scenario_name}/add/e2.add.xml"),
             path_convert(f"../../data/raw/{self.scenario_name}/add/tls_programs.add.xml")
         ]
+        # output
+        trip_info = path_convert(f"../../data/sft_dataset/{self.scenario_name}/tripinfo_golden.out.xml")
+        statistic_output = path_convert(f"../../data/sft_dataset/{self.scenario_name}/statistic_output_golden.xml")
+        summary = path_convert(f"../../data/sft_dataset/{self.scenario_name}/summary_golden.txt")
+        queue_output = path_convert(f"../../data/sft_dataset/{self.scenario_name}/queue_output_golden.xml")
 
         # Prepare Environment Parameters
         self.env_params = {
@@ -87,7 +88,7 @@ class GoldenGenerator:
             # 'use_gui': False # Force False for automated generation
         }
 
-        self.output_dir = path_convert(f"data/golden_dataset/{self.scenario_name}/")
+        self.output_dir = path_convert(f"../../data/sft_dataset/{self.scenario_name}/")
         
         # Multi-intersection support
         self.junctions = self.junction_name if isinstance(self.junction_name, list) else [self.junction_name]
@@ -364,5 +365,5 @@ class GoldenGenerator:
         logger.info("[GOLDEN] Generation complete.")
 
 if __name__ == "__main__":
-    generator = GoldenGenerator(scenario_key="JiNan", log_dir="./data/golden_dataset")
+    generator = GoldenGenerator(scenario_key="JiNan", log_dir="./log/golden_dataset")
     generator.generate(max_decision_step=10)

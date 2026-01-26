@@ -245,20 +245,42 @@ class VLMAgent:
             # === Gemini SDK === 
             elif self.api_type == "gemini_sdk":
                 from google.genai import types
-                model_name = self.config.get("model_name", "gemini-2.0-flash")
+                model_name = self.config.get("model_name", "gemini-3-pro-preview")
                 img = Image.open(image_path)
                 
+                '''
+                https://ai.google.dev/gemini-api/docs/thinking?hl=zh-cn，
+                对于 Gemini 3 Pro，您无法停用思考功能。Gemini 3 Flash 也不支持完全关闭思考，
+                如果您未指定思考等级，Gemini 将使用 Gemini 3 模型的默认动态思考等级 "high"
+                可以使用low来最大限度地缩短延迟时间并降低费用
+                '''
                 config = types.GenerateContentConfig(
                     temperature=self.temperature,
-                    max_output_tokens=self.max_tokens
+                    max_output_tokens=self.max_tokens,
+                    thinking_config=types.ThinkingConfig(
+                        include_thoughts=False,
+                        thinking_level = 'low'
+                    )
                 )
 
                 api_resp = self.model.models.generate_content(
                     model=model_name, 
                     contents=[prompt, img],
                     config=config
-                )            
-                response = api_resp.text.strip()
+                )
+
+                response = ""
+                try:
+                    # 即使 finish_reason 是 MAX_TOKENS，content 里的 parts 通常也是有内容的
+                    if api_resp.candidates and api_resp.candidates[0].content.parts:
+                        response = api_resp.candidates[0].content.parts[0].text.strip()
+                    else:
+                        response = api_resp.text.strip() if api_resp.text else ""
+                except Exception as e:
+                    print(f"提取内容时出错 (Finish Reason: {api_resp.candidates[0].finish_reason}): {e}")
+                    response = ""
+
+                # Token 统计部分
                 if api_resp.usage_metadata:
                     input_tokens = api_resp.usage_metadata.prompt_token_count
                     output_tokens = api_resp.usage_metadata.candidates_token_count
@@ -308,7 +330,7 @@ class VLMAgent:
 if __name__ == "__main__":
 
     prompt_text = PromptBuilder.build_decision_prompt(current_phase_id=1)
-    test_img = "data/test/Hongkong_YMT/5/bev_aircraft_offline.jpg"
+    test_img = "data/test/Hongkong_YMT/5/aircraft_J1.jpg"
 
     # 使用 configs/model_config.py 中的默认配置初始化
     agent = VLMAgent()
