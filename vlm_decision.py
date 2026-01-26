@@ -234,7 +234,8 @@ class Evaluator:
                 if bev_image_path:
                     try:
                         prompt = PromptBuilder.build_decision_prompt(
-                            current_phase_id=current_phase_id, 
+                            current_phase_id=current_phase_id,
+                            scenario_name=self.scenario_key # Pass scenario key to select correct prompt
                         )
                         # VLM Agent Inference
                         vlm_response, latency, decided_action = self.agent.get_decision(bev_image_path, prompt)

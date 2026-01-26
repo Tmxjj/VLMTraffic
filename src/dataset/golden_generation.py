@@ -246,7 +246,7 @@ class GoldenGenerator:
                 phase_id = current_phases.get(jid, 0)
                 
                 if img_path:
-                    prompt = PromptBuilder.build_decision_prompt(current_phase_id=phase_id)
+                    prompt = PromptBuilder.build_decision_prompt(current_phase_id=phase_id, scenario_name=self.scenario_key)
                     try:
                         vlm_thought, _, vlm_action_idx = self.agent.get_decision(img_path, prompt)
                         vlm_results[jid] = {

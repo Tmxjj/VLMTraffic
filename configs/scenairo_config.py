@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-01-25 21:37:52
+LastEditTime: 2026-01-26 17:15:44
 Description: this script is used to store the configuration of different TSC scenarios
 FilePath: /VLMTraffic/configs/scenairo_config.py
 '''
@@ -66,7 +66,7 @@ SCENARIO_CONFIGS = {
         "SCENARIO_NAME": "France_Massy",
         "NETFILE": "massy_eval",
         "JUNCTION_NAME": "INT1",
-        "PHASE_NUMBER": 3,
+        "PHASE_NUMBER": 2,
         "CENTER_COORDINATES": (173, 244, 100),
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:1, 2:0},
         "RENDERER_CFG": {
