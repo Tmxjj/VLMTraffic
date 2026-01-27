@@ -66,6 +66,9 @@ class GoldenGenerator:
             path_convert(f"../../data/raw/{self.scenario_name}/add/tls_programs.add.xml")
         ]
         # output
+        self.output_dir = path_convert(f"../../data/sft_dataset/{self.scenario_name}/")
+        create_folder(self.output_dir)
+
         trip_info = path_convert(f"../../data/sft_dataset/{self.scenario_name}/tripinfo_golden.out.xml")
         statistic_output = path_convert(f"../../data/sft_dataset/{self.scenario_name}/statistic_output_golden.xml")
         summary = path_convert(f"../../data/sft_dataset/{self.scenario_name}/summary_golden.txt")
@@ -88,7 +91,7 @@ class GoldenGenerator:
             # 'use_gui': False # Force False for automated generation
         }
 
-        self.output_dir = path_convert(f"../../data/sft_dataset/{self.scenario_name}/")
+        
         
         # Multi-intersection support
         self.junctions = self.junction_name if isinstance(self.junction_name, list) else [self.junction_name]
@@ -249,19 +252,22 @@ class GoldenGenerator:
                 if img_path:
                     prompt = PromptBuilder.build_decision_prompt(current_phase_id=phase_id, scenario_name=self.scenario_key)
                     try:
-                        vlm_thought, _, vlm_action_idx = self.agent.get_decision(img_path, prompt)
+                        vlm_response, _, vlm_action_idx, native_thought = self.agent.get_decision(img_path, prompt)
+                        
                         vlm_results[jid] = {
                             "action": int(vlm_action_idx),
-                            "thought": vlm_thought,
+                            "Think_Process": native_thought,
                             "prompt": prompt,
                             "img_path": img_path,
-                            "phase": phase_id
+                            "phase": phase_id,
+                            "response_raw": vlm_response,
+                            "success": True
                         }
                     except Exception as e:
                         logger.warning(f"[GOLDEN] VLM failed for {jid}: {e}")
-                        vlm_results[jid] = {"action": 0, "thought": "Error", "img_path": img_path, "phase": phase_id}
+                        vlm_results[jid] = {"action": 0, "Think_Process": "Error", "img_path": img_path, "phase": phase_id, "success": False}
                 else:
-                    vlm_results[jid] = {"action": 0, "thought": "No Image", "img_path": None, "phase": phase_id}
+                    vlm_results[jid] = {"action": 0, "Think_Process": "No Image", "img_path": None, "phase": phase_id, "success": False}
 
             # 3. Golden Rollouts (Parallel Evaluation across Junctions)
             # Instead of N x Phases rollouts, we perform Phases rollouts.
@@ -277,6 +283,8 @@ class GoldenGenerator:
             # Data structure to hold metrics: {jid: {action_str: metric}}
             all_junction_metrics = {jid: {} for jid in self.junctions}
             
+            logger.info(f"[SIM]———————————————————————— rollout start {decision_step}————————————————————————")
+
             for action_candidate in possible_actions:
                 # Construct Joint Action: Broadcast candidate to all agents
                 # This tests "What if everyone does action X?"
@@ -303,9 +311,14 @@ class GoldenGenerator:
                         # Single agent scalar case
                         jid = self.junctions[0]
                         all_junction_metrics[jid][str(action_candidate)] = float(-rewards)
-            
+            logger.info(f"[SIM]———————————————————————— rollout end ————————————————————————")
             # 4. Process Results & Save Data
             for jid in self.junctions:
+                # Check VLM Success
+                vlm_info = vlm_results[jid]
+                if not vlm_info.get("success", False):
+                    continue
+
                 # If invalid image, skip
                 if bev_images.get(jid) is None:
                     continue
@@ -328,8 +341,9 @@ class GoldenGenerator:
                     "image_path": os.path.abspath(vlm_info['img_path']) if vlm_info['img_path'] else "",
                     "current_phase": int(vlm_info['phase']),
                     "prompt": vlm_info.get('prompt', ""),
-                    "vlm_output_raw": vlm_info['thought'],
+                    "vlm_think_process": vlm_info['Think_Process'],
                     "vlm_action": int(vlm_info['action']),
+                    'vlm_response_raw': vlm_info.get('response_raw', ""),
                     "optimal_action": best_action,
                     "label": label,
                     "metric_val": float(best_metric),
@@ -340,8 +354,8 @@ class GoldenGenerator:
                 }
                 
                 sample_file = os.path.join(self.output_dir, "dataset.jsonl")
-                append_response_to_file(sample_file, json.dumps(sample))
-                logger.info(f"Step {decision_step} | JID {jid}: VLM({vlm_info['action']}) vs Golden({best_action}) -> {label}")
+                append_response_to_file(sample_file, json.dumps(sample, indent=4))
+                logger.info(f"[GOLDEN] Step {decision_step} | JID {jid}: VLM({vlm_info['action']}) vs Golden({best_action}) -> {label}")
 
             # 5. Advance Real Simulation (Following VLM/Student Policy)
             self.env.unwrapped.load_state(state_file)
@@ -365,5 +379,5 @@ class GoldenGenerator:
         logger.info("[GOLDEN] Generation complete.")
 
 if __name__ == "__main__":
-    generator = GoldenGenerator(scenario_key="JiNan", log_dir="./log/golden_dataset")
+    generator = GoldenGenerator(scenario_key="JiNan_test", log_dir="./log/golden_dataset")
     generator.generate(max_decision_step=10)

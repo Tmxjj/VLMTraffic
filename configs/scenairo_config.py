@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-01-26 17:15:44
+LastEditTime: 2026-01-27 11:14:01
 Description: this script is used to store the configuration of different TSC scenarios
 FilePath: /VLMTraffic/configs/scenairo_config.py
 '''
@@ -165,6 +165,32 @@ SCENARIO_CONFIGS = {
                 "sensor_types": ["aircraft_all"],
                 "height": 60.0
             }   
+        }
+    },
+    "JiNan_test": {
+        "SCENARIO_NAME": "JiNan_test",
+        "NETFILE": "jinan",
+        "JUNCTION_NAME": [f"intersection_{i}_{j}" for i in range(1, 3) for j in range(1, 3)],
+        "PHASE_NUMBER": 4,
+        "CENTER_COORDINATES": (173, 244, 100),
+        "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:1, 3:0}, 
+        "RENDERER_CFG": {
+            "preset": "SQUARE_1024",
+            #BUG: 变焦作用，胶片（传感器）越小：不仅拍摄到的范围变小了，为了填满同样的屏幕（1920x1080），画面会被放大（Zoom In）。 但实测下来没什么作用（暂不影响）
+            "resolution": 2,
+            "vehicle_model": "high",
+            "render_mode": "offscreen",
+            "should_count_vehicles": True,
+            "debuger_print_node": False,
+            "debuger_spin_camera": False,
+            "is_render": True,
+            "is_every_frame": False # 是否每一帧都渲染
+        },
+        "SENSOR_CFG": {
+            "aircraft": {
+                "sensor_types": ["aircraft_all"],
+                "height": 60.0
+            }       
         }
     },
 }

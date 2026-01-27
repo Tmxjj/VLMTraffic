@@ -38,8 +38,8 @@ TSHUB_ENV_CONFIG = {
     # TLS (Traffic Light System)
     # 信号灯动作类型：'next_or_not' (切换/保持), 'choose_next_phase' (指定相位) 等
     "tls_action_type": 'next_or_not', 
-    # 动作决策的时间间隔（秒），即每隔多少秒执行一次控制动作
-    "delta_time": 30,
+    # 动作决策的时间间隔（秒），即每隔多少秒执行一次控制动作，实际为delta_time + yellow_time
+    "delta_time": 27,
     
     # Files
     # 额外的 NET 文件路径（在 sumo.cfg 之外指定），默认为 None

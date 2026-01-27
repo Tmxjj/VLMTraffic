@@ -15,7 +15,9 @@ TransSimHub/
 *.glb
 
 # 生成的图片数据 
-
+data/sft_dataset/
+data/dpo_dataset/
+data/bev_images/
 models/
 
 # VS Code 配置 (个人配置通常不上传，团队协作除外)

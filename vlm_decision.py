@@ -238,11 +238,14 @@ class Evaluator:
                             scenario_name=self.scenario_key # Pass scenario key to select correct prompt
                         )
                         # VLM Agent Inference
-                        vlm_response, latency, decided_action = self.agent.get_decision(bev_image_path, prompt)
+                        vlm_response, latency, decided_action, thought = self.agent.get_decision(bev_image_path, prompt)
                         
                         # Save Response per Junction
                         _resp_file = os.path.join(_step_dir, f"response_{jid}.txt")
-                        write_response_to_file(file_path=_resp_file, content=vlm_response)
+                        content_to_save = vlm_response
+                        if thought:
+                            content_to_save += f"\n\n[Thinking Process]\n{thought}"
+                        write_response_to_file(file_path=_resp_file, content=content_to_save)
                         
                         logger.info(f"[EVAL] Step: {decision_step} | JID: {jid} | Phase: {current_phase_id} | Action: {decided_action} | Latency: {latency:.2f}s")
                         jid_action = decided_action

@@ -127,9 +127,10 @@ class VLMAgent:
     def get_decision(self, image_path: str, prompt: str):
         """
         统一推理入口
-        Output: 0, 1, 2, 3 (String)
+        Output: response (str), latency (float), action (int), thought (str|None)
         """
         response = "ERROR"
+        thought = None # 思考内容
         start_time = time.perf_counter()
         input_tokens = 0
         output_tokens = 0
@@ -248,17 +249,12 @@ class VLMAgent:
                 model_name = self.config.get("model_name", "gemini-3-pro-preview")
                 img = Image.open(image_path)
                 
-                '''
-                https://ai.google.dev/gemini-api/docs/thinking?hl=zh-cn，
-                对于 Gemini 3 Pro，您无法停用思考功能。Gemini 3 Flash 也不支持完全关闭思考，
-                如果您未指定思考等级，Gemini 将使用 Gemini 3 模型的默认动态思考等级 "high"
-                可以使用low来最大限度地缩短延迟时间并降低费用
-                '''
+                # 更新配置以启用思考功能
                 config = types.GenerateContentConfig(
                     temperature=self.temperature,
                     max_output_tokens=self.max_tokens,
                     thinking_config=types.ThinkingConfig(
-                        include_thoughts=False,
+                        include_thoughts=True, # Enable thoughts
                         thinking_level = 'low'
                     )
                 )
@@ -270,10 +266,19 @@ class VLMAgent:
                 )
 
                 response = ""
+                thought = ""
                 try:
-                    # 即使 finish_reason 是 MAX_TOKENS，content 里的 parts 通常也是有内容的
                     if api_resp.candidates and api_resp.candidates[0].content.parts:
-                        response = api_resp.candidates[0].content.parts[0].text.strip()
+                        for part in api_resp.candidates[0].content.parts:
+                            try:
+                                if hasattr(part, 'thought') and part.thought:
+                                    thought += part.text + "\n"
+                                else:
+                                    response += part.text
+                            except:
+                                response += part.text
+                        response = response.strip()
+                        thought = thought.strip()
                     else:
                         response = api_resp.text.strip() if api_resp.text else ""
                 except Exception as e:
@@ -324,7 +329,7 @@ class VLMAgent:
 
         action = self._parse_action(response)
 
-        return response, latency, action
+        return response, latency, action, thought
 
 
 if __name__ == "__main__":
