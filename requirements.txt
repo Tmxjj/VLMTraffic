@@ -14,4 +14,8 @@ google-genai
 vllm==0.11.0
 accelerate
 tensorboard
+deep-translator
+streamlit
+pandas
+matplotlib
 # Add other specific dependencies as needed
