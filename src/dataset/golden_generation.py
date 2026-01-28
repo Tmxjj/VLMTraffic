@@ -276,6 +276,17 @@ class GoldenGenerator:
             
             # Save Base State ONCE
             self.env.unwrapped.save_state(state_file)
+
+            # Save Checkpoint (every 5 steps)
+            if decision_step % 5 == 0:
+                state_dir = os.path.join(self.output_dir, "state")
+                create_folder(state_dir)
+                sim_step = infos.get('step_time', 0)
+                # Use copy instead of saving again for efficiency
+                ckpt_path = os.path.join(state_dir, f"state_sim_{sim_step}_decsion_step_{decision_step}.xml")
+                shutil.copy(state_file, ckpt_path)
+                logger.info(f"[GOLDEN] Checkpoint saved: {ckpt_path}")
+
             wrapper_state_backup = self._save_wrapper_state()
             
             possible_actions = range(self.scenario_config["PHASE_NUMBER"])
@@ -305,12 +316,12 @@ class GoldenGenerator:
                     if isinstance(rewards, dict):
                         for jid, r in rewards.items():
                             if jid in all_junction_metrics:
-                                # Metric = -Reward (Minimize Cost/Queue)
-                                all_junction_metrics[jid][str(action_candidate)] = float(-r)
+                                # Metric = Reward (Maximize Reward)
+                                all_junction_metrics[jid][str(action_candidate)] = float(r)
                     else:
                         # Single agent scalar case
                         jid = self.junctions[0]
-                        all_junction_metrics[jid][str(action_candidate)] = float(-rewards)
+                        all_junction_metrics[jid][str(action_candidate)] = float(rewards)
             logger.info(f"[SIM]———————————————————————— rollout end ————————————————————————")
             # 4. Process Results & Save Data
             for jid in self.junctions:
@@ -329,7 +340,7 @@ class GoldenGenerator:
                     continue
                     
                 # Find Best Action
-                best_action = min(metrics, key=metrics.get) # Minimize metric (waiting time)
+                best_action = max(metrics, key=metrics.get) # Maximize metric (reward)
                 best_metric = metrics[best_action]
                 best_action = int(best_action)
                 
