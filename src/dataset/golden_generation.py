@@ -390,5 +390,13 @@ class GoldenGenerator:
         logger.info("[GOLDEN] Generation complete.")
 
 if __name__ == "__main__":
-    generator = GoldenGenerator(scenario_key="JiNan_test", log_dir="./log/golden_dataset")
-    generator.generate(max_decision_step=10)
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate Golden Dataset")
+    parser.add_argument("--scenario", type=str, default="JiNan_test", help="Scenario key (e.g., JiNan_test, NewYork)")
+    parser.add_argument("--max_steps", type=int, default=20, help="Maximum decision steps")
+    parser.add_argument("--log_dir", type=str, default="./log/golden_dataset", help="Directory for logs")
+    
+    args = parser.parse_args()
+    
+    generator = GoldenGenerator(scenario_key=args.scenario, log_dir=args.log_dir)
+    generator.generate(max_decision_step=args.max_steps)
