@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-01-25T21:18:53.719162+08:00 by Eclipse SUMO libsumo 1.25.0
+<!-- generated on 2026-01-29T17:15:29.783930+08:00 by Eclipse SUMO libsumo 1.25.0
 <libsumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/libsumoConfiguration.xsd">
 
     <input>
@@ -10,11 +10,11 @@
     </input>
 
     <output>
-        <queue-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/eval/Hongkong_YMT/queue_output_golden.xml"/>
-        <summary-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/eval/Hongkong_YMT/summary_golden.txt"/>
-        <tripinfo-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/test/Hongkong_YMT/tripinfo_golden.out.xml"/>
+        <queue-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/sft_dataset/Hongkong_YMT/queue_output_golden.xml"/>
+        <summary-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/sft_dataset/Hongkong_YMT/summary_golden.txt"/>
+        <tripinfo-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/sft_dataset/Hongkong_YMT/tripinfo_golden.out.xml"/>
         <tripinfo-output.write-unfinished value="true"/>
-        <statistic-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/eval/Hongkong_YMT/statistic_output_golden.xml"/>
+        <statistic-output value="/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/../../data/sft_dataset/Hongkong_YMT/statistic_output_golden.xml"/>
     </output>
 
     <processing>
@@ -37,3 +37,10 @@
     </random_number>
 
 </libsumoConfiguration>
+-->
+
+<additional xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/additional_file.xsd">
+    <tlLogic id="J1" type="static" programID="0">
+        <phase duration="30.00" state="GGGGrrrrrGGGrrr"/>
+    </tlLogic>
+</additional>

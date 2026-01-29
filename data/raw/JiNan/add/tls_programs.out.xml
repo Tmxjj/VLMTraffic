@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
-<!-- generated on 2026-01-26T22:28:37.325731+08:00 by Eclipse SUMO libsumo 1.25.0
+<!-- generated on 2026-01-29T17:08:29.554282+08:00 by Eclipse SUMO libsumo 1.25.0
 <libsumoConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/libsumoConfiguration.xsd">
 
     <input>
@@ -42,3 +42,43 @@
     </random_number>
 
 </libsumoConfiguration>
+-->
+
+<additional xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/additional_file.xsd">
+    <tlLogic id="intersection_1_1" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_1_2" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_1_3" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_2_1" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_2_2" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_2_3" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_3_1" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_3_2" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_3_3" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_4_1" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_4_2" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+    <tlLogic id="intersection_4_3" type="static" programID="0">
+        <phase duration="30.00" state="GGGrrrrrrGGGGGGrrrGGGrrrrrrGGGGGGrrr"/>
+    </tlLogic>
+</additional>

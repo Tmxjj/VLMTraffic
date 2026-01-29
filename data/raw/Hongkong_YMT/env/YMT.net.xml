@@ -287,11 +287,11 @@
     </edge>
 
     <tlLogic id="J1" type="static" programID="0" offset="0">
-        <phase duration="30" state="GGGGrrrrrGGGrrr"/>
+        <phase duration="27" state="GGGGrrrrrGGGrrr"/>
         <phase duration="3"  state="yyGGrrrrryyyrrr"/>
-        <phase duration="30" state="rrGGrrGGGrrrGGG"/>
+        <phase duration="27" state="rrGGrrGGGrrrGGG"/>
         <phase duration="3"  state="rrGGrryyyrrryyy"/>
-        <phase duration="30" state="rrGGGGrrrrrrrrr"/>
+        <phase duration="27" state="rrGGGGrrrrrrrrr"/>
         <phase duration="3"  state="rrGGyyrrrrrrrrr"/>
     </tlLogic>
 

@@ -2965,13 +2965,13 @@
         <phase duration="5"  state="grrrrrrgggrrryygrrrrrgrrryy"/>
     </tlLogic>
     <tlLogic id="J2" type="static" programID="0" offset="0">
-        <phase duration="30" state="GrrrrrGGGGGGrGrrrrrGGGGGGGrr"/>
+        <phase duration="27" state="GrrrrrGGGGGGrGrrrrrGGGGGGGrr"/>
         <phase duration="3"  state="GrrrrrGGGyyyrGrrrrrGGGyyyyrr"/>
-        <phase duration="30" state="GGGGrrGGGrrrrGGGGGrGGGrrrrrr"/>
+        <phase duration="27" state="GGGGrrGGGrrrrGGGGGrGGGrrrrrr"/>
         <phase duration="3"  state="GyyyrrGGGrrrrGyyyyrGGGrrrrrr"/>
-        <phase duration="30" state="GrrrrrGGGrrrGGrrrrrGGGrrrrGG"/>
+        <phase duration="27" state="GrrrrrGGGrrrGGrrrrrGGGrrrrGG"/>
         <phase duration="3"  state="GrrrrrGGGrrryGrrrrrGGGrrrryy"/>
-        <phase duration="30" state="GrrrGGGGGrrrrGrrrrGGGGrrrrrr"/>
+        <phase duration="27" state="GrrrGGGGGrrrrGrrrrGGGGrrrrrr"/>
         <phase duration="3"  state="GrrryyGGGrrrrGrrrryGGGrrrrrr"/>
     </tlLogic>
     <tlLogic id="J3" type="static" programID="0" offset="0">

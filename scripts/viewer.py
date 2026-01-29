@@ -3,7 +3,50 @@ import pandas as pd
 import json
 import os
 import argparse
+import re
 from PIL import Image
+def format_vlm_response(text):
+    if not text: return ""
+
+    # --- 1. 深度清洗干扰字符 ---
+    # 有些模型会输出 \xa0 (不间断空格)，导致 replace 失败，先统一替换为空格
+    text = text.replace('\xa0', ' ')
+    
+    # 移除外层 Thought: [ ]
+    text = text.replace("Thought: [", "").strip()
+    if text.endswith("]"):
+        text = text[:-1]
+
+    # --- 2. 强制拍平文本 ---
+    # 将换行符去掉，合并成一个连续的字符串，方便我们重新排版
+    clean_text = " ".join([line.strip() for line in text.split('\n') if line.strip()])
+
+    # --- 3. 重新“打桩”：一级标题 ---
+    primary_keywords = ["1. Scene Understanding", "2. Scene Analysis", "3. Selection Logic"]
+    for key in primary_keywords:
+        # 确保一级标题前有两个换行，且自身加粗
+        if key in clean_text:
+            clean_text = clean_text.replace(key, f"\n\n**{key}**")
+
+    # --- 4. 重新“打桩”：二级标题（关键修正） ---
+    # 我们把想要缩进的关键词定义好
+    secondary_keywords = [
+        "- [Phase 0]", "- [Phase 1]", "- [Phase 2]", "- [Phase 3]", "- [Phase 4]",
+        "- Emergency Check", "- Final Condition", 
+        "- Rule Identification", "- Conclusion", "- Reasoning"
+    ]
+
+    for tag in secondary_keywords:
+        if tag in clean_text:
+            # 无序列表
+            label = tag.replace("- ", "").strip()
+            clean_text = clean_text.replace(tag, f"\n- **{label}**")
+
+    # --- 5. 处理 Action ---
+    if "Action:" in clean_text:
+        clean_text = clean_text.replace("Action:", "\n\n---\n### 🏁 Action:")
+
+    return clean_text.strip()
 
 # 引入翻译库
 try:
@@ -65,6 +108,7 @@ def load_data(file_path):
             continue
 
     return pd.DataFrame(data)
+
 
 # --- 侧边栏 ---
 st.sidebar.title("🛠️ 设置与筛选")
@@ -172,23 +216,30 @@ if df is not None and not df.empty:
         st.subheader("🤖 VLM Analysis (CN/EN)")
         
         raw_response = row.get('vlm_response_raw', '')
+        if raw_response:
         
-        # 翻译开关
-        show_trans = st.toggle("启用中文翻译 (Translate to Chinese)", value=True)
-        
-        if show_trans and raw_response:
-            with st.spinner("正在翻译..."):
-                translated_text = translate_text(raw_response)
+            # 应用格式化
+            display_text = format_vlm_response(raw_response)
+
+            # --- 2. 翻译与显示 ---
+            # 翻译开关 (默认开启)
+            enable_trans = st.toggle("🇨🇳 启用中文翻译 (Translate)", value=False)
             
-            # 使用 info 框高亮显示翻译内容
-            st.success(f"**中文回复:**\n\n{translated_text}")
-            
-            # 在折叠框中保留原文，方便对照
-            with st.expander("查看英文原文 (Original English)"):
-                st.code(raw_response, language="text")
+            if enable_trans:
+                with st.spinner("正在翻译..."):
+                    # 直接翻译处理过的 Markdown 文本，Google 翻译通常能保留 Markdown 格式
+                    translated_text = translate_text(display_text)
+                    st.markdown(translated_text, unsafe_allow_html=True)
+                    
+                    # 翻译模式下，提供一个折叠框看原文，方便核对
+                    with st.expander("查看英文原文 (Original English)"):
+                        st.markdown(display_text, unsafe_allow_html=True)
+            else:
+                # 不翻译，直接显示美化后的英文
+                st.markdown(display_text, unsafe_allow_html=True)
+
         else:
-            # 不翻译时直接显示
-            st.info(f"**Raw Response:**\n\n{raw_response}")
+            st.warning("暂无模型输出 (No response data available)")
 
         st.divider()
 
@@ -218,4 +269,4 @@ if df is not None and not df.empty:
 else:
     st.info("请加载数据。")
 
-    # 运行脚本：streamlit run scripts/viewer.py -- --path data/sft_dataset/JiNan_test/dataset.jsonl
+    # 运行脚本：streamlit run scripts/viewer.py -- --path data/sft_dataset/Hongkong_YMT/dataset.jsonl

@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-01-29 16:28:41
+LastEditTime: 2026-01-29 19:47:30
 Description: Optimized Prompt Builder (Visual-Only Analysis)
 FilePath: /VLMTraffic/configs/prompt_builder.py
 '''
@@ -154,17 +154,17 @@ class PromptBuilder:
 
 
             6. Chain-of-Thought Reasoning
-            You must think step-by-step follow Task Definition. The output format must be strictly as follows (without indentation):
+            You must think step-by-step follow Task Definition. The output format must be strictly as follows (without indentation and other extra text):
 
             Thought: [
-            1. Scene Understanding: Describe the status for **EACH phase** (Phase-0, Phase-X...) and output strictly using this format:
-                - “[Phase-ID] (<Direction, e.g., NTST>): <Congestion Level> | [Details about queue  & special vehicles in corresponding lanes]".
+            1. Scene Understanding: Describe the status for **EACH phase** (Phase 0, Phase X...) and output strictly using this format:
+                - [Phase ID] (<Direction, e.g., NTST>): <Congestion Level> | <Details about queue  & special vehicles in corresponding lanes>.
             2. Scene Analysis: 
                 - Emergency Check: Reason about the presence of emergency vehicles. 
                 - Final Condition: State the "Final Condition" (Normal or Special).
             3. Selection Logic: 
                 - Rule Identification: Identify which rule from the "Task Definition" applies (e.g., Emergency Priority, Bottleneck Rule, Tie-Breaker, or No Traffic Fallback).
-                - Conclusion: Select the target Phase-ID.
+                - Conclusion: Select the target Phase ID.
                 - Reasoning: Explain why this phase was selected over others, citing specific congestion levels or emergency priority.
             ]
             
