@@ -249,7 +249,7 @@ class GoldenGenerator:
                 img_path = bev_images.get(jid)
                 phase_id = current_phases.get(jid, 0)
                 
-                if img_path:
+                if img_path :
                     prompt = PromptBuilder.build_decision_prompt(current_phase_id=phase_id, scenario_name=self.scenario_key)
                     try:
                         vlm_response, _, vlm_action_idx, native_thought = self.agent.get_decision(img_path, prompt)
