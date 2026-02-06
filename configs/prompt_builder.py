@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-01-29 19:47:30
+LastEditTime: 2026-02-06 19:47:04
 Description: Optimized Prompt Builder (Visual-Only Analysis)
 FilePath: /VLMTraffic/configs/prompt_builder.py
 '''
@@ -15,10 +15,10 @@ class PromptBuilder:
     # Define Phase Descriptions and scenario descriptions for different scenario types
     PHASE_DESCRIPTIONS = {
         "4_PHASE_STANDARD": '''
-            - Phase 0: NTST, North-South Straight
-            - Phase 1: ETWT, East-West Straight
-            - Phase 2: NLSL, North-South Left-Turn
-            - Phase 3: ELWL, East-West Left-Turn
+            - Phase 0: ETWT, East-West Straight
+            - Phase 1: NTST, North-South Straight
+            - Phase 2: ELWL, East-West Left-Turn
+            - Phase 3: NLSL, North-South Left-Turn
             Note: Right-turning vehicles are unrestricted and permitted to turn at any time
         ''',
 
@@ -29,8 +29,8 @@ class PromptBuilder:
         ''',
 
         "Hongkong_SPECIAL_PHASE": '''
-            - Phase 0: NTST, North-South Straight
-            - Phase 1: ETWT, East-West Straight
+            - Phase 0: ETWT, East-West Straight
+            - Phase 1: NTST, North-South Straight
             - Phase 2: SR, Southern Right-Turn
             Note: Left-turning vehicles are unrestricted and permitted to turn at any time
 

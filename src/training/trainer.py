@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-14 16:43:47
-LastEditTime: 2026-01-14 16:43:58
+LastEditTime: 2026-01-30 10:55:21
 Description: this script is used to train the VLM model with different methods
 FilePath: /VLMTraffic/src/training/trainer.py
 '''
@@ -75,7 +75,7 @@ def main():
             output_dir=output_dir,
             per_device_train_batch_size=per_device_train_batch_size,
             per_device_eval_batch_size=8,
-            max_prompt_length=512,
+            max_prompt_length=4096,
             # max_completion_length=512,
             gradient_accumulation_steps=gradient_accumulation_steps,
             num_train_epochs=num_train_epochs,

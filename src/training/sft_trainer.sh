@@ -2,11 +2,11 @@
 ###
  # @Author: yufei Ji
  # @Date: 2026-01-14 16:45:42
- # @LastEditTime: 2026-01-14 16:46:19
+ # @LastEditTime: 2026-01-30 10:55:32
  # @Description: this script is used to train VLM model with SFT method
  # @FilePath: /VLMTraffic/src/training/sft_trainer.sh
 ### 
-DEBUG_MODE="-m debugpy --listen 127.0.0.1:5679 --wait-for-client"
+# DEBUG_MODE="-m debugpy --listen 127.0.0.1:5679 --wait-for-client"
 
 model_name=Qwen2.5-7B-Instruct
 task=webshop
