@@ -288,11 +288,11 @@
 
     <tlLogic id="J1" type="static" programID="0" offset="0">
         <phase duration="27" state="GGGGrrrrrGGGrrr"/>
-        <phase duration="3"  state="yyGGrrrrryyyrrr"/>
+        <phase duration="3"  state="yyggrrrrryyyrrr"/>
         <phase duration="27" state="rrGGrrGGGrrrGGG"/>
-        <phase duration="3"  state="rrGGrryyyrrryyy"/>
+        <phase duration="3"  state="rrggrryyyrrryyy"/>
         <phase duration="27" state="rrGGGGrrrrrrrrr"/>
-        <phase duration="3"  state="rrGGyyrrrrrrrrr"/>
+        <phase duration="3"  state="rrggyyrrrrrrrrr"/>
     </tlLogic>
 
     <junction id="11134510116" type="dead_end" x="163.58" y="291.09" incLanes="" intLanes="" shape="168.31,291.89 158.85,290.29"/>
