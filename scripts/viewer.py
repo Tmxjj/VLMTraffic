@@ -5,6 +5,7 @@ import os
 import argparse
 import re
 import time
+import altair as alt
 # 引入翻译库
 try:
     from deep_translator import GoogleTranslator
@@ -263,13 +264,33 @@ if df is not None and not df.empty:
             try:
                 metrics_df = pd.DataFrame(list(metrics_dict.items()), columns=['Phase', 'Reward'])
                 metrics_df['Phase'] = metrics_df['Phase'].astype(str)
-                colors = []
-                for p in metrics_df['Phase']:
-                    if str(p) == str(vlm_act): colors.append("#ff4b4b")
-                    elif str(p) == str(opt_act): colors.append("#09ab3b")
-                    else: colors.append("#e6e9ef")
-                st.bar_chart(metrics_df.set_index('Phase')['Reward'], color=colors if len(colors)==len(metrics_df) else None)
-            except: pass
+                
+                # 基础图表：柱状图
+                bars = alt.Chart(metrics_df).mark_bar().encode(
+                    x=alt.X('Phase:N', sort=None, title='Phase'),
+                    y=alt.Y('Reward:Q', title='Reward Value'),
+                    # 根据您的逻辑定义颜色（这里简单示例，也可根据 vlm_act 逻辑上色）
+                    color=alt.condition(
+                        alt.datum.Phase == str(vlm_act),
+                        alt.value('#ff4b4b'), # VLM 选择的颜色
+                        alt.value('#e6e9ef')  # 默认颜色
+                    )
+                )
+
+                # 核心：添加数值文本层
+                text = bars.mark_text(
+                    align='center',
+                    baseline='bottom',
+                    dy=-5  # 将文字向上偏移 5 像素，避免压在柱子上
+                ).encode(
+                    text=alt.Text('Reward:Q', format='.2f') # 显示两位小数
+                )
+
+                # 叠加显示
+                st.altair_chart(bars + text, use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"图表渲染失败: {e}")
 
     # --- 第3栏：Human Annotation (放在右侧) ---
     with col_anno:
