@@ -12,6 +12,14 @@ import time
 import copy
 import traci
 import shutil
+import sys
+# Add scripts folder to sys.path
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'scripts'))
+try:
+    from add_lane_watermarks import add_lane_watermarks
+except ImportError:
+    logger.warning("Could not import add_lane_watermarks from scripts/ folder.")
+
 from loguru import logger
 import numpy as np
 from collections import deque
@@ -238,7 +246,15 @@ class GoldenGenerator:
                 if img_data is not None:
                     img_path = os.path.join(_step_dir, f"{jid}_bev.jpg")
                     cv2.imwrite(img_path, convert_rgb_to_bgr(img_data))
-                    bev_images[jid] = img_path
+                    
+                    # add watermark
+                    try:
+                        watermarked_img_path = os.path.join(_step_dir, f"{jid}_bev_watermarked.jpg")
+                        add_lane_watermarks(img_path, watermarked_img_path)
+                        bev_images[jid] = watermarked_img_path
+                    except Exception as e:
+                        logger.warning(f"Failed to add watermark: {e}")
+                        bev_images[jid] = img_path
                 else:
                     bev_images[jid] = None
 
@@ -392,8 +408,8 @@ class GoldenGenerator:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Generate Golden Dataset")
-    parser.add_argument("--scenario", type=str, default="JiNan_test", help="Scenario key (e.g., JiNan_test, NewYork)")
-    parser.add_argument("--max_steps", type=int, default=20, help="Maximum decision steps")
+    parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario key (e.g., JiNan_test, NewYork)")
+    parser.add_argument("--max_steps", type=int, default=10, help="Maximum decision steps")
     parser.add_argument("--log_dir", type=str, default="./log/golden_dataset", help="Directory for logs")
     
     args = parser.parse_args()

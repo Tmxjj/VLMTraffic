@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-01-24 19:11:43
+LastEditTime: 2026-03-03 09:53:58
 Description: this script is used to generate BEV images from 3D TSC env
 FilePath: /VLMTraffic/src/bev_generation/online_bev_render.py
 '''
@@ -37,7 +37,7 @@ def convert_rgb_to_bgr(image):
 path_convert = get_abs_path(__file__)
 
 # 全局变量
-scenario_key = "Hongkong_YMT" # Hongkong_YMT, SouthKorea_Songdo, France_Massy，Hangzhou，NewYork，JiNan
+scenario_key = "JiNan" # Hongkong_YMT, SouthKorea_Songdo, France_Massy，Hangzhou，NewYork，JiNan
 set_logger(path_convert(f'../../log/{scenario_key}/'))
 
 config = SCENARIO_CONFIGS.get(scenario_key) # 获取特定场景的配置

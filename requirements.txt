@@ -18,4 +18,5 @@ deep-translator
 streamlit
 pandas
 matplotlib
+tenacity
 # Add other specific dependencies as needed

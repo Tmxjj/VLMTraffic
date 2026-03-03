@@ -1,3 +1,10 @@
+'''
+Author: yufei Ji
+Date: 2026-01-26 11:41:53
+LastEditTime: 2026-02-24 22:59:15
+Description: this script is used to 
+FilePath: /VLMTraffic/scripts/modify_net_xml.py
+'''
 import xml.etree.ElementTree as ET
 import os
 

@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:49:26
-LastEditTime: 2026-01-25 19:54:31
+LastEditTime: 2026-02-09 17:22:28
 Description: this script is used to 
 FilePath: /VLMTraffic/vlm_decision.py
 '''
@@ -287,6 +287,6 @@ class Evaluator:
 
    
 if __name__ == "__main__":
-    evaluator = Evaluator(scenario_key="JiNan", log_dir="./log/eval_results")
+    evaluator = Evaluator(scenario_key="Hongkong_YMT", log_dir="./log/eval_results")
     evaluator.run_eval(max_decision_step=10)
 

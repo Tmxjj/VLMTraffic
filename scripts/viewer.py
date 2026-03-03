@@ -21,16 +21,21 @@ def format_vlm_response(text):
     text = text.replace("Thought: [", "").strip()
     if text.endswith("]"):
         text = text[:-1]
+        
     # --- 强制拍平文本 ---
+    # 先将所有文本拍平成一行，后面再通过关键词触发换行来重构格式
     clean_text = " ".join([line.strip() for line in text.split('\n') if line.strip()])
+    
     # --- 一级标题 ---
     primary_keywords = ["1. Scene Understanding", "2. Scene Analysis", "3. Selection Logic"]
     for key in primary_keywords:
         if key in clean_text:
             clean_text = clean_text.replace(key, f"\n\n**{key}**")
+            
     # --- 二级标题 ---
     secondary_keywords = [
         "- [Phase 0]", "- [Phase 1]", "- [Phase 2]", "- [Phase 3]", "- [Phase 4]",
+        "- Lane Analysis (Mandatory)", "- Phase Mapping",
         "- Emergency Check", "- Final Condition", 
         "- Rule Identification", "- Conclusion", "- Reasoning"
     ]
@@ -38,11 +43,23 @@ def format_vlm_response(text):
         if tag in clean_text:
             label = tag.replace("- ", "").strip()
             clean_text = clean_text.replace(tag, f"\n- **{label}**")
+
+    # --- 三级标题 (新增逻辑) ---
+    tertiary_keywords = [
+        "- North Approach", "- South Approach", "- East Approach", "- West Approach",
+        "- Phase 0 (ETWT)", "- Phase 1 (NTST)", "- Phase 2 (ELWL)", "- Phase 3 (NLSL)"
+    ]
+    for tag in tertiary_keywords:
+        if tag in clean_text:
+            label = tag.replace("- ", "").strip()
+            # 增加 4 个空格的缩进，使其在 Markdown 渲染中成为子列表
+            clean_text = clean_text.replace(tag, f"\n    - **{label}**")
+
     # --- 处理 Action ---
     if "Action:" in clean_text:
         clean_text = clean_text.replace("Action:", "\n\n---\n### 🏁 Action:")
+        
     return clean_text.strip()
-
 @st.cache_data(show_spinner=False)
 def translate_text(text):
     if not text: return ""
@@ -115,18 +132,69 @@ def load_existing_annotations(anno_path):
                 
     return annotations
 
-def save_annotation_line(anno_path, record):
+def save_or_update_annotation(anno_path, new_record):
     """
-    以缩进格式 (Indent=4) 追加保存 JSON
+    保存标注：
+    1. 读取现有文件所有记录。
+    2. 检查是否存在相同的 (junction_id, step)。
+    3. 如果存在 -> 覆盖；如果不存 -> 追加。
+    4. 重写整个文件。
+    
+    Returns:
+        bool: True 表示是覆盖更新 (Update), False 表示是新创建 (Create)
     """
     # 确保目录存在
     os.makedirs(os.path.dirname(os.path.abspath(anno_path)) or ".", exist_ok=True)
     
-    with open(anno_path, 'a', encoding='utf-8') as f:
-        # 使用 ensure_ascii=False 保证中文正常显示
-        # 使用 indent=4 保证可读性
-        json_str = json.dumps(record, ensure_ascii=False, indent=4)
-        f.write(json_str + "\n")
+    # 1. 构造当前记录的唯一标识 (UID)
+    current_uid = f"{new_record.get('junction_id')}_{new_record.get('step')}"
+    
+    all_records = []
+    
+    # 2. 读取现有所有数据 (解析堆叠的 JSON)
+    if os.path.exists(anno_path):
+        with open(anno_path, 'r', encoding='utf-8') as f:
+            content = f.read().strip()
+            if content:
+                decoder = json.JSONDecoder()
+                pos = 0
+                while pos < len(content):
+                    try:
+                        while pos < len(content) and content[pos].isspace():
+                            pos += 1
+                        if pos >= len(content):
+                            break
+                        obj, idx = decoder.raw_decode(content[pos:])
+                        pos += idx
+                        all_records.append(obj)
+                    except json.JSONDecodeError:
+                        break # 容错处理
+
+    # 3. 查找并替换，或者追加
+    is_update = False
+    updated_index = -1
+    
+    for i, record in enumerate(all_records):
+        # 检查 UID
+        rec_uid = f"{record.get('junction_id')}_{record.get('step')}"
+        if rec_uid == current_uid:
+            updated_index = i
+            is_update = True
+            break
+    
+    if is_update:
+        all_records[updated_index] = new_record # 覆盖旧记录
+    else:
+        all_records.append(new_record) # 追加新记录
+
+    # 4. 全量覆盖写入文件
+    with open(anno_path, 'w', encoding='utf-8') as f:
+        for record in all_records:
+            # 保持 indent=4 的可读性
+            json_str = json.dumps(record, ensure_ascii=False, indent=4)
+            f.write(json_str + "\n")
+            
+    return is_update
 
 # --- 2. 页面与侧边栏配置 ---
 def get_args():
@@ -375,17 +443,16 @@ if df is not None and not df.empty:
 
         # --- 5. 保存提交 ---
         with st.form(key=f"save_form_{current_uid}"):
+            # 按钮文案可以动态化，但为了简洁，统一用 "保存"
             submitted = st.form_submit_button("💾 保存标注 (Save)", use_container_width=True)
 
             if submitted:
-                # 校验逻辑：如果是错误类型，建议填写备注（可选，这里不做强制拦截，只做数据处理）
-                
                 final_saved_text = ""
                 final_remark = ""
 
                 if selected_tag == "无误":
                     final_saved_text = display_text 
-                    final_remark = "" # 无误时清空备注
+                    final_remark = "" 
                 else:
                     final_saved_text = corrected_text.strip()
                     final_remark = error_remark.strip()
@@ -394,19 +461,29 @@ if df is not None and not df.empty:
                 save_record = row.to_dict()
                 save_record['human_label'] = selected_tag
                 save_record['corrected_response'] = final_saved_text
-                save_record['error_reason'] = final_remark # [新增] 保存备注字段
+                save_record['error_reason'] = final_remark
                 
+                # 清理不需要保存的 pandas 索引
                 if 'index' in save_record: del save_record['index']
 
                 try:
-                    save_annotation_line(annotated_file_path, save_record)
+                    # --- 调用新的保存函数 ---
+                    is_update = save_or_update_annotation(annotated_file_path, save_record)
+                    
+                    # 更新内存中的缓存，以便不刷新页面也能看到最新状态
                     existing_annos[current_uid] = save_record
                     
-                    st.success(f"✅ 已保存! ({selected_tag})")
-                    time.sleep(0.5)
+                    # --- 根据返回状态给出不同的提示 ---
+                    if is_update:
+                        st.warning(f"⚠️ 检测到旧标注，已成功覆盖更新！\n标签: {selected_tag}")
+                    else:
+                        st.success(f"✅ 新标注已保存！\n标签: {selected_tag}")
+                    
+                    time.sleep(1.0) # 稍微延长一点时间让用户看清提示
                     st.rerun()
+                    
                 except Exception as e:
-                    st.error(f"保存失败: {e}")
+                    st.error(f"❌ 保存失败: {e}")
 
 else:
     st.info("请加载数据。")

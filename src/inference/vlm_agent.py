@@ -4,38 +4,37 @@ import requests
 import json
 import base64
 import time
+import re
+import random
 from io import BytesIO
+from loguru import logger
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+
+# 建议导入
 from configs.prompt_builder import PromptBuilder
 from configs.model_config import MODEL_CONFIG
-import re
-from loguru import logger
 
-# 需要安装的库：
-# pip install transformers google openai requests
+def is_api_retryable_error(exception):
+    """定义哪些错误触发重试：503, 429 以及明确的 Overloaded 提示"""
+    err_msg = str(exception).lower()
+    retryable_conditions = [
+        "503", 
+        "429", 
+        "unavailable", 
+        "overloaded", 
+        "rate limit",
+        "deadline exceeded"
+    ]
+    return any(condition in err_msg for condition in retryable_conditions)
 
 class VLMAgent:
-    """
-    支持多种后端的 VLM Agent：
-    1. local_model: 加载本地 HuggingFace 模型
-    2. sdk: 使用官方 SDK (OpenAI / Gemini)
-    3. requests: 使用原生 HTTP 请求 (本地API端口 或 远程通用API)
-    """
     def __init__(self, api_type=None, **kwargs):
-        """
-        Args:
-            api_type: "local_model", "openai_sdk", "gemini_sdk", "requests". If None, use config default.
-            kwargs: Override options from MODEL_CONFIG
-        """
-        # Determine API type: Arg > Config > Default
         self.api_type = api_type or MODEL_CONFIG.get("api_type", "local_model")
-        
-        # Load configuration: Global Defaults -> Backend Specific -> User Overrides
         backend_config = MODEL_CONFIG.get(self.api_type, {})
         self.config = {**MODEL_CONFIG, **backend_config, **kwargs}
         
-        # Common generation parameters
         self.temperature = self.config.get("temperature", 0.7)
-        self.max_tokens = self.config.get("max_new_tokens", 100) # Compatible with max_new_tokens logic if needed
+        self.max_tokens = self.config.get("max_new_tokens", 100)
 
         self.client = None
         self.model = None
@@ -45,302 +44,169 @@ class VLMAgent:
         self._initialize_backend()
 
     def _initialize_backend(self):
-        """根据配置初始化对应的后端"""
         logger.info(f"[EVAL] Initializing VLMAgent with backend: {self.api_type}...")
         
-        #  加载本地 模型 (支持 Qwen3-VL 和 通用 HF) ===
         if self.api_type == "local_model":
             model_path = self.config.get("model_path")
             device = self.config.get("device", "cuda")
             
-            # 尝试作为 Qwen3-VL (ModelScope) 加载
             if model_path and ("qwen3" in model_path.lower()):
                 try:
                     from modelscope import Qwen3VLForConditionalGeneration, AutoProcessor
                     self.processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
                     self.model = Qwen3VLForConditionalGeneration.from_pretrained(
-                        model_path, 
-                        dtype="auto",
-                        device_map=device, 
-                        trust_remote_code=True
+                        model_path, dtype="auto", device_map=device, trust_remote_code=True
                     ).eval()
-                    logger.info("[EVAL] Local Qwen3-VL Model loaded successfully via ModelScope.")
+                    logger.info("[EVAL] Local Qwen3-VL Model loaded.")
                     return
                 except Exception as e:
-                    logger.warning(f"[EVAL] Failed to load Qwen3-VL via ModelScope: {e}")
-                    logger.info("[EVAL] Falling back to transformers...")
+                    logger.warning(f"[EVAL] ModelScope load failed: {e}")
 
-            # Fallback / Default Transformers Logic
             try:
                 from transformers import AutoModelForCausalLM, AutoTokenizer
                 self.tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
                 self.model = AutoModelForCausalLM.from_pretrained(
-                    model_path, 
-                    device_map=device, 
-                    trust_remote_code=True
+                    model_path, device_map=device, trust_remote_code=True
                 ).eval()
-                logger.info("[EVAL] Local HF Model loaded successfully.")
             except Exception as e:
                 logger.error(f"[EVAL] Failed to load local model: {e}")
 
-        # 官方 SDK (OpenAI) 
         elif self.api_type == "openai_sdk":
             from openai import OpenAI
-            self.client = OpenAI(
-                api_key=self.config.get("api_key"),
-                base_url=self.config.get("base_url") # 可选，兼容本地 vLLM/Ollama
-            )
+            self.client = OpenAI(api_key=self.config.get("api_key"), base_url=self.config.get("base_url"))
 
-        # 官方 SDK (Gemini)
         elif self.api_type == "gemini_sdk":
             from google import genai
             self.model = genai.Client(api_key=self.config.get("api_key"))
-           
 
-        # Python Requests (通用 HTTP / 本地端口)
         elif self.api_type == "requests":
             self.url = self.config.get("url")
             self.headers = self.config.get("headers", {"Content-Type": "application/json"})
-            
-        else:
-            raise ValueError(f"Unsupported api_type: {self.api_type}")
 
-    def _encode_image(self, image_path):
-        """辅助函数：将图片转为 base64 字符串"""
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode('utf-8')
-        
-    def _parse_action(self, response: str) -> int:
-        """From VLM text response to action index."""
-        try:
-            # Look for patterns like "Action: [0]", "Action: 0", "**Action:** [0]"
-            match = re.search(r"Action:?\s*\[?(\d+)\]?", response, re.IGNORECASE)
-            if match:
-                return int(match.group(1))
+    # --- 核心重试逻辑包装 ---
+    @retry(
+        retry=retry_if_exception(is_api_retryable_error),
+        wait=wait_exponential(multiplier=2, min=4, max=60), # 4s, 8s, 16s...
+        stop=stop_after_attempt(5),
+        before_sleep=lambda retry_state: logger.warning(
+            f"[EVAL] API Error (Attempt {retry_state.attempt_number}). Retrying in {retry_state.next_action.sleep}s..."
+        ),
+        reraise=True
+    )
+    def _execute_inference(self, image_path, prompt):
+        """仅包含网络/模型请求的核心逻辑"""
+        if self.api_type == "local_model":
+            if hasattr(self, 'processor') and self.processor is not None:
+                messages = [{"role": "user", "content": [{"type": "image", "image": image_path}, {"type": "text", "text": prompt}]}]
+                inputs = self.processor.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_dict=True, return_tensors="pt")
+                inputs = inputs.to(self.model.device)
+                gen_kwargs = {"max_new_tokens": self.max_tokens, "temperature": self.temperature, "do_sample": self.temperature > 0}
+                return self.model.generate(**inputs, **gen_kwargs), inputs
             else:
-                logger.warning(f"[EVAL] Warning: Could not parse action from response: {response}. Defaulting to 0.")
-                return 0 # Default fallback
-        except Exception as e:
-            logger.error(f"[EVAL] Error parsing action: {e}. Defaulting to 0.")
-            return 0
+                query = self.tokenizer.from_list_format([{'image': image_path}, {'text': prompt}])
+                inputs = self.tokenizer(query, return_tensors='pt').to(self.model.device)
+                return self.model.generate(**inputs, max_new_tokens=self.max_tokens, temperature=self.temperature), inputs
+
+        elif self.api_type == "openai_sdk":
+            base64_image = self._encode_image(image_path)
+            return self.client.chat.completions.create(
+                model=self.config.get("model_name", "gpt-4-vision-preview"),
+                messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}]}],
+                max_tokens=self.max_tokens, temperature=self.temperature
+            )
+
+        elif self.api_type == "gemini_sdk":
+            from google.genai import types
+            img = Image.open(image_path)
+            config = types.GenerateContentConfig(
+                temperature=self.temperature, max_output_tokens=self.max_tokens,
+                thinking_config=types.ThinkingConfig(include_thoughts=True, thinking_level='low')
+            )
+            return self.model.models.generate_content(model=self.config.get("model_name", "gemini-3-pro-preview"), contents=[prompt, img], config=config)
+
+        elif self.api_type == "requests":
+            base64_image = self._encode_image(image_path)
+            payload = {
+                "model": self.config.get("model_name", "qwen3-vl-4b"),
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                            }
+                        ]
+                    }
+                ],
+                "temperature": self.temperature,
+                "max_tokens": self.max_tokens
+            }
+            resp = requests.post(self.url, headers=self.headers, json=payload, timeout=60)
+            resp.raise_for_status() # 触发 requests 的异常以供 tenacity 捕获
+            return resp.json()
 
     def get_decision(self, image_path: str, prompt: str):
-        """
-        统一推理入口
-        Output: response (str), latency (float), action (int), thought (str|None)
-        """
-        response = "ERROR"
-        thought = None # 思考内容
+        """主入口：数据处理、结果解析"""
+        response, thought = "ERROR", None
+        input_tokens, output_tokens = 0, 0
         start_time = time.perf_counter()
-        input_tokens = 0
-        output_tokens = 0
 
         try:
-            # === 本地模型推理 ===
+            # 执行带重试的推理
+            raw_result = self._execute_inference(image_path, prompt)
+
+            # --- 解析部分 (根据不同后端提取 text 和 token) ---
             if self.api_type == "local_model":
-                # Check if using Processor (e.g. Qwen3-VL)
-                if hasattr(self, 'processor') and self.processor is not None:
-                    # Construct messages
-                    messages = [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "image", "image": image_path},
-                                {"type": "text", "text": prompt},
-                            ],
-                        }
-                    ]
-                    
-                    # Prepare inputs
-                    inputs = self.processor.apply_chat_template(
-                        messages,
-                        tokenize=True,
-                        add_generation_prompt=True, # 是否在输入末尾添加生成提示（如<|im_start|>assistant\n）
-                        return_dict=True,
-                        return_tensors="pt"
-                    )
-                    inputs= inputs.to(self.model.device)
-                    # Generate
-                    gen_kwargs = {
-                        "max_new_tokens": self.max_tokens,
-                        "temperature": self.temperature
-                    }
-                    if self.temperature > 0:
-                        gen_kwargs["do_sample"] = True
-                    
-                    # 记录 input tokens
-                    if "input_ids" in inputs:
-                        input_tokens = inputs.input_ids.shape[1]
-
-                    generated_ids = self.model.generate(**inputs, **gen_kwargs)
-                    
-                    # Trim input tokens
-                    generated_ids_trimmed = [
-                        out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
-                    ]
-
-                    # 记录 output tokens
-                    if len(generated_ids_trimmed) > 0:
-                        output_tokens = generated_ids_trimmed[0].shape[0]
-
-                    response = self.processor.batch_decode(
-                        generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
-                    )[0].strip()
-                    
-                else: 
-                    # Default/Legacy logic (e.g. Qwen-VL v1, InternVL using AutoTokenizer)
-                    query = self.tokenizer.from_list_format([
-                        {'image': image_path},
-                        {'text': prompt},
-                    ])
-                    inputs = self.tokenizer(query, return_tensors='pt')
-                    inputs = inputs.to(self.model.device)
-                    
-                    # 记录 input tokens
-                    if "input_ids" in inputs:
-                        input_tokens = inputs.input_ids.shape[1]
-
-                    gen_kwargs = {
-                        "max_new_tokens": self.max_tokens,
-                        "temperature": self.temperature
-                    }
-                    if self.temperature > 0:
-                        gen_kwargs["do_sample"] = True
-
-                    pred = self.model.generate(**inputs, **gen_kwargs)
-                    
-                    # 记录 output tokens
-                    if "input_ids" in inputs:
-                        output_tokens = pred.shape[1] - inputs.input_ids.shape[1]
-
-                    raw_response = self.tokenizer.decode(pred.cpu()[0], skip_special_tokens=True)
-                    response = raw_response.strip()
-    
-            # === OpenAI SDK ===
-            elif self.api_type == "openai_sdk":
-                base64_image = self._encode_image(image_path)
-                api_resp = self.client.chat.completions.create(
-                    model=self.config.get("model_name", "gpt-4-vision-preview"),
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{base64_image}"
-                                    },
-                                },
-                            ],
-                        }
-                    ],
-                    max_tokens=self.max_tokens,
-                    temperature=self.temperature
-                )
-                response = api_resp.choices[0].message.content.strip()
-                if api_resp.usage:
-                    input_tokens = api_resp.usage.prompt_tokens
-                    output_tokens = api_resp.usage.completion_tokens
-
-            # === Gemini SDK === 
-            elif self.api_type == "gemini_sdk":
-                from google.genai import types
-                model_name = self.config.get("model_name", "gemini-3-pro-preview")
-                img = Image.open(image_path)
-                
-                # 更新配置以启用思考功能
-                config = types.GenerateContentConfig(
-                    temperature=self.temperature,
-                    max_output_tokens=self.max_tokens,
-                    thinking_config=types.ThinkingConfig(
-                        include_thoughts=True, # Enable thoughts
-                        thinking_level = 'low'
-                    )
-                )
-
-                api_resp = self.model.models.generate_content(
-                    model=model_name, 
-                    contents=[prompt, img],
-                    config=config
-                )
-
-                response = ""
-                thought = ""
-                try:
-                    if api_resp.candidates and api_resp.candidates[0].content.parts:
-                        for part in api_resp.candidates[0].content.parts:
-                            try:
-                                if hasattr(part, 'thought') and part.thought:
-                                    thought += part.text + "\n"
-                                else:
-                                    response += part.text
-                            except:
-                                response += part.text
-                        response = response.strip()
-                        thought = thought.strip()
-                    else:
-                        response = api_resp.text.strip() if api_resp.text else ""
-                except Exception as e:
-                    print(f"提取内容时出错 (Finish Reason: {api_resp.candidates[0].finish_reason}): {e}")
-                    response = ""
-
-                # Token 统计部分
-                if api_resp.usage_metadata:
-                    input_tokens = api_resp.usage_metadata.prompt_token_count
-                    output_tokens = api_resp.usage_metadata.candidates_token_count
-
-            # === Requests ===
-            elif self.api_type == "requests":
-                base64_image = self._encode_image(image_path)
-                payload = {
-                    "model": self.config.get("model_name", "default"),
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": f"{prompt} [IMAGE]" # 简化示例
-                        }
-                    ],
-                    "image": base64_image,
-                    "prompt": prompt,
-                    "temperature": self.temperature,
-                    "max_tokens": self.max_tokens
-                }
-                
-                req_resp = requests.post(self.url, headers=self.headers, json=payload)
-                if req_resp.status_code == 200:
-                    result = req_resp.json()
-                    response = result['choices'][0]['message']['content']
-                    # 尝试读取 usage
-                    if 'usage' in result:
-                        usage = result['usage']
-                        input_tokens = usage.get('prompt_tokens', 0)
-                        output_tokens = usage.get('completion_tokens', 0)
+                gen_ids, inputs = raw_result
+                input_tokens = inputs.input_ids.shape[1]
+                if hasattr(self, 'processor') and self.processor:
+                    trimmed_ids = [out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, gen_ids)]
+                    output_tokens = trimmed_ids[0].shape[0]
+                    response = self.processor.batch_decode(trimmed_ids, skip_special_tokens=True)[0].strip()
                 else:
-                    response = f"Error: {req_resp.status_code}"
+                    output_tokens = gen_ids.shape[1] - input_tokens
+                    response = self.tokenizer.decode(gen_ids.cpu()[0], skip_special_tokens=True).strip()
+
+            elif self.api_type == "openai_sdk":
+                response = raw_result.choices[0].message.content.strip()
+                if raw_result.usage:
+                    input_tokens, output_tokens = raw_result.usage.prompt_tokens, raw_result.usage.completion_tokens
+
+            elif self.api_type == "gemini_sdk":
+                # 处理 Gemini 的多部分响应（Thought + Content）
+                res_parts, thought_parts = [], []
+                if raw_result.candidates:
+                    for part in raw_result.candidates[0].content.parts:
+                        if hasattr(part, 'thought') and part.thought:
+                            thought_parts.append(part.text)
+                        else:
+                            res_parts.append(part.text)
+                response = "".join(res_parts).strip()
+                thought = "\n".join(thought_parts).strip()
+                if raw_result.usage_metadata:
+                    input_tokens = raw_result.usage_metadata.prompt_token_count
+                    output_tokens = raw_result.usage_metadata.candidates_token_count
+
+            elif self.api_type == "requests":
+                response = raw_result['choices'][0]['message']['content']
+                input_tokens = raw_result.get('usage', {}).get('prompt_tokens', 0)
+                output_tokens = raw_result.get('usage', {}).get('completion_tokens', 0)
 
         except Exception as e:
-            logger.error(f"[EVAL] Inference Error: {e}")
+            logger.error(f"[EVAL] Inference Failed after retries: {e}")
             response = "ERROR"
 
-        end_time = time.perf_counter()
-        latency = end_time - start_time
-        logger.info(f"[EVAL] Inference Time: {latency:.2f}s | Tokens: {input_tokens} in / {output_tokens} out")
+        latency = time.perf_counter() - start_time
+        logger.info(f"[EVAL] Latency: {latency:.2f}s | Tokens: {input_tokens} -> {output_tokens}")
+        
+        return response, latency, self._parse_action(response), thought
 
-        action = self._parse_action(response)
+    def _encode_image(self, image_path):
+        with open(image_path, "rb") as f:
+            return base64.b64encode(f.read()).decode('utf-8')
 
-        return response, latency, action, thought
-
-
-if __name__ == "__main__":
-
-    prompt_text = PromptBuilder.build_decision_prompt(current_phase_id=1)
-    test_img = "data/test/Hongkong_YMT/5/aircraft_J1.jpg"
-
-    # 使用 configs/model_config.py 中的默认配置初始化
-    agent = VLMAgent()
-    
-    print(agent.get_decision(test_img, prompt_text))
-
-    # 也可以动态覆盖参数
-    # agent_custom = VLMAgent(api_type="requests", temperature=0.1)
+    def _parse_action(self, response: str) -> int:
+        match = re.search(r"Action:?\s*\[?(\d+)\]?", response, re.IGNORECASE)
+        return int(match.group(1)) if match else 0
