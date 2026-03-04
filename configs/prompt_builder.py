@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-03-03 21:06:49
+LastEditTime: 2026-03-04 15:13:37
 Description: Optimized Prompt Builder (Visual-Only Analysis with Lane Numbering)
 FilePath: /VLMTraffic/configs/prompt_builder.py
 '''
@@ -84,17 +84,17 @@ class PromptBuilder:
     
     COT_LANE_TEMPLATES = {
         "4_JUNCTION": '''
-                    - North Approach: Lane 1 (Left-Turn): <queue length>, Lane 2 (Straight): <queue length>, Lane 3 (Right-Turn): <queue length>>.
-                    - South Approach: Lane 1 (Left-Turn): <queue length>, Lane 2 (Straight): <queue length>, Lane 3 (Right-Turn): <queue length>>.
-                    - East Approach: Lane 1 (Left-Turn): <queue length>, Lane 2 (Straight): <queue length>, Lane 3 (Right-Turn): <queue length>>.
-                    - West Approach: Lane 1 (Left-Turn): <queue length>, Lane 2 (Straight): <queue length>, Lane 3 (Right-Turn): <queue length>>.
+            - North Approach: Lane 1 (Left-Turn): <int>, Lane 2 (Straight): <int>, Lane 3 (Right-Turn): <int>>.
+            - South Approach: Lane 1 (Left-Turn): <int>, Lane 2 (Straight): <int>, Lane 3 (Right-Turn): <int>>.
+            - East Approach: Lane 1 (Left-Turn): <int>, Lane 2 (Straight): <int>, Lane 3 (Right-Turn): <int>>.
+            - West Approach: Lane 1 (Left-Turn): <int>, Lane 2 (Straight): <int>, Lane 3 (Right-Turn): <int>>.
         ''',
         
         "Hongkong_SPECIAL_JUNCTION": '''
-                    - North Approach: Lane 1 (Straight): <queue length>, Lane 2 (Straight): <queue length>, Lane 3 (Straight): <queue length>>.
-                    - South Approach: Lane 1 (Right-Turn): <queue length>, Lane 2 (Straight): <queue length>, Lane 3 (Straight): <queue length>>.
-                    - East Approach: Lane 1 (Straight): <queue length>, Lane 2 (Straight): <queue length>, Lane 3 (Left-Turn): <queue length>>.
-                    - West Approach: Lane 1 (Straight): <queue length>, Lane 2 (Straight): <queue length>, Lane 3 (Straight): <queue length>>.
+            - North Approach: Lane 1 (Straight): <int>, Lane 2 (Straight): <int>, Lane 3 (Straight): <int>>.
+            - South Approach: Lane 1 (Right-Turn): <int>, Lane 2 (Straight): <int>, Lane 3 (Straight): <int>>.
+            - East Approach: Lane 1 (Straight): <int>, Lane 2 (Straight): <int>, Lane 3 (Left-Turn): <int>>.
+            - West Approach: Lane 1 (Straight): <int>, Lane 2 (Straight): <int>, Lane 3 (Straight): <int>>.
         ''',
         
         "T_JUNCTION": "todo"
@@ -184,8 +184,8 @@ class PromptBuilder:
                 - Final Condition: State the "Final Condition" (Normal or Special).
             3. Selection Logic: 
                 - Rule Identification: Identify which rule from the "Task Definition" applies.
-                - Conclusion: Select the target Phase ID.
                 - Reasoning: Explain why this phase was selected over others, referencing the lane-specific data.
+                - Conclusion: Select the target Phase ID.
             ]
             
             Action: The Selected Phase Index, e.g., 0
