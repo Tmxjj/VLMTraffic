@@ -27,7 +27,7 @@ def format_vlm_response(text):
     clean_text = " ".join([line.strip() for line in text.split('\n') if line.strip()])
     
     # --- 一级标题 ---
-    primary_keywords = ["1. Scene Understanding", "2. Scene Analysis", "3. Selection Logic"]
+    primary_keywords = ["Scene Understanding", "Scene Analysis", "Selection Logic"]
     for key in primary_keywords:
         if key in clean_text:
             clean_text = clean_text.replace(key, f"\n\n**{key}**")
@@ -46,8 +46,8 @@ def format_vlm_response(text):
 
     # --- 三级标题 (新增逻辑) ---
     tertiary_keywords = [
-        "- North Approach", "- South Approach", "- East Approach", "- West Approach",
-        "- Phase 0 (ETWT)", "- Phase 1 (NTST)", "- Phase 2 (ELWL)", "- Phase 3 (NLSL)"
+        "North Approach", "South Approach", "East Approach", "West Approach",
+        "Phase 0", "Phase 1", "Phase 2", "Phase 3"
     ]
     for tag in tertiary_keywords:
         if tag in clean_text:

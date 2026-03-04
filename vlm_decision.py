@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:49:26
-LastEditTime: 2026-02-09 17:22:28
+LastEditTime: 2026-03-04 22:06:46
 Description: this script is used to 
 FilePath: /VLMTraffic/vlm_decision.py
 '''
@@ -32,20 +32,17 @@ from src.inference.vlm_agent import VLMAgent
 from configs.prompt_builder import PromptBuilder
 from src.evaluation.metrics import MetricsCalculator
 
+import argparse
+import sys
+import shutil # ensure this is imported if not already
+
 class Evaluator:
     """
     Runs the end-to-end evaluation loop.
     """
-    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results"):
+    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
-        os.makedirs(self.log_dir, exist_ok=True)
-        
-        # 假设 evaluator 是入口，需要初始化
-        self.logger_path = os.path.join(self.log_dir, self.scenario_key)
-        set_logger(self.logger_path, terminal_log_level='INFO')
-        
-        logger.info(f"[EVAL] Logging initialized at {self.logger_path}")
         
         # --- 1. Load Configurations ---
         path_convert = get_abs_path(__file__) 
@@ -57,23 +54,61 @@ class Evaluator:
         self.scenario_name = self.scenario_config["SCENARIO_NAME"]
         self.junction_name = self.scenario_config["JUNCTION_NAME"]
         
+        # Route File Handling
+        model_name = MODEL_CONFIG.get(MODEL_CONFIG.get("api_type", "local_model"), {}).get("model_name", "N/A")
+        route_name = "default"
+        if route_file:
+            route_name = os.path.splitext(os.path.basename(route_file))[0]
+        
+        # Update Log Path
+        self.logger_path = os.path.join(self.log_dir, self.scenario_key, route_name, model_name)
+        create_folder(self.logger_path) # Create log folder
+        set_logger(self.logger_path, terminal_log_level='INFO')
+        
+        logger.info(f"[EVAL] Logging initialized at {self.logger_path}")
+        
         # Determine file paths
-        sumo_cfg = path_convert(f"data/raw/{self.scenario_name}/{self.scenario_config['NETFILE']}.sumocfg")
+        base_sumo_cfg = path_convert(f"data/raw/{self.scenario_name}/{self.scenario_config['NETFILE']}.sumocfg")
         scenario_glb_dir = path_convert(f"data/raw/{self.scenario_name}/3d_assets/")
-        trip_info = path_convert(f"data/test/{self.scenario_name}/tripinfo.out.xml")
-        statistic_output = path_convert(f"data/eval/{self.scenario_name}/statistic_output.xml")
-        summary = path_convert(f"data/eval/{self.scenario_name}/summary.txt")
-        queue_output = path_convert(f"data/eval/{self.scenario_name}/queue_output.xml")
         
-        # Checking file existence
-        required_files = [sumo_cfg, scenario_glb_dir, trip_info]
-        for f in required_files:
-            if not os.path.exists(f):
-                logger.warning(f"[EVAL] File/Directory not found: {f}. Evaluation might fail.")
+        # Output Folder Structure: data/eval/{Scenario}/{RouteName}/{Model_name}
         
-        # Ensure output folder exists (for consistent file structures)
-        self.output_folder = path_convert(f"data/eval/{self.scenario_name}/")
+        self.output_folder = path_convert(f"data/eval/{self.scenario_name}/{route_name}/{model_name}/")
         create_folder(self.output_folder)
+
+        trip_info = os.path.join(self.output_folder, "tripinfo.out.xml")
+        statistic_output = os.path.join(self.output_folder, "statistic_output.xml")
+        summary = os.path.join(self.output_folder, "summary.txt")
+        queue_output = os.path.join(self.output_folder, "queue_output.xml")
+        
+        # Handle Custom Route File
+        sumo_cfg = base_sumo_cfg
+        if route_file:
+            try:
+                # We need to create a temporary sumocfg pointing to the new route file
+                with open(base_sumo_cfg, 'r') as f:
+                    cfg_content = f.read()
+                
+                
+                new_route_path = f"./env/{os.path.basename(route_file)}" # Assuming route file is in the env folder relative to sumocfg
+                cfg_content = re.sub(r'<route-files value="[^"]+"/>', f'<route-files value="{new_route_path}"/>', cfg_content, count=1)
+                
+                # Save temp config to the same directory as the original to preserve relative paths
+                temp_cfg_path = os.path.join(os.path.dirname(base_sumo_cfg), f"temp_{route_name}.sumocfg")
+                with open(temp_cfg_path, 'w') as f:
+                    f.write(cfg_content)
+                
+                sumo_cfg = temp_cfg_path
+                logger.info(f"[EVAL] Created temporary SUMO config with route {route_file}: {sumo_cfg}")
+            except Exception as e:
+                logger.error(f"[EVAL] Failed to modify SUMO config for route {route_file}: {e}")
+                # Fallback to original if modification fails, though this might run wrong route
+                # raise e # better to fail
+                pass 
+
+        # Checking file existence
+        if not os.path.exists(scenario_glb_dir):
+             logger.warning(f"[EVAL] Directory not found: {scenario_glb_dir}. Evaluation might fail.")
         
         tls_add = [
             path_convert(f"data/raw/{self.scenario_name}/add/e2.add.xml"),
@@ -239,7 +274,8 @@ class Evaluator:
                         )
                         # VLM Agent Inference
                         vlm_response, latency, decided_action, thought = self.agent.get_decision(bev_image_path, prompt)
-                        
+                        # vlm_response, latency, decided_action, thought = "ERROR", 0, 0, None # --- IGNORE --- for testing fallback
+                 
                         # Save Response per Junction
                         _resp_file = os.path.join(_step_dir, f"response_{jid}.txt")
                         content_to_save = vlm_response
@@ -247,14 +283,38 @@ class Evaluator:
                             content_to_save += f"\n\n[Thinking Process]\n{thought}"
                         write_response_to_file(file_path=_resp_file, content=content_to_save)
                         
-                        logger.info(f"[EVAL] Step: {decision_step} | JID: {jid} | Phase: {current_phase_id} | Action: {decided_action} | Latency: {latency:.2f}s")
-                        jid_action = decided_action
+                        # --- Fallback Logic Check ---
+                        is_valid = True
+                        
+                        # Re-verify regex because vlm_agent returns 0 on failure, which is ambiguous
+                        # We want to catch cases where "Action: [...]" is missing
+                        match = re.search(r"Action:?\s*\[?(\d+)\]?", vlm_response, re.IGNORECASE)
+                        if (vlm_response == "ERROR") or (not match):
+                            is_valid = False
+
+                        if is_valid:
+                            logger.info(f"[EVAL] Step: {decision_step} | Sumo_time {sumo_sim_step} | JID: {jid} | Phase: {current_phase_id} | Action: {decided_action} | Latency: {latency:.2f}s")
+                            jid_action = decided_action
+                        else:
+                            num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
+                            fixed_action = decision_step % num_phases
+                            logger.warning(f"[EVAL] VLM Failed/Invalid (Resp: {vlm_response[:30]}...). Fallback to Fixed Timing: Action {fixed_action} (Step {decision_step} % {num_phases})")
+                            jid_action = fixed_action
                         
                     except Exception as e:
                         logger.error(f"[EVAL] VLM Inference failed for {jid} at step {decision_step}: {e}")
-                        jid_action = 0 # Fallback
+                        
+                        # Fallback
+                        num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
+                        fixed_action = decision_step % num_phases
+                        logger.warning(f"[EVAL] Exception Fallback to Fixed Timing: Action {fixed_action}")
+                        jid_action = fixed_action
                 else:
-                    logger.warning(f"[EVAL] No BEV image available for {jid}, skipping VLM")
+                    logger.warning(f"[EVAL] No BEV image available for {jid}, skipping VLM in sumo_time {sumo_sim_step}")
+                    # Fallback
+                    num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
+                    fixed_action = decision_step % num_phases
+                    jid_action = fixed_action
                 
                 # Collect Action
                 action_dict[jid] = jid_action
@@ -283,10 +343,28 @@ class Evaluator:
         # 方案1: 多进程隔离 (复杂)  -—>代码可读性差 ❌ 
         # 方案2: 使用traci，而不是 libsumo ，但由于sumo版本问题，暂时无法切换 ❌
         # 方案3: 后续单独计算指标 不写在日志中 不随evalutor.py运行✅
+        if hasattr(self, 'temp_cfg_path') and os.path.exists(self.temp_cfg_path):
+            try:
+                os.remove(self.temp_cfg_path)
+                logger.info(f"[EVAL] Removed temporary config file: {self.temp_cfg_path}")
+            except OSError as e:
+                logger.warning(f"[EVAL] Failed to remove temporary config file {self.temp_cfg_path}: {e}")
         self.env.close()
 
    
 if __name__ == "__main__":
-    evaluator = Evaluator(scenario_key="Hongkong_YMT", log_dir="./log/eval_results")
-    evaluator.run_eval(max_decision_step=10)
+    parser = argparse.ArgumentParser(description="Run VLM-based Traffic Signal Control Evaluation.")
+    parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario key (e.g., JiNan, Hongkong_YMT)")
+    parser.add_argument("--log_dir", type=str, default="./log/eval_results", help="Directory for logs and evaluation outputs.")
+    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real.rou.xml", help="Name of the .rou.xml file to use (e.g., anon_3_4_jinan_real_2000.rou.xml).")
+    parser.add_argument("--max_steps", type=int, default=100, help="Maximum number of decision steps for the simulation.")
+    
+    args = parser.parse_args()
+
+    evaluator = Evaluator(
+        scenario_key=args.scenario, 
+        log_dir=args.log_dir,
+        route_file=args.route_file
+    )
+    evaluator.run_eval(max_decision_step=args.max_steps)
 

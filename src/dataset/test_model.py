@@ -1,29 +1,35 @@
 '''
 Author: yufei Ji
 Date: 2026-03-03 16:27:31
-LastEditTime: 2026-03-03 20:32:00
+LastEditTime: 2026-03-04 20:00:10
 Description: this script is used to 短时间内测试模型的内容理解能力
 FilePath: /VLMTraffic/src/dataset/test_model.py
 '''
 from configs.model_config import MODEL_CONFIG
 from configs.prompt_builder import PromptBuilder
 from src.inference.vlm_agent import VLMAgent
+from datetime import datetime
 scenario_key = "JiNan"
 agent = VLMAgent() 
 
 test_data_list = [
     {
-        "img_path": "data/sft_dataset/JiNan/step_4/intersection_3_1_bev_watermarked.jpg",
+        "img_path": "data/sft_dataset/JiNan/0303_test/step_4/intersection_3_1_bev_watermarked.jpg",
         "phase_id": 3
     },
-    {
-        "img_path": "data/sft_dataset/JiNan/step_3/intersection_4_1_bev_watermarked.jpg",
-        "phase_id": 2
-    },
-    {
-        "img_path": "data/sft_dataset/JiNan/step_3/intersection_3_1_bev_watermarked.jpg",
-        "phase_id": 3
-    }
+    # {
+    #     "img_path": "data/sft_dataset/JiNan/0303_test/step_3/intersection_4_1_bev_watermarked.jpg",
+    #     "phase_id": 2
+    # },
+    # {
+    #     "img_path": "data/sft_dataset/JiNan/0303_test/step_3/intersection_3_1_bev_watermarked.jpg",
+    #     "phase_id": 3
+    # },
+    # {   
+    #     "img_path": "data/sft_dataset/JiNan/0303_test/step_3/intersection_1_2_bev_watermarked.jpg",
+    #     "phase_id": 0
+    # }
+    
 ]
 api_type = MODEL_CONFIG["api_type"] 
 model_name = MODEL_CONFIG.get(api_type, {}).get("model_name", "N/A")
@@ -36,6 +42,7 @@ for data in test_data_list:
 
 # 将测试结果保存到本地文件
     with open(f"src/dataset/test_results_watermarked_{api_type}_{model_name}.txt", "a") as f:
+        f.write(f"Time: {datetime.now()}\n")
         f.write(f"Image: {img_path}\n")
         f.write(f"Prompt: {prompt}\n")
         f.write(f"VLM Response: {vlm_response}\n")

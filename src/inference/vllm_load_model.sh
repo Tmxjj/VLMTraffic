@@ -1,7 +1,7 @@
 python -m vllm.entrypoints.openai.api_server \
-    --model models/base_models/Qwen3-VL-4B-Instruct \
+    --model models/base_models/Qwen3-VL-8B-Instruct \
     --trust-remote-code \
-    --served-model-name qwen3-vl-4b \
+    --served-model-name qwen3-vl-8b \
     --dtype bfloat16 \
     --enable-prefix-caching \
     --max-model-len 32768 \
