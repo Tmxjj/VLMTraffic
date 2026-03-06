@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-03-03 20:25:07
-LastEditTime: 2026-03-03 20:52:58
+LastEditTime: 2026-03-05 23:36:33
 Description: this script is used to 为十字路口的 BEV 图像在各个进口道的车道上添加极淡的数字水印 (1, 2, 3)，以帮助模型更好地理解车道位置和数量
 FilePath: /VLMTraffic/scripts/add_lane_watermarks.py
 '''
@@ -37,9 +37,9 @@ def add_lane_watermarks(input_path: str, output_path: str = None):
         print("⚠️ 未找到系统字体，使用默认字体 (可能较小)")
         font = ImageFont.load_default()
 
-    # 水印颜色与透明度：RGBA格式，A=80 表示极淡 (取值0-255)
-    text_color = (255, 255, 255, 100)  # 白色，透明度约 40%
-    outline_color = (0, 0, 0, 80)      # 黑色描边，增加在浅色路面或白车上的对比度
+    # 水印颜色与透明度：RGBA格式，A=120 表示极淡 (取值0-255)
+    text_color = (255, 255, 255, 120)  # 白色，透明度约 50%
+    outline_color = (0, 0, 0, 100)      # 黑色描边，增加在浅色路面或白车上的对比度
 
     # --- 坐标计算 (基于标准的对称十字路口) ---
     # 假设中心点
@@ -58,24 +58,24 @@ def add_lane_watermarks(input_path: str, output_path: str = None):
     # 定义四个进口道的坐标 (基于 RHT 右侧通行规则)
     watermark_positions = {
         "South": [ # 位于下方，车流向上，右侧半幅路
-            ("1", Cx + d1*0.94, Cy + stop_dist_y*1.03),
-            ("2", Cx + d2*0.94, Cy + stop_dist_y*1.03),
-            ("3", Cx + d3*0.94, Cy + stop_dist_y*1.03)
+            ("1", Cx + d1*0.94, Cy + stop_dist_y*0.78),
+            ("2", Cx + d2*0.94, Cy + stop_dist_y*0.78),
+            ("3", Cx + d3*0.94, Cy + stop_dist_y*0.78)
         ],
         "North": [ # 位于上方，车流向下，左侧半幅路
-            ("1", Cx - d1*0.94, Cy - stop_dist_y*1.15),
-            ("2", Cx - d2*0.94, Cy - stop_dist_y*1.15),
-            ("3", Cx - d3*0.94, Cy - stop_dist_y*1.15)
+            ("1", Cx - d1*0.94, Cy - stop_dist_y*0.88),
+            ("2", Cx - d2*0.94, Cy - stop_dist_y*0.88),
+            ("3", Cx - d3*0.94, Cy - stop_dist_y*0.88)
         ],
         "West": [  # 位于左侧，车流向右，下方半幅路
-            ("1", Cx - stop_dist_x*1.04, Cy + d1*0.8),
-            ("2", Cx - stop_dist_x*1.04, Cy + d2*0.8),
-            ("3", Cx - stop_dist_x*1.04, Cy + d3*0.8)
+            ("1", Cx - stop_dist_x*0.85, Cy + d1*0.8),
+            ("2", Cx - stop_dist_x*0.85, Cy + d2*0.8),
+            ("3", Cx - stop_dist_x*0.85, Cy + d3*0.8)
         ],
         "East": [  # 位于右侧，车流向左，上方半幅路
-            ("1", Cx + stop_dist_x*1.04, Cy - d1),
-            ("2", Cx + stop_dist_x*1.04, Cy - d2),
-            ("3", Cx + stop_dist_x*1.04, Cy - d3)
+            ("1", Cx + stop_dist_x*0.85, Cy - d1),
+            ("2", Cx + stop_dist_x*0.85, Cy - d2),
+            ("3", Cx + stop_dist_x*0.85, Cy - d3)
         ]
     }
 
@@ -106,14 +106,14 @@ def add_lane_watermarks(input_path: str, output_path: str = None):
         base, ext = os.path.splitext(input_path)
         output_path = f"{base}_watermarked{ext}"
         
-    final_img.save(output_path, quality=95)
+    final_img.save(output_path)
     print(f"✅ 水印添加成功! 已保存至: {output_path}")
 
 if __name__ == "__main__":
     # 使用示例：替换为您的实际图片路径
-    input_image1 = "data/sft_dataset/JiNan/step_4/intersection_3_1_bev.jpg" 
+    input_image1 = "data/eval/JiNan/anon_3_4_jinan_real.rou/qwen3-vl-8b/step_0/aircraft_intersection_1_1_bev_raw.png"
     add_lane_watermarks(input_image1)
-    input_image2 = "data/sft_dataset/JiNan/step_3/intersection_4_1_bev.jpg"
-    add_lane_watermarks(input_image2)
-    input_image3 = "data/sft_dataset/JiNan/step_3/intersection_3_1_bev.jpg"
-    add_lane_watermarks(input_image3)    
+    # input_image2 = "data/sft_dataset/JiNan/step_3/intersection_4_1_bev.jpg"
+    # add_lane_watermarks(input_image2)
+    # input_image3 = "data/sft_dataset/JiNan/step_3/intersection_3_1_bev.jpg"
+    # add_lane_watermarks(input_image3)    

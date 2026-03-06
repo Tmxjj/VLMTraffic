@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-03-03 09:53:58
+LastEditTime: 2026-03-05 17:17:10
 Description: this script is used to generate BEV images from 3D TSC env
 FilePath: /VLMTraffic/src/bev_generation/online_bev_render.py
 '''
@@ -110,12 +110,12 @@ if __name__ == '__main__':
             
             for jid in sensor_data_imgs:
                 # aircraft_all
-                bev_junction_path = os.path.join(_save_folder, f"{jid}.jpg")
+                bev_junction_path = os.path.join(_save_folder, f"{jid}.png")
                 junction_img = sensor_data_imgs[jid].get('aircraft_all')
                 if junction_img is not None:
                     cv2.imwrite(bev_junction_path, convert_rgb_to_bgr(junction_img))
                 # junction_front_all
-                front_junction_path = os.path.join(_save_folder, f"{jid}_front.jpg")
+                front_junction_path = os.path.join(_save_folder, f"{jid}_front.png")
                 front_img = sensor_data_imgs[jid].get('junction_front_all')
                 if front_img is not None:
                     cv2.imwrite(front_junction_path, convert_rgb_to_bgr(front_img))

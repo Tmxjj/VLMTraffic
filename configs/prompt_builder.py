@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-03-04 22:22:40
+LastEditTime: 2026-03-06 11:00:06
 Description: Optimized Prompt Builder (Visual-Only Analysis with Lane Numbering)
 FilePath: /VLMTraffic/configs/prompt_builder.py
 '''
@@ -173,7 +173,8 @@ C. Selection Logic :
     1. [Rule: Bottleneck_Rule]: Select the Phase ID with the **HIGHEST** cumulative queue length across its permitted movements.
     2. [Rule: Empty_Lane_Constraint]: NEVER select a phase if its corresponding lanes have 0 waiting vehicles. (Note: If ALL phases have 0 vehicles, Rule 4 Fallback applies).
     3. [Rule: Tie_Breaker]: If congestion is equal among multiple candidates, select a Phase ID **DIFFERENT** from the current one.
-    4. [Rule: Fallback_Static]: If all lanes in all directions are empty, maintain the **Current Phase**.
+    4. [Rule: Fallback_Cycle]: If all lanes in all directions are empty, ensure phase rotation by selecting the NEXT Phase relative to the Current Phase.
+    5. [Rule: Contextual_Adaptation]: If the scenario involves complex traffic patterns, potential upstream/downstream blockages, or nuances not fully captured by the rules above, autonomously evaluate the overall scene dynamics and determine the most optimal Phase ID to maximize intersection efficiency.
 
 
 6. Chain-of-Thought Reasoning

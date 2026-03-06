@@ -108,3 +108,11 @@ class MetricsCalculator:
             logger.error(f"[EVAL] Error parsing queue file: {e}")
             
         return metrics
+
+if __name__ == "__main__":
+    # Example usage
+    
+    calculator = MetricsCalculator()
+    metrics = calculator.calculate_from_files("data/eval/JiNan/anon_3_4_jinan_real.rou/qwen3-vl-8b/statistic_output.xml", 
+                                             "data/eval/JiNan/anon_3_4_jinan_real.rou/qwen3-vl-8b/queue_output.xml")
+    print(metrics)

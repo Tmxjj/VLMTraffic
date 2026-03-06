@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-03-04 21:52:14
+LastEditTime: 2026-03-05 15:04:11
 Description: this script is used to store the configuration of different TSC scenarios
 FilePath: /VLMTraffic/configs/scenairo_config.py
 '''
@@ -103,7 +103,7 @@ SCENARIO_CONFIGS = {
             "should_count_vehicles": True,
             "debuger_print_node": False,
             "debuger_spin_camera": False,
-            "is_render": False, 
+            "is_render": True, 
             "is_every_frame": False # 是否每一帧都渲染
         },
         "SENSOR_CFG": {

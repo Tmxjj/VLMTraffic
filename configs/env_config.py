@@ -61,7 +61,7 @@ TSHUB_ENV_CONFIG = {
     # 车辆瞬移等待时间（秒）：如果车辆拥堵不动超过此时间，会被瞬移或移除（-1 表示禁用）
     "time_to_teleport": -1,
     # SUMO 随机种子：'random' 表示随机，或指定固定整数以复现结果
-    "sumo_seed": 'random',
+    "sumo_seed": 42,
     # 是否在仿真结束时输出未完成行程的车辆 tripinfo
     "tripinfo_output_unfinished": True,
     # 车辆碰撞后的动作：'warn', 'teleport', 'remove' 或 None (默认为 SUMO 配置)

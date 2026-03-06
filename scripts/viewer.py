@@ -313,6 +313,7 @@ if df is not None and not df.empty:
     with col_analysis:
         st.subheader("🤖 VLM Analysis")
         raw_response = row.get('vlm_response_raw', '')
+        # display_text = raw_response
         display_text = format_vlm_response(raw_response)
 
         # 翻译
@@ -366,7 +367,7 @@ if df is not None and not df.empty:
         
         # --- 1. 准备默认值 ---
         default_tag = "无误"
-        default_text = display_text
+        default_text = raw_response
         default_remark = "" # 新增备注默认值
 
         if prev_anno:

@@ -87,7 +87,7 @@ class OfflineBEVGenerator:
                     junction_img = junction_img_dict.get('aircraft_all')
                     
                     if junction_img is not None:
-                        save_path = os.path.join(save_folder, f"{jid}_offline.jpg")
+                        save_path = os.path.join(save_folder, f"{jid}_offline.png")
                         aircraft_img = junction_img[:, :, ::-1] # RGB -> BGR
                         cv2.imwrite(save_path, aircraft_img)
             else:

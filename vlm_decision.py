@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:49:26
-LastEditTime: 2026-03-04 22:06:46
+LastEditTime: 2026-03-06 11:14:59
 Description: this script is used to 
 FilePath: /VLMTraffic/vlm_decision.py
 '''
@@ -11,6 +11,7 @@ import cv2
 import json
 import time
 from loguru import logger
+import sys
 
 # 修复 OpenGL 版本报错 (必须放在最前面)
 os.environ['MESA_GL_VERSION_OVERRIDE'] = '3.3'
@@ -31,6 +32,7 @@ from configs.model_config import MODEL_CONFIG
 from src.inference.vlm_agent import VLMAgent
 from configs.prompt_builder import PromptBuilder
 from src.evaluation.metrics import MetricsCalculator
+from scripts.add_lane_watermarks import add_lane_watermarks
 
 import argparse
 import sys
@@ -260,10 +262,15 @@ class Evaluator:
                     try:
                         junction_img_data = sensor_imgs[aircraft_jid].get('aircraft_all')
                         if junction_img_data is not None:
-                            bev_image_path = os.path.join(_step_dir, f"{aircraft_jid}_bev.jpg")
-                            cv2.imwrite(bev_image_path, convert_rgb_to_bgr(junction_img_data))
+                            raw_bev_path = os.path.join(_step_dir, f"{aircraft_jid}_bev_raw.png")
+                            cv2.imwrite(raw_bev_path, convert_rgb_to_bgr(junction_img_data))
+                            
+                            # Add watermark
+                            bev_image_path = os.path.join(_step_dir, f"{aircraft_jid}_bev_watermarked.png")
+                            add_lane_watermarks(raw_bev_path, bev_image_path)
+                            
                     except Exception as e:
-                         logger.warning(f"[EVAL] Failed to save image for {aircraft_jid}: {e}")
+                         logger.warning(f"[EVAL] Failed to save or watermark image for {aircraft_jid}: {e}")
 
                 # 3. VLM Agent Decision
                 if bev_image_path:
@@ -273,8 +280,8 @@ class Evaluator:
                             scenario_name=self.scenario_key # Pass scenario key to select correct prompt
                         )
                         # VLM Agent Inference
-                        vlm_response, latency, decided_action, thought = self.agent.get_decision(bev_image_path, prompt)
-                        # vlm_response, latency, decided_action, thought = "ERROR", 0, 0, None # --- IGNORE --- for testing fallback
+                        # vlm_response, latency, decided_action, thought = self.agent.get_decision(bev_image_path, prompt)
+                        vlm_response, latncy, decided_action, thought = "ERROR", 0, 0, None # --- IGNORE --- for testing fallback
                  
                         # Save Response per Junction
                         _resp_file = os.path.join(_step_dir, f"response_{jid}.txt")
@@ -357,7 +364,7 @@ if __name__ == "__main__":
     parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario key (e.g., JiNan, Hongkong_YMT)")
     parser.add_argument("--log_dir", type=str, default="./log/eval_results", help="Directory for logs and evaluation outputs.")
     parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real.rou.xml", help="Name of the .rou.xml file to use (e.g., anon_3_4_jinan_real_2000.rou.xml).")
-    parser.add_argument("--max_steps", type=int, default=100, help="Maximum number of decision steps for the simulation.")
+    parser.add_argument("--max_steps", type=int, default=120, help="Maximum number of decision steps for the simulation.")
     
     args = parser.parse_args()
 

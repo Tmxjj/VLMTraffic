@@ -46,15 +46,9 @@ from src.inference.vlm_agent import VLMAgent
 from configs.prompt_builder import PromptBuilder
 
 class GoldenGenerator:
-    def __init__(self, scenario_key="Hongkong_YMT", log_dir="./log/golden_dataset"):
+    def __init__(self, scenario_key="Hongkong_YMT", log_dir="./log/golden_dataset", route_file=None):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
-        create_folder(self.log_dir)
-        
-        self.logger_path = os.path.join(self.log_dir, self.scenario_key)
-        set_logger(self.logger_path, terminal_log_level='INFO')
-        
-        logger.info(f"[GOLDEN] Logging initialized at {self.logger_path}")
         
         # --- 1. Load Configurations ---
         path_convert = get_abs_path(__file__) 
@@ -64,23 +58,61 @@ class GoldenGenerator:
 
         self.scenario_name = self.scenario_config["SCENARIO_NAME"]
         self.junction_name = self.scenario_config["JUNCTION_NAME"]
+
+        # Route File Handling
+        route_name = "default"
+        if route_file:
+            route_name = os.path.splitext(os.path.basename(route_file))[0]
+
+        # Update Log and Output Path
+        self.logger_path = os.path.join(self.log_dir, self.scenario_key, route_name)
+        create_folder(self.logger_path)
+        set_logger(self.logger_path, terminal_log_level='INFO')
+        
+        logger.info(f"[GOLDEN] Logging initialized at {self.logger_path}")
         
         # Determine file paths
         # input
-        sumo_cfg = path_convert(f"../../data/raw/{self.scenario_name}/{self.scenario_config['NETFILE']}.sumocfg")
+        base_sumo_cfg = path_convert(f"../../data/raw/{self.scenario_name}/{self.scenario_config['NETFILE']}.sumocfg")
         scenario_glb_dir = path_convert(f"../../data/raw/{self.scenario_name}/3d_assets/")
         tls_add = [
             path_convert(f"../../data/raw/{self.scenario_name}/add/e2.add.xml"),
             path_convert(f"../../data/raw/{self.scenario_name}/add/tls_programs.add.xml")
         ]
         # output
-        self.output_dir = path_convert(f"../../data/sft_dataset/{self.scenario_name}/")
+        self.output_dir = path_convert(f"../../data/sft_dataset/{self.scenario_name}/{route_name}/")
         create_folder(self.output_dir)
 
-        trip_info = path_convert(f"../../data/sft_dataset/{self.scenario_name}/tripinfo_golden.out.xml")
-        statistic_output = path_convert(f"../../data/sft_dataset/{self.scenario_name}/statistic_output_golden.xml")
-        summary = path_convert(f"../../data/sft_dataset/{self.scenario_name}/summary_golden.txt")
-        queue_output = path_convert(f"../../data/sft_dataset/{self.scenario_name}/queue_output_golden.xml")
+        trip_info = path_convert(f"../../data/sft_dataset/{self.scenario_name}/{route_name}/tripinfo_golden.out.xml")
+        statistic_output = path_convert(f"../../data/sft_dataset/{self.scenario_name}/{route_name}/statistic_output_golden.xml")
+        summary = path_convert(f"../../data/sft_dataset/{self.scenario_name}/{route_name}/summary_golden.txt")
+        queue_output = path_convert(f"../../data/sft_dataset/{self.scenario_name}/{route_name}/queue_output_golden.xml")
+
+        # Handle Custom Route File
+        sumo_cfg = base_sumo_cfg
+        self.temp_cfg_path = None
+        if route_file:
+            try:
+                with open(base_sumo_cfg, 'r') as f:
+                    cfg_content = f.read()
+                
+                # Assuming route file is in the same directory as the original route file specified in sumocfg
+                # e.g., <route-files value="env/xxx.rou.xml"/>
+                original_route_path = re.search(r'<route-files value="([^"]+)"/>', cfg_content).group(1)
+                route_dir = os.path.dirname(original_route_path)
+                new_route_path = os.path.join(route_dir, os.path.basename(route_file))
+                
+                cfg_content = re.sub(r'<route-files value="[^"]+"/>', f'<route-files value="{new_route_path}"/>', cfg_content, count=1)
+                
+                self.temp_cfg_path = os.path.join(os.path.dirname(base_sumo_cfg), f"temp_golden_{route_name}.sumocfg")
+                with open(self.temp_cfg_path, 'w') as f:
+                    f.write(cfg_content)
+                
+                sumo_cfg = self.temp_cfg_path
+                logger.info(f"[GOLDEN] Created temporary SUMO config with route {route_file}: {sumo_cfg}")
+            except Exception as e:
+                logger.error(f"[GOLDEN] Failed to modify SUMO config for route {route_file}: {e}")
+                raise e
 
         # Prepare Environment Parameters
         self.env_params = {
@@ -244,12 +276,12 @@ class GoldenGenerator:
                         img_data = sensor_imgs[aircraft_key].get('aircraft_all')
                 
                 if img_data is not None:
-                    img_path = os.path.join(_step_dir, f"{jid}_bev.jpg")
+                    img_path = os.path.join(_step_dir, f"{jid}_bev.png")
                     cv2.imwrite(img_path, convert_rgb_to_bgr(img_data))
                     
                     # add watermark
                     try:
-                        watermarked_img_path = os.path.join(_step_dir, f"{jid}_bev_watermarked.jpg")
+                        watermarked_img_path = os.path.join(_step_dir, f"{jid}_bev_watermarked.png")
                         add_lane_watermarks(img_path, watermarked_img_path)
                         bev_images[jid] = watermarked_img_path
                     except Exception as e:
@@ -267,29 +299,36 @@ class GoldenGenerator:
                 
                 if img_path :
                     prompt = PromptBuilder.build_decision_prompt(current_phase_id=phase_id, scenario_name=self.scenario_key)
-                    try:
-                        vlm_response, _, vlm_action_idx, native_thought = self.agent.get_decision(img_path, prompt)
-                        
-                        vlm_results[jid] = {
-                            "action": int(vlm_action_idx),
-                            "Think_Process": native_thought,
-                            "prompt": prompt,
-                            "img_path": img_path,
-                            "phase": phase_id,
-                            "response_raw": vlm_response,
-                            "success": True
-                        }
-                    except Exception as e:
-                        logger.warning(f"[GOLDEN] VLM failed for {jid}: {e}")
-                        vlm_results[jid] = {"action": 0, "Think_Process": "Error", "img_path": img_path, "phase": phase_id, "success": False}
+                    vlm_response, _, vlm_action_idx, native_thought = self.agent.get_decision(img_path, prompt)
+                    # vlm_response, _, vlm_action_idx, native_thought = "ERROR", 0, 0, None # --- IGNORE --- for testing fallback
+
+                    #where vlm is unreliable, we fallback to a fixed timing strategy (e.g., round-robin or fixed phase) to ensure dataset quality.
+                    is_valid = True
+                    match = re.search(r"Action:?\s*\[?(\d+)\]?", vlm_response, re.IGNORECASE)
+                    if (vlm_response == "ERROR") or (not match):
+                        is_valid = False
+
+                    if not is_valid:
+                        num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
+                        fixed_action = decision_step % num_phases
+                        logger.warning(f"[Golden] VLM Failed/Invalid (Resp: {vlm_response[:30]}...). Fallback to Fixed Timing: Action {fixed_action} (Step {decision_step} % {num_phases})")
+                        vlm_action_idx = fixed_action 
+
+                    vlm_results[jid] = {
+                        "action": int(vlm_action_idx),
+                        "Think_Process": native_thought,
+                        "prompt": prompt,
+                        "img_path": img_path,
+                        "phase": phase_id,
+                        "response_raw": vlm_response,
+                        "success": True
+                    }
+                   
                 else:
-                    vlm_results[jid] = {"action": 0, "Think_Process": "No Image", "img_path": None, "phase": phase_id, "success": False}
+                    vlm_results[jid] = {"action": 0, "Think_Process": "No Image", "prompt": prompt, "img_path": None, "phase": phase_id, "response_raw": "No image", "success": False}
 
             # 3. Golden Rollouts (Parallel Evaluation across Junctions)
-            # Instead of N x Phases rollouts, we perform Phases rollouts.
-            # In each rollout, ALL agents take action 'p'. 
-            # We assume local independence for the immediate reward calculation.
-            
+
             # Save Base State ONCE
             self.env.unwrapped.save_state(state_file)
 
@@ -313,9 +352,6 @@ class GoldenGenerator:
             logger.info(f"[SIM]———————————————————————— rollout start {decision_step}————————————————————————")
 
             for action_candidate in possible_actions:
-                # Construct Joint Action: Broadcast candidate to all agents
-                # This tests "What if everyone does action X?"
-                # While not testing all combinatorial pairs, it is efficient (O(Phases)) and valid under local independence.
                 if self.is_multi_agent:
                     current_rollout_action = {jid: action_candidate for jid in self.junctions}
                 else:
@@ -364,6 +400,12 @@ class GoldenGenerator:
                 vlm_info = vlm_results[jid]
                 label = "accepted" if int(vlm_info['action']) == best_action else "rejected"
                 
+                # Fetch ground truth vehicle counts from sensor data
+                gt_vehicle_counts = {}
+                aircraft_id = f'aircraft_{jid}'
+                if 'bev_lane_vehicle_counts' in sensor_datas and aircraft_id in sensor_datas['bev_lane_vehicle_counts']:
+                    gt_vehicle_counts = sensor_datas['bev_lane_vehicle_counts'][aircraft_id]
+                
                 sample = {
                     "image_path": os.path.abspath(vlm_info['img_path']) if vlm_info['img_path'] else "",
                     "current_phase": int(vlm_info['phase']),
@@ -377,7 +419,8 @@ class GoldenGenerator:
                     "all_metrics": metrics,
                     "scenario": self.scenario_key,
                     "junction_id": jid,
-                    "step": decision_step
+                    "step": decision_step,
+                    "gt_vehicle_counts": gt_vehicle_counts
                 }
                 
                 sample_file = os.path.join(self.output_dir, "dataset.jsonl")
@@ -402,6 +445,12 @@ class GoldenGenerator:
         # Cleanup
         if os.path.exists(state_file):
             os.remove(state_file)
+        if hasattr(self, 'temp_cfg_path') and self.temp_cfg_path and os.path.exists(self.temp_cfg_path):
+            try:
+                os.remove(self.temp_cfg_path)
+                logger.info(f"[GOLDEN] Removed temporary config file: {self.temp_cfg_path}")
+            except OSError as e:
+                logger.warning(f"[GOLDEN] Failed to remove temporary config file {self.temp_cfg_path}: {e}")
         self.env.close()
         logger.info("[GOLDEN] Generation complete.")
 
@@ -410,9 +459,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate Golden Dataset")
     parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario key (e.g., JiNan_test, NewYork)")
     parser.add_argument("--max_steps", type=int, default=10, help="Maximum decision steps")
+    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real_2000.rou.xml", help="Name of the .rou.xml file to use (e.g., anon_3_4_jinan_real_2000.rou.xml).")
     parser.add_argument("--log_dir", type=str, default="./log/golden_dataset", help="Directory for logs")
     
     args = parser.parse_args()
     
-    generator = GoldenGenerator(scenario_key=args.scenario, log_dir=args.log_dir)
+    generator = GoldenGenerator(
+        scenario_key=args.scenario, 
+        log_dir=args.log_dir,
+        route_file=args.route_file
+    )
     generator.generate(max_decision_step=args.max_steps)
