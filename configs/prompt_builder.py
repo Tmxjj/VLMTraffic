@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-03-06 11:00:06
+LastEditTime: 2026-03-06 18:00:26
 Description: Optimized Prompt Builder (Visual-Only Analysis with Lane Numbering)
 FilePath: /VLMTraffic/configs/prompt_builder.py
 '''
@@ -143,7 +143,6 @@ Currently Active Phase: **[ Phase {current_phase_id} ]**
 5. Task Definition
 Base on the **Bird's-Eye-View (BEV) image**, current **Scenario Information**, and **Action Space**, execute:
 
-
 A. Scene Understanding:
 - **Lane Scanning**: For each approach, report the integer queue length for ALL lanes identified in the Scenario Information.
 - **Visual Constraints**: 
@@ -164,18 +163,19 @@ B. Scene Analysis :
 - **Classification**: State `Special` (Emergency present) or `Normal`.
 
 C. Selection Logic :
+**[Global Note on Visual Context]**: Do not rely solely on the extracted numerical lane counts. You MUST holistically evaluate the BEV image. Consider the overall intersection geometry, the spatial distribution of vehicles, and the intuitive visual queuing pressure/density at each approach to make the most contextually optimal decision.
 **IF Special Condition**:
     1. [Rule: Emergency_Priority]: Select the Phase ID that directly serves the emergency vehicle's lane. 
     2. [Rule: Incident_Avoidance]: Select the Phase ID that moves traffic AWAY from or BYPASSES the accident/construction site.
-
 
 **IF Normal Condition**:
     1. [Rule: Bottleneck_Rule]: Select the Phase ID with the **HIGHEST** cumulative queue length across its permitted movements.
     2. [Rule: Empty_Lane_Constraint]: NEVER select a phase if its corresponding lanes have 0 waiting vehicles. (Note: If ALL phases have 0 vehicles, Rule 4 Fallback applies).
     3. [Rule: Tie_Breaker]: If congestion is equal among multiple candidates, select a Phase ID **DIFFERENT** from the current one.
-    4. [Rule: Fallback_Cycle]: If all lanes in all directions are empty, ensure phase rotation by selecting the NEXT Phase relative to the Current Phase.
+    4. [Rule: Fallback_Cycle]: If all lanes in all directions are empty or same traffic conditions, ensure phase rotation by selecting the NEXT Phase relative to the Current Phase.
     5. [Rule: Contextual_Adaptation]: If the scenario involves complex traffic patterns, potential upstream/downstream blockages, or nuances not fully captured by the rules above, autonomously evaluate the overall scene dynamics and determine the most optimal Phase ID to maximize intersection efficiency.
 
+    Note: Always prioritize safety and emergency response over regular traffic flow.
 
 6. Chain-of-Thought Reasoning
 You must think step-by-step follow Task Definition. The output format must be strictly as follows (without indentation and other extra text):

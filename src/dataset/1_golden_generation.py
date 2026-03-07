@@ -46,9 +46,10 @@ from src.inference.vlm_agent import VLMAgent
 from configs.prompt_builder import PromptBuilder
 
 class GoldenGenerator:
-    def __init__(self, scenario_key="Hongkong_YMT", log_dir="./log/golden_dataset", route_file=None):
+    def __init__(self, scenario_key="Hongkong_YMT", log_dir="./log/golden_dataset", route_file=None, warmup_steps=2):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
+        self.warmup_steps = warmup_steps
         
         # --- 1. Load Configurations ---
         path_convert = get_abs_path(__file__) 
@@ -242,6 +243,8 @@ class GoldenGenerator:
             return
 
         while True:
+            is_warmup = decision_step < self.warmup_steps
+            
             # Check for termination
             if dones or truncated:
                 logger.info(f"[GOLDEN] Simulation finished. Dones: {dones}, Truncated: {truncated}")
@@ -297,135 +300,137 @@ class GoldenGenerator:
                 img_path = bev_images.get(jid)
                 phase_id = current_phases.get(jid, 0)
                 
-                if img_path :
-                    prompt = PromptBuilder.build_decision_prompt(current_phase_id=phase_id, scenario_name=self.scenario_key)
-                    vlm_response, _, vlm_action_idx, native_thought = self.agent.get_decision(img_path, prompt)
-                    # vlm_response, _, vlm_action_idx, native_thought = "ERROR", 0, 0, None # --- IGNORE --- for testing fallback
-
-                    #where vlm is unreliable, we fallback to a fixed timing strategy (e.g., round-robin or fixed phase) to ensure dataset quality.
-                    is_valid = True
-                    match = re.search(r"Action:?\s*\[?(\d+)\]?", vlm_response, re.IGNORECASE)
-                    if (vlm_response == "ERROR") or (not match):
-                        is_valid = False
-
-                    if not is_valid:
-                        num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
-                        fixed_action = decision_step % num_phases
-                        logger.warning(f"[Golden] VLM Failed/Invalid (Resp: {vlm_response[:30]}...). Fallback to Fixed Timing: Action {fixed_action} (Step {decision_step} % {num_phases})")
-                        vlm_action_idx = fixed_action 
-
+                if is_warmup:
+                    num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
+                    fixed_action = decision_step % num_phases
                     vlm_results[jid] = {
-                        "action": int(vlm_action_idx),
-                        "Think_Process": native_thought,
-                        "prompt": prompt,
+                        "action": fixed_action,
+                        "Think_Process": "Warmup step, using fixed timing.",
                         "img_path": img_path,
                         "phase": phase_id,
-                        "response_raw": vlm_response,
-                        "success": True
+                        "success": False
                     }
-                   
+                    if img_path:
+                         logger.info(f"[GOLDEN] Step {decision_step} | JID {jid}: Warmup step, using fixed action {fixed_action}.")
                 else:
-                    vlm_results[jid] = {"action": 0, "Think_Process": "No Image", "prompt": prompt, "img_path": None, "phase": phase_id, "response_raw": "No image", "success": False}
+                    if img_path :
+                        prompt = PromptBuilder.build_decision_prompt(current_phase_id=phase_id, scenario_name=self.scenario_key)
+                        vlm_response, _, vlm_action_idx, native_thought = self.agent.get_decision(img_path, prompt)
+                        # vlm_response, _, vlm_action_idx, native_thought = "ERROR", 0, 0, None # --- IGNORE --- for testing fallback
+                        
+                        #where vlm is unreliable, we fallback to a fixed timing strategy (e.g., round-robin or fixed phase) to ensure dataset quality.
+                        is_valid = True
+                        match = re.search(r"Action:?\s*\[?(\d+)\]?", vlm_response, re.IGNORECASE)
+                        if (vlm_response == "ERROR") or (not match):
+                            is_valid = False
+    
+                        if not is_valid:
+                            num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
+                            fixed_action = decision_step % num_phases
+                            logger.warning(f"[Golden] VLM Failed/Invalid (Resp: {vlm_response[:30]}...). Fallback to Fixed Timing: Action {fixed_action} (Step {decision_step} % {num_phases})")
+                            vlm_action_idx = fixed_action 
+    
+                        vlm_results[jid] = {
+                            "action": int(vlm_action_idx),
+                            "Think_Process": native_thought,
+                            "prompt": prompt,
+                            "img_path": img_path,
+                            "phase": phase_id,
+                            "response_raw": vlm_response,
+                            "success": True
+                        }
+                       
+                    else:
+                        vlm_results[jid] = {"action": 0, "Think_Process": "No Image", "prompt": "No Image", "img_path": None, "phase": phase_id, "response_raw": "No image", "success": False}
 
-            # 3. Golden Rollouts (Parallel Evaluation across Junctions)
-
-            # Save Base State ONCE
+            # 3. Golden Rollouts (Evaluate Valid Actions via Simulation Backup)
+            # Backup base true env state 
+            state_file = os.path.join(self.output_dir, 'state.xml')
             self.env.unwrapped.save_state(state_file)
-
-            # Save Checkpoint (every 5 steps)
-            if decision_step % 5 == 0:
-                state_dir = os.path.join(self.output_dir, "state")
-                create_folder(state_dir)
-                sim_step = infos.get('step_time', 0)
-                # Use copy instead of saving again for efficiency
-                ckpt_path = os.path.join(state_dir, f"state_sim_{sim_step}_decsion_step_{decision_step}.xml")
-                shutil.copy(state_file, ckpt_path)
-                logger.info(f"[GOLDEN] Checkpoint saved: {ckpt_path}")
-
             wrapper_state_backup = self._save_wrapper_state()
             
-            possible_actions = range(self.scenario_config["PHASE_NUMBER"])
-            
-            # Data structure to hold metrics: {jid: {action_str: metric}}
-            all_junction_metrics = {jid: {} for jid in self.junctions}
-            
-            logger.info(f"[SIM]———————————————————————— rollout start {decision_step}————————————————————————")
+            if not is_warmup:
+                possible_actions = range(self.scenario_config["PHASE_NUMBER"])
+                
+                # Data structure to hold metrics: {jid: {action_str: metric}}
+                all_junction_metrics = {jid: {} for jid in self.junctions}
+                
+                logger.info(f"[SIM]———————————————————————— rollout start {decision_step}————————————————————————")
 
-            for action_candidate in possible_actions:
-                if self.is_multi_agent:
-                    current_rollout_action = {jid: action_candidate for jid in self.junctions}
-                else:
-                    current_rollout_action = action_candidate
-                
-                # Restore & Rollout
-                self.env.unwrapped.load_state(state_file)
-                self._restore_wrapper_state(wrapper_state_backup)
-                
-                rewards = self.run_rollout(state_file, current_rollout_action)
-                
-                # Process rewards
-                if rewards is not None:
-                    if isinstance(rewards, dict):
-                        for jid, r in rewards.items():
-                            if jid in all_junction_metrics:
-                                # Metric = Reward (Maximize Reward)
-                                all_junction_metrics[jid][str(action_candidate)] = float(r)
+                for action_candidate in possible_actions:
+                    if self.is_multi_agent:
+                        current_rollout_action = {jid: action_candidate for jid in self.junctions}
                     else:
-                        # Single agent scalar case
-                        jid = self.junctions[0]
-                        all_junction_metrics[jid][str(action_candidate)] = float(rewards)
-            logger.info(f"[SIM]———————————————————————— rollout end ————————————————————————")
-            # 4. Process Results & Save Data
-            for jid in self.junctions:
-                # Check VLM Success
-                vlm_info = vlm_results[jid]
-                if not vlm_info.get("success", False):
-                    continue
-
-                # If invalid image, skip
-                if bev_images.get(jid) is None:
-                    continue
-                
-                metrics = all_junction_metrics.get(jid, {})
-                if not metrics:
-                    logger.warning(f"No metrics for {jid}")
-                    continue
+                        current_rollout_action = action_candidate
                     
-                # Find Best Action
-                best_action = max(metrics, key=metrics.get) # Maximize metric (reward)
-                best_metric = metrics[best_action]
-                best_action = int(best_action)
-                
-                # Compare with VLM
-                vlm_info = vlm_results[jid]
-                label = "accepted" if int(vlm_info['action']) == best_action else "rejected"
-                
-                # Fetch ground truth vehicle counts from sensor data
-                gt_vehicle_counts = {}
-                aircraft_id = f'aircraft_{jid}'
-                if 'bev_lane_vehicle_counts' in sensor_datas and aircraft_id in sensor_datas['bev_lane_vehicle_counts']:
-                    gt_vehicle_counts = sensor_datas['bev_lane_vehicle_counts'][aircraft_id]
-                
-                sample = {
-                    "image_path": os.path.abspath(vlm_info['img_path']) if vlm_info['img_path'] else "",
-                    "current_phase": int(vlm_info['phase']),
-                    "prompt": vlm_info.get('prompt', ""),
-                    "vlm_think_process": vlm_info['Think_Process'],
-                    "vlm_action": int(vlm_info['action']),
-                    'vlm_response_raw': vlm_info.get('response_raw', ""),
-                    "optimal_action": best_action,
-                    "label": label,
-                    "metric_val": float(best_metric),
-                    "all_metrics": metrics,
-                    "scenario": self.scenario_key,
-                    "junction_id": jid,
-                    "step": decision_step,
-                    "gt_vehicle_counts": gt_vehicle_counts
-                }
-                
-                sample_file = os.path.join(self.output_dir, "dataset.jsonl")
-                append_response_to_file(sample_file, json.dumps(sample, indent=4))
-                logger.info(f"[GOLDEN] Step {decision_step} | JID {jid}: VLM({vlm_info['action']}) vs Golden({best_action}) -> {label}")
+                    # Restore & Rollout
+                    self.env.unwrapped.load_state(state_file)
+                    self._restore_wrapper_state(wrapper_state_backup)
+                    
+                    rewards = self.run_rollout(state_file, current_rollout_action)
+                    
+                    # Process rewards
+                    if rewards is not None:
+                        if isinstance(rewards, dict):
+                            for jid, r in rewards.items():
+                                if jid in all_junction_metrics:
+                                    # Metric = Reward (Maximize Reward)
+                                    all_junction_metrics[jid][str(action_candidate)] = float(r)
+                        else:
+                            # Single agent scalar case
+                            jid = self.junctions[0]
+                            all_junction_metrics[jid][str(action_candidate)] = float(rewards)
+                logger.info(f"[SIM]———————————————————————— rollout end ————————————————————————")
+                # 4. Process Results & Save Data
+                for jid in self.junctions:
+                    # Check VLM Success
+                    vlm_info = vlm_results[jid]
+                    if not vlm_info.get("success", False):
+                        continue
+
+                    # If invalid image, skip
+                    if bev_images.get(jid) is None:
+                        continue
+                    
+                    metrics = all_junction_metrics.get(jid, {})
+                    if not metrics:
+                        continue
+                        
+                    # Find Best Action
+                    best_action = max(metrics, key=metrics.get) # Maximize metric (reward)
+                    best_metric = metrics[best_action]
+                    best_action = int(best_action)
+                    
+                    # Compare with VLM
+                    vlm_info = vlm_results[jid]
+                    label = "accepted" if int(vlm_info['action']) == best_action else "rejected"
+                    
+                    # Fetch ground truth vehicle counts from sensor data
+                    gt_vehicle_counts = {}
+                    aircraft_id = f'aircraft_{jid}'
+                    if 'bev_lane_vehicle_counts' in sensor_datas and aircraft_id in sensor_datas['bev_lane_vehicle_counts']:
+                        gt_vehicle_counts = sensor_datas['bev_lane_vehicle_counts'][aircraft_id]
+                    
+                    sample = {
+                        "image_path": os.path.abspath(vlm_info['img_path']) if vlm_info['img_path'] else "",
+                        "current_phase": int(vlm_info['phase']),
+                        "prompt": vlm_info.get('prompt', ""),
+                        "vlm_think_process": vlm_info['Think_Process'],
+                        "vlm_action": int(vlm_info['action']),
+                        'vlm_response_raw': vlm_info.get('response_raw', ""),
+                        "optimal_action": best_action,
+                        "label": label,
+                        "metric_val": float(best_metric),
+                        "all_metrics": metrics,
+                        "scenario": self.scenario_key,
+                        "junction_id": jid,
+                        "step": decision_step,
+                        "gt_vehicle_counts": gt_vehicle_counts
+                    }
+                    
+                    sample_file = os.path.join(self.output_dir, "dataset.jsonl")
+                    append_response_to_file(sample_file, json.dumps(sample, indent=4))
+                    logger.info(f"[GOLDEN] Step {decision_step} | JID {jid}: VLM({vlm_info['action']}) vs Golden({best_action}) -> {label}")
 
             # 5. Advance Real Simulation (Following VLM/Student Policy)
             self.env.unwrapped.load_state(state_file)
@@ -458,7 +463,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Generate Golden Dataset")
     parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario key (e.g., JiNan_test, NewYork)")
-    parser.add_argument("--max_steps", type=int, default=10, help="Maximum decision steps")
+    parser.add_argument("--max_steps", type=int, default=22, help="Maximum decision steps")
     parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real_2000.rou.xml", help="Name of the .rou.xml file to use (e.g., anon_3_4_jinan_real_2000.rou.xml).")
     parser.add_argument("--log_dir", type=str, default="./log/golden_dataset", help="Directory for logs")
     

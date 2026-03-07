@@ -1,4 +1,11 @@
 #!/bin/bash
+###
+ # @Author: yufei Ji
+ # @Date: 2026-01-29 16:56:42
+ # @LastEditTime: 2026-03-06 16:45:20
+ # @Description: this script is used to 
+ # @FilePath: /VLMTraffic/src/dataset/jinan_golden_generation.sh
+### 
 
 
 # Set PYTHONPATH to include the project root if needed
@@ -7,7 +14,8 @@ export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src
 # Run the generation script in background
 nohup python src/dataset/golden_generation.py \
     --scenario "JiNan" \
-    --max_steps 20 \
+    --max_steps 22 \
+    --route_file "anon_3_4_jinan_real_2000.rou.xml" \
     --log_dir "./log/golden_dataset" > jinan_golden_run.log 2>&1 &
 
 echo "Golden generation started in background. Log: jinan_golden_run.log"
