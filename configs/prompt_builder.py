@@ -1,3 +1,10 @@
+'''
+Author: yufei Ji
+Date: 2026-01-12 16:48:42
+LastEditTime: 2026-03-06 18:00:26
+Description: Optimized Prompt Builder (Visual-Only Analysis with Lane Numbering)
+FilePath: /VLMTraffic/configs/prompt_builder.py
+'''
 import inspect
 
 class PromptBuilder:
