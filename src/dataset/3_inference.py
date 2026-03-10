@@ -105,20 +105,13 @@ class Step3Inferencer:
                 # Run VLM inference
                 try:
                     logger.debug(f"Requesting VLM Decision for {image_path}")
-                    response, input_tokens, output_tokens = self.agent.get_decision(image_path, step3_prompt)
+                    response, _, vlm_action_idx, native_thought = self.agent.get_decision(image_path, step3_prompt)
                     
                     # Update fields with the newly generated step 3 response
                     data["step3_prompt"] = step3_prompt
                     data["step3_vlm_response_raw"] = response
-                    
-                    # Attempt to extract action
-                    match = re.search(r"Action:\s*(\d)", response)
-                    if match:
-                        data["step3_vlm_action"] = int(match.group(1))
-                    else:
-                        data["step3_vlm_action"] = -1
-                        logger.warning(f"Could not parse action from step 3 response: {response}")
-                        
+                    data["step3_vlm_action"] = vlm_action_idx
+            
                     # Evaluate if step 3 succeeded in picking the optimal action
                     optimal_action = data.get("optimal_action")
                     if optimal_action is not None and data["step3_vlm_action"] != -1:
@@ -148,8 +141,8 @@ if __name__ == "__main__":
     if args.jsonl is None:
         args.jsonl = f"data/sft_dataset/{args.scenario}/{args.route_file}/dataset_auto_annotated.jsonl"
         
-    route_name = os.path.splitext(os.path.basename(args.route_file))[0] if args.route_file else "default"
-    log_dir = os.path.join(".", "log", "inference_step3", args.scenario, route_name)
+    route_name = os.path.basename(args.route_file) if args.route_file else "default"
+    log_dir = os.path.join(".", "log", "golden_dataset", args.scenario, route_name)
     os.makedirs(log_dir, exist_ok=True)
     
     current_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")

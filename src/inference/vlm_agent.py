@@ -120,7 +120,10 @@ class VLMAgent:
             img = Image.open(image_path)
             config = types.GenerateContentConfig(
                 temperature=self.temperature, max_output_tokens=self.max_tokens,
-                thinking_config=types.ThinkingConfig(include_thoughts=True, thinking_level='low')
+                thinking_config=types.ThinkingConfig(
+                    include_thoughts=True, 
+                    # thinking_level='low'
+                    )
             )
             return self.model.models.generate_content(model=self.config.get("model_name", "gemini-3-pro-preview"), contents=[prompt, img], config=config)
 

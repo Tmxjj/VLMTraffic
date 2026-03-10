@@ -12,6 +12,7 @@ import math
 import sys
 import argparse
 from loguru import logger
+from tqdm import tqdm
 
 # Try import sumolib, configure SUMO_HOME if necessary
 if 'SUMO_HOME' in os.environ:
@@ -188,14 +189,10 @@ class VLMDataAnnotator:
             content = fin.read()
             
         # The objects in dataset.jsonl are separated by "-----"
-        chunks = re.split(r'\n-----\n+', content)
+        chunks = [c.strip() for c in re.split(r'\n-----\n+', content) if c.strip()]
         
         with open(self.output_path, 'w', encoding='utf-8') as fout:
-            for chunk in chunks:
-                chunk = chunk.strip()
-                if not chunk:
-                    continue
-                    
+            for chunk in tqdm(chunks, desc=f"Annotating {os.path.basename(self.data_path)}"):
                 try:
                     data = json.loads(chunk)
                 except json.JSONDecodeError as e:
@@ -240,7 +237,7 @@ class VLMDataAnnotator:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Annotate VLM outputs with GT and calculate error for DPO")
-    parser.add_argument("--jsonl", type=str, required=True, help="Path to input dataset.jsonl")
+    parser.add_argument("--jsonl", type=str, default='data/sft_dataset/JiNan/anon_3_4_jinan_real_2500.rou/dataset.jsonl', help="Path to input dataset.jsonl")
     parser.add_argument("--output", type=str, default=None, help="Path to output jsonl")
     args = parser.parse_args()
     

@@ -2,7 +2,7 @@
 Author: yufei Ji
 Date: 2026-01-19
 Description: Generate golden dataset using VLM and simulation rollouts
-FilePath: /VLMTraffic/src/dataset/golden_generation.py
+FilePath: /VLMTraffic/src/dataset/1_golden_generation.py
 '''
 import os
 import re
@@ -46,7 +46,7 @@ from src.inference.vlm_agent import VLMAgent
 from configs.prompt_builder import PromptBuilder
 
 class GoldenGenerator:
-    def __init__(self, scenario_key="Hongkong_YMT", log_dir="./log/golden_dataset", route_file=None, warmup_steps=2):
+    def __init__(self, scenario_key="Hongkong_YMT", log_dir="./log/golden_dataset", route_file=None, warmup_steps=5):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
         self.warmup_steps = warmup_steps
