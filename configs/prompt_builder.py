@@ -1,10 +1,3 @@
-'''
-Author: yufei Ji
-Date: 2026-01-12 16:48:42
-LastEditTime: 2026-03-06 18:00:26
-Description: Optimized Prompt Builder (Visual-Only Analysis with Lane Numbering)
-FilePath: /VLMTraffic/configs/prompt_builder.py
-'''
 import inspect
 
 class PromptBuilder:
@@ -118,16 +111,15 @@ West Approach: Lane 1 (Straight):<int>, Lane 2 (Straight):<int>, Lane 3 (Straigh
         return PromptBuilder.SCENARIO_DESCRIPTIONS.get(config_key, PromptBuilder.SCENARIO_DESCRIPTIONS["4_JUNCTION"]).strip()
 
     @staticmethod
+    @staticmethod
     def build_decision_prompt(current_phase_id: int, scenario_name: str = "JiNan") -> str:
         phase_explanation = PromptBuilder.get_phase_description(scenario_name)
         scenario_description = PromptBuilder.get_scenario_description(scenario_name)
-        # 动态获取当前场景的 CoT 车道模板
         cot_lane_template = PromptBuilder.get_cot_lane_template(scenario_name)
 
-        # OPTIMIZATION: Updated Task Definition and CoT format to enforce lane-by-lane inspection
         prompt = f"""
 1. Role Description
-You are an expert in traffic management and computer vision. You use your knowledge of traffic engineering (commonsense) to solve traffic signal control tasks. Your goal is to maximize intersection efficiency and ensure emergency vehicle priority by analyzing visual data.
+You are an expert in traffic management and computer vision. You use your knowledge of traffic engineering to solve traffic signal control tasks. Your goal is to maximize intersection efficiency and ensure emergency vehicle priority by analyzing visual data.
 
 2. Scenario Information
 {scenario_description}
@@ -169,14 +161,16 @@ C. Selection Logic :
     2. [Rule: Incident_Avoidance]: Select the Phase ID that moves traffic AWAY from or BYPASSES the accident/construction site.
 
 **IF Normal Condition**:
-    1. [Rule: Bottleneck_Rule]: Select the Phase ID with the **HIGHEST** cumulative queue length across its permitted movements.
-    2. [Rule: Empty_Lane_Constraint]: NEVER select a phase if its corresponding lanes have 0 waiting vehicles. (Note: If ALL phases have 0 vehicles, Rule 4 Fallback applies).
-    3. [Rule: Tie_Breaker]: If congestion is equal among multiple candidates, select a Phase ID **DIFFERENT** from the current one.
-    4. [Rule: Fallback_Cycle]: If all lanes in all directions are empty or same traffic conditions, ensure phase rotation by selecting the NEXT Phase relative to the Current Phase.
-    5. [Rule: Contextual_Adaptation]: If the scenario involves complex traffic patterns, potential upstream/downstream blockages, or nuances not fully captured by the rules above, autonomously evaluate the overall scene dynamics and determine the most optimal Phase ID to maximize intersection efficiency.
-
+    1. [Rule: Fallback_Static]: If ALL lanes have 0 waiting vehicles, select the Current Phase ID to maintain the active signal.
+    2. [Rule: Bottleneck_Rule]: Select the Phase ID with the **HIGHEST** cumulative queue length across its permitted movements.
+    3. [Rule: Tie_Breaker]: If multiple phases tie for the highest queue, resolve STRICTLY in this order:
+        - (a) Straight > Left: Prioritize Straight-moving phases over Left-Turn phases.
+        - (b) Max Single Lane: Prioritize the phase with the longest single-lane queue.
+        - (c) Index_Order: If still tied, strictly select the Phase with the LOWEST Phase ID among the tied candidates (excluding the Current Phase ID).
+    4. [Rule: Contextual_Adaptation]: If the visual context presents atypical dynamics or complex nuances not adequately resolved by Rules 1-3, apply general traffic engineering common sense to holistically evaluate the scene. Select the optimal Phase ID to maximize overall throughput, and base your decision on a logical assessment of the complete visual state.
+    
     Note: Always prioritize safety and emergency response over regular traffic flow.
-
+    
 6. Chain-of-Thought Reasoning
 You must think step-by-step follow Task Definition. The output format must be strictly as follows (without indentation and other extra text):
 
@@ -191,7 +185,7 @@ Scene Analysis:
 - Final Condition: <Normal / Special>
 Selection Logic: 
 - Rule Identification: <Exact Rule Name from Section 5C>
-- Reasoning: <A sentence explaining the choice. No "however", "wait", or self-correction.>
+- Reasoning: <State the direct cause for the selection in one concise sentence. Focus purely on facts, without conversational filler or self-correction.>
 - Conclusion: Phase <ID>
 ]
 
