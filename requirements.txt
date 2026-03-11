@@ -19,4 +19,5 @@ streamlit
 pandas
 matplotlib
 tenacity
+trl
 # Add other specific dependencies as needed
