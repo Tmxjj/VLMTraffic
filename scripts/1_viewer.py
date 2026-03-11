@@ -367,18 +367,19 @@ if df is not None and not df.empty:
         
         # --- 1. 准备默认值 ---
         default_tag = "无误"
-        default_text = raw_response
         default_remark = "" # 新增备注默认值
 
         if prev_anno:
             default_tag = prev_anno.get('human_label', '无误')
             default_remark = prev_anno.get('error_reason', "") # 读取历史备注
             
-            # 如果是"无误"，默认文本重置为当前生成的 display_text
+            # 如果是"无误"，默认文本重置为原始 raw_response
             if prev_anno.get('human_label') == '无误':
-                 default_text = display_text
+                 default_text = raw_response
             else:
-                 default_text = prev_anno.get('corrected_response', display_text)
+                 default_text = prev_anno.get('corrected_response', raw_response)
+        else:
+            default_text = raw_response
         
         st.info(f"当前状态: **{default_tag}**")
 
@@ -434,7 +435,7 @@ if df is not None and not df.empty:
             )
         
         with tab_preview:
-            preview_content = display_text if is_disabled_edit else corrected_text
+            preview_content = display_text if is_disabled_edit else format_vlm_response(corrected_text)
             if preview_content:
                 st.markdown(preview_content, unsafe_allow_html=True)
             else:
@@ -448,11 +449,8 @@ if df is not None and not df.empty:
             submitted = st.form_submit_button("💾 保存标注 (Save)", use_container_width=True)
 
             if submitted:
-                final_saved_text = ""
-                final_remark = ""
-
                 if selected_tag == "无误":
-                    final_saved_text = display_text 
+                    final_saved_text = raw_response 
                     final_remark = "" 
                 else:
                     final_saved_text = corrected_text.strip()

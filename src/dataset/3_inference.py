@@ -48,6 +48,34 @@ class Step3Inferencer:
             
         logger.info(f"Initializing VLMAgent for Step 3...")
         self.agent = VLMAgent() # Uses parameters defined in configs/model_config.py
+
+    def _load_existing_output_index(self):
+        existing_index = {}
+        if not os.path.exists(self.output_file):
+            return existing_index
+
+        try:
+            with open(self.output_file, 'r', encoding='utf-8') as fin:
+                existing_content = fin.read()
+            existing_chunks = re.split(r'\n-----\n+', existing_content)
+            for chunk in existing_chunks:
+                chunk = chunk.strip()
+                if not chunk:
+                    continue
+                try:
+                    record = json.loads(chunk)
+                except json.JSONDecodeError:
+                    continue
+
+                key = (record.get("junction_id"), record.get("step"))
+                if key[0] is None or key[1] is None:
+                    continue
+                existing_index[key] = record.get("step3_vlm_response_raw")
+        except Exception as e:
+            logger.warning(f"Failed to load existing output index from {self.output_file}: {e}")
+
+        logger.info(f"Loaded {len(existing_index)} existing (junction_id, step) records from output.")
+        return existing_index
         
     def process(self):
         logger.info(f"Starting Step 3 Inference processing on {self.input_file}")
@@ -61,6 +89,8 @@ class Step3Inferencer:
             
         # Objects separated by "-----" from Step 1/2
         chunks = re.split(r'\n-----\n+', content)
+
+        existing_index = self._load_existing_output_index()
         
         processed_count = 0
         success_count = 0
@@ -76,12 +106,21 @@ class Step3Inferencer:
                 except json.JSONDecodeError as e:
                     logger.warning(f"JSON decode error, skipping chunk: {e}")
                     continue
+
+                sample_key = (data.get("junction_id"), data.get("step"))
+                if sample_key[0] is not None and sample_key[1] is not None and sample_key in existing_index:
+                    existing_response = existing_index[sample_key]
+                    if str(existing_response).strip().upper() != "ERROR":
+                        logger.info(
+                            f"Skip sample due to existing response in output: junction_id={sample_key[0]}, step={sample_key[1]}"
+                        )
+                        continue
                 
                 # Check for required fields
                 scenario = data.get("scenario")
                 current_phase = data.get("current_phase")
                 image_path = data.get("image_path")
-                corrected_vlm_raw = data.get("vlm_response_raw") 
+                corrected_vlm_raw = data.get("step_2_vlm_response_raw") 
                 
                 if not all([scenario, current_phase is not None, image_path, corrected_vlm_raw]):
                     fout.write(json.dumps(data, indent=4) + "\n-----\n\n\n\n\n")
@@ -125,6 +164,7 @@ class Step3Inferencer:
                     success_count += 1
                 except Exception as e:
                     logger.error(f"VLM Inference failed for {image_path}: {e}")
+                    data["step3_vlm_response_raw"] = "ERROR"
                     data["step3_error"] = str(e)
                 
                 fout.write(json.dumps(data, indent=4) + "\n-----\n\n\n\n\n")

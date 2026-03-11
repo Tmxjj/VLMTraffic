@@ -240,7 +240,11 @@ if df is not None and not df.empty:
     
     if 'step' in df:
         min_s, max_s = int(df['step'].min()), int(df['step'].max())
-        sel_step = st.sidebar.slider("Step Range", min_s, max_s, (min_s, max_s))
+        if min_s == max_s:
+            st.sidebar.info(f"Fixed Step Range: {min_s}")
+            sel_step = (min_s, max_s)
+        else:
+            sel_step = st.sidebar.slider("Step Range", min_s, max_s, (min_s, max_s))
     
     filtered_df = df.copy()
     if sel_jid != "All": filtered_df = filtered_df[filtered_df['junction_id'].astype(str) == sel_jid]
@@ -285,11 +289,11 @@ if df is not None and not df.empty:
 
     # ==========================================
     # 📐 布局修改：三栏布局
-    # [Visuals (40%)]  [VLM Analysis (30%)]  [Annotation (30%)]
+    # [Visuals & Charts (40%)]  [Step 3 Inference (30%)] [Annotation (30%)]
     # ==========================================
-    col_visual, col_analysis, col_anno = st.columns([4, 3, 3])
+    col_visual, col_inference, col_anno = st.columns([4, 3, 3])
 
-    # --- 第1栏：Visual Input ---
+    # --- 第1栏：Visual Input & Charts ---
     with col_visual:
         st.subheader("🖼️ Visual Input")
         raw_path = row.get('image_path', '')
@@ -309,42 +313,6 @@ if df is not None and not df.empty:
         with st.expander("Think Process (Chain of Thought)"):
             st.write(row.get('vlm_think_process', ''))
 
-    # --- 第2栏：VLM Analysis & Charts ---
-    with col_analysis:
-        st.subheader("🤖 Original VLM Analysis")
-        raw_response = row.get('vlm_response_raw', '')
-        # display_text = raw_response
-        display_text = format_vlm_response(raw_response)
-
-        # 翻译
-        enable_trans = st.toggle("🇨🇳 中文翻译 (Original)", value=False)
-        if enable_trans:
-            translated_text = translate_text(display_text)
-            st.markdown(translated_text, unsafe_allow_html=True)
-            with st.expander("Show Original"):
-                st.markdown(display_text, unsafe_allow_html=True)
-        else:
-            st.markdown(display_text, unsafe_allow_html=True)
-
-        # --- GT Vehicle Counts ---
-        st.markdown("---")
-        with st.expander("✅ Ground Truth Vehicle Counts"):
-            gt_counts = row.get('gt_vehicle_counts', {})
-            if gt_counts:
-                st.json(gt_counts)
-            else:
-                st.warning("No GT Vehicle Counts found in this record.")
-                
-        # --- Auto Annotated Raw Response ---
-        st.markdown("---")
-        with st.expander("🤖 Auto-Annotated Valid Response (GT Corrected)"):
-            auto_response = row.get('vlm_response_raw_auto_annotated', '')
-            if auto_response:
-                display_auto_text = format_vlm_response(auto_response)
-                st.markdown(display_auto_text, unsafe_allow_html=True)
-            else:
-                st.warning("No auto-annotated response found.")
-
         st.markdown("---")
         st.caption("📊 Reward Metrics")
         metrics_dict = row.get('all_metrics', {})
@@ -357,7 +325,6 @@ if df is not None and not df.empty:
                 bars = alt.Chart(metrics_df).mark_bar().encode(
                     x=alt.X('Phase:N', sort=None, title='Phase'),
                     y=alt.Y('Reward:Q', title='Reward Value'),
-                    # 根据您的逻辑定义颜色（这里简单示例，也可根据 vlm_act 逻辑上色）
                     color=alt.condition(
                         alt.datum.Phase == str(vlm_act),
                         alt.value('#ff4b4b'), # VLM 选择的颜色
@@ -369,21 +336,21 @@ if df is not None and not df.empty:
                 text = bars.mark_text(
                     align='center',
                     baseline='bottom',
-                    dy=-5  # 将文字向上偏移 5 像素，避免压在柱子上
+                    dy=-5
                 ).encode(
-                    text=alt.Text('Reward:Q', format='.2f') # 显示两位小数
+                    text=alt.Text('Reward:Q', format='.2f')
                 )
 
-                # 叠加显示
                 st.altair_chart(bars + text, use_container_width=True)
                 
             except Exception as e:
                 st.error(f"图表渲染失败: {e}")
 
-        # --- 第3栏：Step 3 Inference Result (放在右侧) ---
-        with col_anno:
+        # --- 第2栏：Step 3 Inference Result ---
+        with col_inference:
             st.subheader("🚀 Step 3 Inference")
             
+            # --- 状态与指标 ---
             st.markdown(f"**Step 3 Action:** `{row.get('step3_vlm_action', 'N/A')}`")
             step3_lbl = row.get('step3_label', 'N/A')
             step3_color = ":green" if step3_lbl == 'accepted' else ":red"
@@ -394,24 +361,131 @@ if df is not None and not df.empty:
                 st.text(row.get('step3_prompt', ''))
                 
             st.markdown("---")
-            st.subheader("Step 3 Response")
             step3_raw = row.get('step3_vlm_response_raw', '')
-            if step3_raw:
-                display_step3_text = format_vlm_response(step3_raw)
-                # 翻译
-                enable_trans_step3 = st.toggle("🇨🇳 中文翻译 (Step 3)", value=False)
-                if enable_trans_step3:
-                    translated_step3 = translate_text(display_step3_text)
-                    st.markdown(translated_step3, unsafe_allow_html=True)
-                    with st.expander("Show Original (Step 3)"):
-                        st.markdown(display_step3_text, unsafe_allow_html=True)
-                else:
-                    st.markdown(display_step3_text, unsafe_allow_html=True)
-            else:
+            
+            if not step3_raw:
                 if row.get('step3_error'):
                     st.error(f"Inference Error: {row.get('step3_error')}")
                 else:
                     st.warning("No Step 3 response generated.")
+            else:
+                display_step3_text = format_vlm_response(step3_raw)
+                
+                # --- 翻译功能 ---
+                enable_trans_step3 = st.toggle("🇨🇳 中文翻译 (Step 3 Content)", value=False)
+                if enable_trans_step3:
+                    translated_step3 = translate_text(display_step3_text)
+                    st.markdown(translated_step3, unsafe_allow_html=True)
+                    with st.expander("Show Original Format"):
+                        st.markdown(display_step3_text, unsafe_allow_html=True)
+                else:
+                    st.markdown(display_step3_text, unsafe_allow_html=True)
+
+        # --- 第3栏：Human Annotation ---
+        with col_anno:
+            st.subheader("✍️ Human Annotation")
+            
+            if not step3_raw:
+                st.info("No inference response to annotate.")
+            else:
+                default_tag = "无误"
+                default_remark = ""
+                
+                if prev_anno:
+                    default_tag = prev_anno.get('human_label', '无误')
+                    default_remark = prev_anno.get('error_reason', "")
+                    if default_tag == '无误':
+                         default_text = step3_raw
+                    else:
+                         default_text = prev_anno.get('corrected_response', step3_raw)
+                else:
+                    default_text = step3_raw
+                
+                st.info(f"当前状态: **{default_tag}**")
+
+                tag_options = ["无误", "视觉理解有误", "决策推理有误"]
+                try:
+                    idx = tag_options.index(default_tag)
+                except ValueError:
+                    idx = 0
+                
+                selected_tag = st.radio(
+                    "评估标签 (Select Label):", 
+                    tag_options, 
+                    index=idx, 
+                    horizontal=True,
+                    key=f"radio_{current_uid}" 
+                )
+
+                is_error = (selected_tag != "无误")
+                is_disabled_edit = (not is_error)
+
+                error_remark = ""
+                if is_error:
+                    st.caption("📝 **错误原因说明 (Error Explanation):**")
+                    error_remark = st.text_input(
+                        "简要说明错误点",
+                        value=default_remark,
+                        key=f"remark_{current_uid}",
+                        help="请简要描述模型具体哪里错了"
+                    )
+                
+                st.caption("📝 **修正回复 (Corrected Response):**")
+                
+                if is_disabled_edit:
+                    st.warning("🔒 标签为“无误”时，内容不可编辑。")
+
+                tab_edit, tab_preview = st.tabs(["✏️ 编辑 (Edit)", "👁️ 实时预览 (Preview)"])
+                
+                with tab_edit:
+                    corrected_text = st.text_area(
+                        "Markdown Source", 
+                        value=default_text, 
+                        height=500,
+                        label_visibility="collapsed",
+                        disabled=is_disabled_edit, 
+                        key=f"text_{current_uid}"
+                    )
+                
+                with tab_preview:
+                    preview_content = display_step3_text if is_disabled_edit else format_vlm_response(corrected_text)
+                    if preview_content:
+                        st.markdown(preview_content, unsafe_allow_html=True)
+                    else:
+                        st.caption("暂无内容")
+
+                with st.form(key=f"save_form_{current_uid}"):
+                    submitted = st.form_submit_button("💾 保存标注 (Save)", use_container_width=True)
+
+                    if submitted:
+                        if selected_tag == "无误":
+                            final_saved_text = step3_raw 
+                            final_remark = "" 
+                        else:
+                            final_saved_text = corrected_text.strip()
+                            final_remark = error_remark.strip()
+
+                        save_record = row.to_dict()
+                        save_record['human_label'] = selected_tag
+                        save_record['corrected_response'] = final_saved_text
+                        save_record['error_reason'] = final_remark
+                        
+                        if 'index' in save_record: del save_record['index']
+
+                        try:
+                            is_update = save_or_update_annotation(annotated_file_path, save_record)
+                            existing_annos[current_uid] = save_record
+                            
+                            if is_update:
+                                st.warning(f"⚠️ 检测到旧标注，已成功覆盖更新！\n标签: {selected_tag}")
+                            else:
+                                st.success(f"✅ 新标注已保存！\n标签: {selected_tag}")
+                            
+                            time.sleep(1.0)
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"❌ 保存失败: {e}")
 
 else:
     st.info("请加载数据。")

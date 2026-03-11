@@ -226,8 +226,7 @@ class VLMDataAnnotator:
                 corrected_vlm_raw = self.correct_vlm_text(vlm_raw, scenario, gt_counts)
                 
                 # Update data
-                data["vlm_response_raw_auto_annotated"] = vlm_raw
-                data["vlm_response_raw"] = corrected_vlm_raw
+                data["step_2_vlm_response_raw"] = corrected_vlm_raw
                 data["error_score"] = error_score
                 
                 fout.write(json.dumps(data, indent=4) + "\n-----\n\n\n\n\n")
@@ -237,7 +236,7 @@ class VLMDataAnnotator:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Annotate VLM outputs with GT and calculate error for DPO")
-    parser.add_argument("--jsonl", type=str, default='data/sft_dataset/JiNan/anon_3_4_jinan_real_emergency.rou/dataset.jsonl', help="Path to input dataset.jsonl")
+    parser.add_argument("--jsonl", type=str, default='data/sft_dataset/JiNan/anon_3_4_jinan_real_2000.rou/dataset.jsonl', help="Path to input dataset.jsonl")
     parser.add_argument("--output", type=str, default=None, help="Path to output jsonl")
     args = parser.parse_args()
     

@@ -41,6 +41,9 @@ You are provided with the absolute true vehicle counts for the intersection.
 Base on the **Bird's-Eye-View (BEV) image**, current **Scenario Information**, **Lane Analysis**, and **Action Space**, execute:
 
 A. Scene Understanding:
+- **Visual Constraints**: 
+    * Count ONLY **Inlet Lanes** (vehicles facing INWARD, behind the stop line). Specifically, these are the lanes labeled with numeric IDs (e.g., 1, 2, 3) at the front.
+    * IGNORE **Outlet Lanes** (driving away) and vehicles already inside the intersection.
 - **Phase Mapping**: Map the exact numeric lane counts from Section 5 to the specific Phase IDs listed in the Action Space.
 - **Congestion Assessment**: Categorize each phase based on density (verify spatial crowding and gaps visually in the BEV image):
     1. `Low`: Free-flowing traffic or empty

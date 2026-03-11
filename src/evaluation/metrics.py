@@ -113,6 +113,6 @@ if __name__ == "__main__":
     # Example usage
     
     calculator = MetricsCalculator()
-    metrics = calculator.calculate_from_files("data/eval/JiNan/anon_3_4_jinan_real.rou/qwen3-vl-8b/statistic_output.xml", 
-                                             "data/eval/JiNan/anon_3_4_jinan_real.rou/qwen3-vl-8b/queue_output.xml")
+    metrics = calculator.calculate_from_files("data/sft_dataset/JiNan/anon_3_4_jinan_real_2500.rou/statistic_output_golden.xml", 
+                                             "data/sft_dataset/JiNan/anon_3_4_jinan_real_2500.rou/queue_output_golden.xml")
     print(metrics)

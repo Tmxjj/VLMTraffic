@@ -328,7 +328,7 @@ if df is not None and not df.empty:
         # --- 新增展示 Auto Annotated Raw Response ---
         st.markdown("---")
         st.subheader("🤖 Auto-Annotated Response")
-        auto_response = row.get('vlm_response_raw_auto_annotated', '')
+        auto_response = row.get('step_2_vlm_response_raw', '')
         if auto_response:
             display_auto_text = format_vlm_response(auto_response)
             st.markdown(display_auto_text, unsafe_allow_html=True)
