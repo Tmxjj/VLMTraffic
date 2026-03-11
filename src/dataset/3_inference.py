@@ -65,7 +65,7 @@ class Step3Inferencer:
         processed_count = 0
         success_count = 0
         
-        with open(self.output_file, 'w', encoding='utf-8') as fout:
+        with open(self.output_file, 'a', encoding='utf-8') as fout:
             for chunk in tqdm(chunks, desc="Processing Step 3 Inference"):
                 chunk = chunk.strip()
                 if not chunk:
@@ -107,6 +107,11 @@ class Step3Inferencer:
                     logger.debug(f"Requesting VLM Decision for {image_path}")
                     response, _, vlm_action_idx, native_thought = self.agent.get_decision(image_path, step3_prompt)
                     
+                    # Insert GT Lane Analysis into response
+                    if "- Phase Mapping:" in response:
+                        replacement = f"- Lane Analysis (Mandatory):\n{gt_lane_analysis}\n- Phase Mapping:"
+                        response = response.replace("- Phase Mapping:", replacement, 1)
+                    
                     # Update fields with the newly generated step 3 response
                     data["step3_prompt"] = step3_prompt
                     data["step3_vlm_response_raw"] = response
@@ -132,7 +137,7 @@ class Step3Inferencer:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Step 3 VLM Inference using GT annotated data")
     parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario name (e.g. JiNan)")
-    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real_2000.rou", help="Route file name")
+    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real_2500.rou", help="Route file name")
     parser.add_argument("--jsonl", type=str, default=None, help="Path to input dataset_annotated.jsonl. If not provided, inferred from scenario and route_file.")
     parser.add_argument("--output", type=str, default=None, help="Path to output jsonl")
     args = parser.parse_args()

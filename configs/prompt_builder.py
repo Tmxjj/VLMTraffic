@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-03-06 18:00:26
+LastEditTime: 2026-03-10 23:12:14
 Description: Optimized Prompt Builder (Visual-Only Analysis with Lane Numbering)
 FilePath: /VLMTraffic/configs/prompt_builder.py
 '''
@@ -168,8 +168,8 @@ C. Selection Logic :
     2. [Rule: Incident_Avoidance]: Select the Phase ID that moves traffic AWAY from or BYPASSES the accident/construction site.
 
 **IF Normal Condition**:
-    1. [Rule: Fallback_Static]: If ALL lanes have 0 waiting vehicles, select the Current Phase ID to maintain the active signal.
-    2. [Rule: Bottleneck_Rule]: Select the Phase ID with the **HIGHEST** cumulative queue length across its permitted movements.
+    1. [Rule: Fallback_Static]: If ALL lanes have 0 waiting vehicles, ensure phase rotation by selecting the NEXT Phase relative to the Current Phase
+    2. [Rule: Bottleneck_Rule]: Select the Phase ID with the **HIGHEST** cumulative queue length and congestion across its permitted movements.
     3. [Rule: Tie_Breaker]: If multiple phases tie for the highest queue, resolve STRICTLY in this order:
         - (a) Straight > Left: Prioritize Straight-moving phases over Left-Turn phases.
         - (b) Max Single Lane: Prioritize the phase with the longest single-lane queue.
@@ -192,7 +192,7 @@ Scene Analysis:
 - Final Condition: <Normal / Special>
 Selection Logic: 
 - Rule Identification: <Exact Rule Name from Section 5C>
-- Reasoning: <State the direct cause for the selection in one concise sentence. Focus purely on facts, without conversational filler or self-correction.>
+- Reasoning: <State the direct cause for the selection in a sentence. Focus purely on facts, without conversational filler or self-correction.>
 - Conclusion: Phase <ID>
 ]
 

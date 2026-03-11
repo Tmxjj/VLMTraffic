@@ -33,12 +33,12 @@ The intersection operates on the following discrete signal phases. You must choo
 4. Current State
 Currently Active Phase: **[ Phase {current_phase_id} ]**
 
-5. Ground Truth (GT) Lane Analysis
+5. Lane Analysis
 You are provided with the absolute true vehicle counts for the intersection. 
 {gt_lane_analysis}
 
 6. Task Definition
-Based heavily on the **GT Lane Analysis** provided above and cross-referencing with the **Bird's-Eye-View (BEV) image** for spatial and density confirmation, execute the following steps:
+Base on the **Bird's-Eye-View (BEV) image**, current **Scenario Information**, **Lane Analysis**, and **Action Space**, execute:
 
 A. Scene Understanding:
 - **Phase Mapping**: Map the exact numeric lane counts from Section 5 to the specific Phase IDs listed in the Action Space.
@@ -56,18 +56,20 @@ B. Scene Analysis :
 - **Classification**: State `Special` (Emergency present) or `Normal`.
 
 C. Selection Logic :
-**[Global Note on Visual Context]**: While you have exact lane counts in Section 5, you MUST holistically evaluate the BEV image. Consider the overall intersection geometry, spatial distribution, queue density, and potential spillback to make the most contextually optimal decision.
+**[Global Note on Visual Context]**: Do not rely solely on the extracted numerical lane counts. You MUST holistically evaluate the BEV image. Consider the overall intersection geometry, the spatial distribution of vehicles, and the intuitive visual queuing pressure/density at each approach to make the most contextually optimal decision.
 **IF Special Condition**:
     1. [Rule: Emergency_Priority]: Select the Phase ID that directly serves the emergency vehicle's lane. 
     2. [Rule: Incident_Avoidance]: Select the Phase ID that moves traffic AWAY from or BYPASSES the accident/construction site.
 
 **IF Normal Condition**:
-    1. [Rule: Bottleneck_Rule]: Select the Phase ID with the **HIGHEST** cumulative queue length across its permitted movements (using the GT data).
-    2. [Rule: Empty_Lane_Constraint]: NEVER select a phase if its corresponding lanes have 0 waiting vehicles (using the GT data). (Note: If ALL phases have 0 vehicles, Rule 4 Fallback applies).
-    3. [Rule: Tie_Breaker]: If congestion is equal among multiple candidates, visually prioritize which queue requires more urgent clearance, or select a Phase ID **DIFFERENT** from the current one.
-    4. [Rule: Fallback_Cycle]: If all lanes in all directions are empty, ensure phase rotation by selecting the NEXT Phase relative to the Current Phase.
-    5. [Rule: Contextual_Adaptation]: If visual evidence reveals complex traffic patterns (e.g., downstream blockages) not captured by pure counts, autonomously prioritize the optimal Phase ID to maximize intersection efficiency.
-
+    1. [Rule: Fallback_Static]: If ALL lanes have 0 waiting vehicles, ensure phase rotation by selecting the NEXT Phase relative to the Current Phase
+    2. [Rule: Bottleneck_Rule]: Select the Phase ID with the **HIGHEST** cumulative queue length and congestion across its permitted movements.
+    3. [Rule: Tie_Breaker]: If multiple phases tie for the highest queue, resolve STRICTLY in this order:
+        - (a) Straight > Left: Prioritize Straight-moving phases over Left-Turn phases.
+        - (b) Max Single Lane: Prioritize the phase with the longest single-lane queue.
+        - (c) Index_Order: If still tied, strictly select the Phase with the LOWEST Phase ID among the tied candidates (excluding the Current Phase ID).
+    4. [Rule: Contextual_Adaptation]: If the visual context presents atypical dynamics or complex nuances not adequately resolved by Rules 1-3, apply general traffic engineering common sense to holistically evaluate the scene. Select the optimal Phase ID to maximize overall throughput, and base your decision on a logical assessment of the complete visual state.
+    
     Note: Always prioritize safety and emergency response over regular traffic flow.
 
 7. Chain-of-Thought Reasoning
@@ -76,13 +78,13 @@ You must think step-by-step follow Task Definition. The output format must be st
 Thought: [
 Scene Understanding: 
 - Phase Mapping: 
-Phase ID (<Direction, e.g., NTST>): <Congestion Level> | <Reasoning based on GT counts and visual density>
+Phase ID (<Direction, e.g., NTST>): <Congestion Level> | <Reasoning based on lane analysis and visual density>
 Scene Analysis: 
 - Emergency Check: <"None" OR "[Type] detected at [Location], affects Phase [ID]">
 - Final Condition: <Normal / Special>
 Selection Logic: 
 - Rule Identification: <Exact Rule Name from Section 6C>
-- Reasoning: <A sentence explaining the choice utilizing both visible spatial characteristics and GT numeric counts . No "however", "wait", or self-correction.>
+- Reasoning: <State the direct cause for the selection in a sentence. Focus purely on facts, without conversational filler or self-correction.>
 - Conclusion: Phase <ID>
 ]
 
