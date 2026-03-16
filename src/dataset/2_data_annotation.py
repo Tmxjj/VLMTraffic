@@ -236,7 +236,7 @@ class VLMDataAnnotator:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Annotate VLM outputs with GT and calculate error for DPO")
-    parser.add_argument("--jsonl", type=str, default='data/sft_dataset/JiNan/anon_3_4_jinan_real_2000.rou/dataset.jsonl', help="Path to input dataset.jsonl")
+    parser.add_argument("--jsonl", type=str, default='data/sft_dataset/Hangzhou/anon_4_4_hangzhou_real_5816.rou/dataset.jsonl', help="Path to input dataset.jsonl")
     parser.add_argument("--output", type=str, default=None, help="Path to output jsonl")
     args = parser.parse_args()
     

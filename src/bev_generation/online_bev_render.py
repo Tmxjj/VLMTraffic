@@ -1,22 +1,25 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-03-05 17:17:10
+LastEditTime: 2026-03-16 10:46:50
 Description: this script is used to generate BEV images from 3D TSC env
 FilePath: /VLMTraffic/src/bev_generation/online_bev_render.py
 '''
 
 import os
 import sys
+import time
 
-# 1. 修复 OpenGL 版本报错 (必须放在最前面)
-os.environ['MESA_GL_VERSION_OVERRIDE'] = '3.3'
-os.environ['MESA_GLSL_VERSION_OVERRIDE'] = '330'
+# 【深度修复 GPU 渲染节点 1】：
+# 彻底阻断 Xvfb 和 SSH 默认转发的桌面，强制 Panda3D 放弃向系统寻找物理显示器，从而激活 EGL 显卡底层无头模式
+os.environ.pop('DISPLAY', None)
+os.environ.pop('MESA_GL_VERSION_OVERRIDE', None)
+os.environ.pop('MESA_GLSL_VERSION_OVERRIDE', None)
 
-from pyvirtualdisplay import Display
-# 启动虚拟显示器
-display = Display(visible=0, size=(800, 600))
-display.start()
+# 【终极 EGL 无头模式注入】：强制绑定设备和物理卡
+os.environ['EGL_VISIBLE_DEVICES'] = '0' # 指定使用显卡 0
+os.environ['DISPLAY'] = '' # 清空 DISPLAY 而不是删掉，防止 fallback 向 :0 请求
+os.environ['WAYLAND_DISPLAY'] = ''
 
 # 3D TSC ENV
 import re
@@ -72,13 +75,25 @@ if __name__ == '__main__':
         'sensor_cfg': SENSOR_CFG,
         'tshub_env_cfg': TSHUB_ENV_CONFIG,
     }
+    
+    print("Initialize Environment...")
+    init_start = time.perf_counter()
     env = make_env(**params)()
+    print(f"✅ Environment initialized in {time.perf_counter() - init_start:.4f} seconds.\n")
 
     # Simulation with environment
     obs, _info = env.reset()
     time_step = 0
 
+    # --- Profiling Variables ---
+    prof_env_step = 0.0
+    prof_json_save = 0.0
+    prof_img_save = 0.0
+    prof_loop_total = 0.0
+
     while True:
+        loop_start = time.perf_counter()
+        
         # 固定控制动作，仅为驱动仿真以获取渲染图
         if isinstance(JUNCTION_NAME, list):
             env_action = {jid: 0 for jid in JUNCTION_NAME}
@@ -86,7 +101,9 @@ if __name__ == '__main__':
             env_action = 0
 
         # 本步交互
+        t0 = time.perf_counter()
         obs, rewards, truncated, dones, infos, render_json = env.step(env_action)
+        prof_env_step += time.perf_counter() - t0
 
         time_step += 1
         _save_folder = path_convert(f"../../data/test/{SCENARIO_NAME}/{time_step}/")
@@ -100,9 +117,12 @@ if __name__ == '__main__':
         sensor_datas = infos['3d_data']
 
         # 保存车辆 JSON 数据，用于后续离线渲染
+        t1 = time.perf_counter()
         save_to_json(render_json, _veh_json_file)
+        prof_json_save += time.perf_counter() - t1
 
         # 保存图片数据
+        t2 = time.perf_counter()
         sensor_data_imgs = sensor_datas['image'] # 获得图片数据
         if sensor_data_imgs is not None:
             # Handle list of junctions or single junction
@@ -119,9 +139,28 @@ if __name__ == '__main__':
                 front_img = sensor_data_imgs[jid].get('junction_front_all')
                 if front_img is not None:
                     cv2.imwrite(front_junction_path, convert_rgb_to_bgr(front_img))
+        
+        prof_img_save += time.perf_counter() - t2
+        prof_loop_total += time.perf_counter() - loop_start
 
         # 结束条件：任意环境完成
         if dones or truncated:
             break
+        if time_step >= 10: # 安全上限，避免死循环
+            break # 
+
+    # === 性能分析输出 (不写入 set_logger) ===
+    print("\n" + "="*60)
+    print("🕒 Online BEV Render Performance Profiling Summary")
+    print("="*60)
+    print(f"Total Steps Completed : {time_step}")
+    if time_step > 0:
+        print(f"Total Loop Time       : {prof_loop_total:.4f} s (Avg: {prof_loop_total/time_step:.4f} s/step)")
+        print(f"  - Env Step (Sim+3D) : {prof_env_step:.4f} s (Avg: {prof_env_step/time_step:.4f} s/step) [{prof_env_step/prof_loop_total*100:.1f}%]")
+        print(f"  - JSON Data Save    : {prof_json_save:.4f} s (Avg: {prof_json_save/time_step:.4f} s/step) [{prof_json_save/prof_loop_total*100:.1f}%]")
+        print(f"  - Image Save (cv2)  : {prof_img_save:.4f} s (Avg: {prof_img_save/time_step:.4f} s/step) [{prof_img_save/prof_loop_total*100:.1f}%]")
+        other_overhead = prof_loop_total - prof_env_step - prof_json_save - prof_img_save
+        print(f"  - Other Overhead    : {other_overhead:.4f} s (e.g., folder IO, logic) [{other_overhead/prof_loop_total*100:.1f}%]")
+    print("="*60 + "\n")
 
     env.close()

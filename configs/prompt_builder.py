@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-03-11 15:48:27
+LastEditTime: 2026-03-15 19:38:25
 Description: Optimized Prompt Builder (Visual-Only Analysis with Lane Numbering)
 FilePath: /VLMTraffic/configs/prompt_builder.py
 '''
@@ -145,8 +145,8 @@ Base on the **Bird's-Eye-View (BEV) image**, current **Scenario Information**, a
 A. Scene Understanding:
 - **Lane Scanning**: For each approach, report the integer queue length for ALL lanes identified in the Scenario Information.
 - **Visual Constraints**: 
-    * Count ONLY **Inlet Lanes** (vehicles facing INWARD, behind the stop line). Specifically, these are the lanes labeled with numeric IDs (e.g., 1, 2, 3) at the front.
-    * IGNORE **Outlet Lanes** (driving away) and vehicles already inside the intersection.
+    Stop Line Constraint: Count ONLY vehicles located behind the stop line. Do NOT identify or count vehicles that have already crossed the stop line and entered the intersection interior (the "box").
+    Directional Constraint: Identify ONLY Inward-facing vehicles (Inlet Lanes). Strictly IGNORE all vehicles in Outlet Lanes (those driving away from the intersection center).
 - **Phase Mapping**: Map the identified lane counts to the specific Phase IDs listed in the Action Space.
 - **Congestion Assessment**: Categorize each phase based on density:
     1. `Low`: Free-flowing traffic
