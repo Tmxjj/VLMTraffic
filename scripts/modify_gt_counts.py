@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-03-11 15:02:05
-LastEditTime: 2026-03-11 16:23:53
+LastEditTime: 2026-03-17 00:00:37
 Description: this script is used to 
 FilePath: /VLMTraffic/scripts/modify_gt_counts.py
 '''
@@ -51,7 +51,7 @@ def modify_gt_counts(file_path):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Modify gt_vehicle_counts replacing 7 with 6")
-    parser.add_argument("--jsonl", type=str, default="data/sft_dataset/JiNan/anon_3_4_jinan_real_2000.rou/dataset.jsonl", help="Path to input jsonl file")
+    parser.add_argument("--jsonl", type=str, default="data/sft_dataset/Hangzhou/anon_4_4_hangzhou_real_5816.rou/dataset.jsonl", help="Path to input jsonl file")
     args = parser.parse_args()
     
     modify_gt_counts(args.jsonl)

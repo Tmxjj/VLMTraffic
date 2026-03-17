@@ -31,12 +31,13 @@ if PROJECT_ROOT not in sys.path:
 
 from configs.prompt_builder import PromptBuilder
 from configs.scenairo_config import SCENARIO_CONFIGS
+from scripts.modify_gt_counts import modify_gt_counts
 
 class VLMDataAnnotator:
     def __init__(self, data_path, output_path=None):
         self.data_path = data_path
         if output_path is None:
-            self.output_path = data_path.replace(".jsonl", "_auto_annotated.jsonl")
+            self.output_path = os.path.join(os.path.dirname(data_path), "02_dataset_auto_annotated.jsonl")
         else:
             self.output_path = output_path
             
@@ -236,9 +237,14 @@ class VLMDataAnnotator:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Annotate VLM outputs with GT and calculate error for DPO")
-    parser.add_argument("--jsonl", type=str, default='data/sft_dataset/Hangzhou/anon_4_4_hangzhou_real_5816.rou/dataset.jsonl', help="Path to input dataset.jsonl")
+    parser.add_argument("--jsonl", type=str, default='data/sft_dataset/Hangzhou/anon_4_4_hangzhou_real_5816.rou/01_dataset_raw.json', help="Path to input 01_dataset_raw.jsonl")
     parser.add_argument("--output", type=str, default=None, help="Path to output jsonl")
     args = parser.parse_args()
+    
+    # 优先运行 modify_gt_counts 处理输入的 jsonl 文件，将有瑕疵的 count=7 修正为 6
+    logger.info("Running modify_gt_counts on input file prior to annotation...")
+    modify_gt_counts(args.jsonl)
+    logger.info("modify_gt_counts execution completed.")
     
     annotator = VLMDataAnnotator(args.jsonl, args.output)
     annotator.process()

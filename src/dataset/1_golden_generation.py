@@ -428,7 +428,7 @@ class GoldenGenerator:
                         "gt_vehicle_counts": gt_vehicle_counts
                     }
                     
-                    sample_file = os.path.join(self.output_dir, "dataset.jsonl")
+                    sample_file = os.path.join(self.output_dir, "01_dataset_raw.jsonl")
                     append_response_to_file(sample_file, json.dumps(sample, indent=4))
                     logger.info(f"[GOLDEN] Step {decision_step} | JID {jid}: VLM({vlm_info['action']}) vs Golden({best_action}) -> {label}")
 

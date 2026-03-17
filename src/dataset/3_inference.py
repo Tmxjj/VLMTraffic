@@ -39,10 +39,7 @@ class Step3Inferencer:
     def __init__(self, input_file, output_file=None):
         self.input_file = input_file
         if output_file is None:
-            self.output_file = input_file.replace(".jsonl", "_final.jsonl")
-            # Avoid naming collision if it somehow ends up the same
-            if self.output_file == input_file:
-                self.output_file = input_file + ".final.jsonl"
+            self.output_file = os.path.join(os.path.dirname(input_file), "03_dataset_reviewed.jsonl")
         else:
             self.output_file = output_file
             
@@ -184,7 +181,7 @@ if __name__ == "__main__":
     
     # Infer paths if not explicitly provided
     if args.jsonl is None:
-        args.jsonl = f"data/sft_dataset/{args.scenario}/{args.route_file}/dataset_auto_annotated.jsonl"
+        args.jsonl = f"data/sft_dataset/{args.scenario}/{args.route_file}/02_dataset_auto_annotated.jsonl"
         
     route_name = os.path.basename(args.route_file) if args.route_file else "default"
     log_dir = os.path.join(".", "log", "golden_dataset", args.scenario, route_name)

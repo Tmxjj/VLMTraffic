@@ -1,3 +1,4 @@
+# function：在3_viewer.py的基础上增加了自动过滤功能，满足特定条件的记录会被自动标注为“无误”并保存到新的文件中，剩余记录供人工核对和标注。
 import streamlit as st
 import pandas as pd
 import json
@@ -209,14 +210,97 @@ def get_args():
 args = get_args()
 default_data_path = args.path
 
-st.set_page_config(layout="wide", page_title="Step 3 Inference Viewer")
+st.set_page_config(layout="wide", page_title="Step 3 Inference Viewer (Filtered)")
 
 st.sidebar.title("🛠️ 设置与筛选")
+
+# 新增过滤器函数
+def meets_filter_condition(raw_text):
+    if not isinstance(raw_text, str) or not raw_text.strip():
+        return False
+        
+    # 如果值为 "ERROR"，返回特殊状态字符串或抛除以让后续逻辑丢弃
+    # 但我们不能在 apply 函数轻易丢弃行，只能返回 False 不命中 "异常需要人工干预" 的布尔值，
+    # 并且我们需要在加载数据的地方先从 df 中将其滤除
+    if raw_text.strip() == "ERROR":
+        return False
+    
+    ec_match = re.search(r'-\s*Emergency Check:\s*(.*)', raw_text, re.IGNORECASE)
+    fc_match = re.search(r'-\s*Final Condition:\s*(.*)', raw_text, re.IGNORECASE)
+    ri_match = re.search(r'-\s*Rule Identification:\s*(.*)', raw_text, re.IGNORECASE)
+    
+    ec_val = ec_match.group(1).strip().lower() if ec_match else ""
+    fc_val = fc_match.group(1).strip().lower() if fc_match else ""
+    ri_val = ri_match.group(1).strip().lower() if ri_match else ""
+    
+    ec_val = ec_val.replace("'", "").replace('"', "")
+    fc_val = fc_val.replace("'", "").replace('"', "")
+    ri_val = ri_val.replace("'", "").replace('"', "")
+    
+    # Emergency Check 不为 none 也不为空
+    cond1 = bool(ec_val and ec_val != 'none')
+    # Final Condition 不为 normal 也不为空
+    cond2 = bool(fc_val and fc_val != 'normal')
+    # Rule Identification 不在指定列表内，也不为空
+    valid_rules = ['fallback_static', 'bottleneck_rule', 'tie_breaker', 'contextual_adaptation']
+    cond3 = bool(ri_val and ri_val not in valid_rules)
+    
+    return cond1 or cond2 or cond3
 
 # 加载数据
 df = None
 if default_data_path and os.path.exists(default_data_path):
     df = load_data(default_data_path)
+    
+    if not df.empty and 'step3_vlm_response_raw' in df.columns:
+        # 首先彻底剔除值为 "ERROR" 或者为空的废弃数据，不进入人工池也不进入自动标注池
+        # 这里考虑到列可能包含 None (NaN)，使用 isna() 和 str.strip() 组合
+        empty_mask = df['step3_vlm_response_raw'].isna() | (df['step3_vlm_response_raw'].str.strip() == "")
+        error_mask = df['step3_vlm_response_raw'].str.strip() == "ERROR"
+        discard_mask = empty_mask | error_mask
+        
+        discarded_count = discard_mask.sum()
+        df = df[~discard_mask].copy()
+        
+        # 针对剩下的有效数据执行自动过滤逻辑
+        if len(df) > 0:
+            auto_mask = df['step3_vlm_response_raw'].apply(meets_filter_condition)
+            
+            # 满足条件的保留给人工核对
+            df_manual = df[auto_mask].copy()
+            df_manual.reset_index(drop=True, inplace=True)
+            
+            # 不满足特殊情况（未产生过滤命中），直接标注为无误并存入新文件
+            auto_df = df[~auto_mask].copy()
+            
+            # 保存不需要人工介入的数据到 auto_accepted
+            if not auto_df.empty:
+                auto_dir = os.path.join(os.path.dirname(os.path.abspath(default_data_path)), "auto_accepted")
+                os.makedirs(auto_dir, exist_ok=True)
+                
+                # 使用新文件名保存
+                auto_save_path = os.path.join(auto_dir, "04_dataset_final.jsonl")
+                
+                # 在新路径中保存
+                with open(auto_save_path, 'w', encoding='utf-8') as f:
+                    for idx, row in auto_df.iterrows():
+                        record = row.to_dict()
+                        record['human_label'] = '无误'
+                        record['corrected_response'] = record.get('step3_vlm_response_raw', '')
+                        record['error_reason'] = 'Auto Review: Does not meet any special filter conditions'
+                        
+                        json_str = json.dumps(record, ensure_ascii=False, indent=4)
+                        f.write(json_str + "\n\n")
+                
+                st.sidebar.success(f"✅ 自动过滤 {len(auto_df)} 条常规正常数据，默认标注为“无误”并保存在:\n`{auto_save_path}`")
+            
+            # 覆盖全局df用作界面渲染
+            df = df_manual
+            
+        if discarded_count > 0:
+            st.sidebar.warning(f"🗑️ 已彻底剔除 {discarded_count} 条为空或返回为 'ERROR' 的无效数据。")
+            
+        st.sidebar.info(f"剩余需人工核对（满足特殊条件）的数据量: {len(df)}")
 else:
     st.error(f"❌ 找不到文件: `{default_data_path}`")
     st.stop()
