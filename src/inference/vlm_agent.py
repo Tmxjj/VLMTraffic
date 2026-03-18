@@ -10,7 +10,6 @@ from io import BytesIO
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
-# 建议导入
 from configs.prompt_builder import PromptBuilder
 from configs.model_config import MODEL_CONFIG
 
@@ -28,8 +27,9 @@ def is_api_retryable_error(exception):
     return any(condition in err_msg for condition in retryable_conditions)
 
 class VLMAgent:
-    def __init__(self, api_type=None, **kwargs):
+    def __init__(self, api_type=None, batch_size=1, **kwargs):
         self.api_type = api_type or MODEL_CONFIG.get("api_type", "local_model")
+        self.batch_size = batch_size  # 新增：并发推理数量
         backend_config = MODEL_CONFIG.get(self.api_type, {})
         self.config = {**MODEL_CONFIG, **backend_config, **kwargs}
         
@@ -83,10 +83,83 @@ class VLMAgent:
             self.url = self.config.get("url")
             self.headers = self.config.get("headers", {"Content-Type": "application/json"})
 
-    # --- 核心重试逻辑包装 ---
+    def get_batch_decision(self, image_paths: list, prompts: list):
+        """支持多图多Prompt的Batch并发推理"""
+        if not image_paths or not prompts:
+            return []
+
+        # 非本地模型暂不支持原生 batch 张量推理，降级为循环处理
+        if self.api_type != "local_model":
+            results = []
+            for img, p in zip(image_paths, prompts):
+                results.append(self.get_decision(img, p))
+            return results
+
+        start_time = time.perf_counter()
+        
+        try:
+            # 1. 组装 Batch 消息
+            messages_batch = []
+            for img_path, p in zip(image_paths, prompts):
+                messages_batch.append([
+                    {"role": "user", "content": [
+                        {"type": "image", "image": img_path}, 
+                        {"type": "text", "text": p}
+                    ]}
+                ])
+
+            if hasattr(self, 'processor') and self.processor is not None:
+                # 确保 pad_token 存在，否则 Batch 时的 padding 会报错
+                if self.processor.tokenizer.pad_token_id is None:
+                    self.processor.tokenizer.pad_token_id = self.processor.tokenizer.eos_token_id
+                    
+                # 2. 批量处理输入 (开启 Padding 对齐)
+                inputs = self.processor.apply_chat_template(
+                    messages_batch, 
+                    tokenize=True, 
+                    add_generation_prompt=True, 
+                    return_dict=True, 
+                    return_tensors="pt",
+                    padding=True
+                ).to(self.model.device)
+
+                # 3. 并发推理
+                gen_kwargs = {
+                    "max_new_tokens": self.max_tokens, 
+                    "temperature": self.temperature, 
+                    "do_sample": self.temperature > 0
+                }
+                generated_ids = self.model.generate(**inputs, **gen_kwargs)
+
+                # 4. 批量解码
+                trimmed_ids = [
+                    out_ids[len(in_ids):] 
+                    for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+                ]
+                responses = self.processor.batch_decode(trimmed_ids, skip_special_tokens=True)
+            else:
+                logger.warning("[EVAL] Batch inference without processor is not fully supported.")
+                responses = ["ERROR"] * len(image_paths)
+
+            # 5. 格式化并返回
+            latency = (time.perf_counter() - start_time) / len(image_paths)
+            batch_results = []
+            for resp in responses:
+                resp = resp.strip()
+                action = self._parse_action(resp)
+                batch_results.append((resp, latency, action, None))
+            
+            logger.info(f"[EVAL] Batch Inference (Size: {len(image_paths)}) completed in {latency * len(image_paths):.2f}s total.")
+            return batch_results
+
+        except Exception as e:
+            logger.error(f"[EVAL] Batch Inference Failed: {e}")
+            return [("ERROR", 0, 0, None)] * len(image_paths)
+
+    # --- 核心重试逻辑包装 (保留用于单路口或 API 调用) ---
     @retry(
         retry=retry_if_exception(is_api_retryable_error),
-        wait=wait_exponential(multiplier=2, min=4, max=60), # 4s, 8s, 16s...
+        wait=wait_exponential(multiplier=2, min=4, max=60),
         stop=stop_after_attempt(5),
         before_sleep=lambda retry_state: logger.warning(
             f"[EVAL] API Error (Attempt {retry_state.attempt_number}). Retrying in {retry_state.next_action.sleep}s..."
@@ -120,10 +193,7 @@ class VLMAgent:
             img = Image.open(image_path)
             config = types.GenerateContentConfig(
                 temperature=self.temperature, max_output_tokens=self.max_tokens,
-                thinking_config=types.ThinkingConfig(
-                    include_thoughts=True, 
-                    # thinking_level='low'
-                    )
+                thinking_config=types.ThinkingConfig(include_thoughts=True)
             )
             return self.model.models.generate_content(model=self.config.get("model_name", "gemini-3-pro-preview"), contents=[prompt, img], config=config)
 
@@ -136,10 +206,7 @@ class VLMAgent:
                         "role": "user",
                         "content": [
                             {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-                            }
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
                         ]
                     }
                 ],
@@ -147,20 +214,18 @@ class VLMAgent:
                 "max_tokens": self.max_tokens
             }
             resp = requests.post(self.url, headers=self.headers, json=payload, timeout=60)
-            resp.raise_for_status() # 触发 requests 的异常以供 tenacity 捕获
+            resp.raise_for_status()
             return resp.json()
 
     def get_decision(self, image_path: str, prompt: str):
-        """主入口：数据处理、结果解析"""
+        """单图推理主入口"""
         response, thought = "ERROR", None
         input_tokens, output_tokens = 0, 0
         start_time = time.perf_counter()
 
         try:
-            # 执行带重试的推理
             raw_result = self._execute_inference(image_path, prompt)
 
-            # --- 解析部分 (根据不同后端提取 text 和 token) ---
             if self.api_type == "local_model":
                 gen_ids, inputs = raw_result
                 input_tokens = inputs.input_ids.shape[1]
@@ -178,7 +243,6 @@ class VLMAgent:
                     input_tokens, output_tokens = raw_result.usage.prompt_tokens, raw_result.usage.completion_tokens
 
             elif self.api_type == "gemini_sdk":
-                # 处理 Gemini 的多部分响应（Thought + Content）
                 res_parts, thought_parts = [], []
                 if raw_result.candidates:
                     for part in raw_result.candidates[0].content.parts:

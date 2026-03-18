@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:49:26
-LastEditTime: 2026-03-06 11:14:59
+LastEditTime: 2026-03-17 23:34:55
 Description: this script is used to 
 FilePath: /VLMTraffic/vlm_decision.py
 '''
@@ -42,7 +42,7 @@ class Evaluator:
     """
     Runs the end-to-end evaluation loop.
     """
-    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None):
+    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None, batch_size=1):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
         
@@ -55,6 +55,10 @@ class Evaluator:
 
         self.scenario_name = self.scenario_config["SCENARIO_NAME"]
         self.junction_name = self.scenario_config["JUNCTION_NAME"]
+        # 处理交叉口列表长度，约束 batch_size
+        num_junctions = len(self.junction_name) if isinstance(self.junction_name, list) else 1
+        self.batch_size = min(batch_size, num_junctions)
+        logger.info(f"[EVAL] Concurrency set to {self.batch_size} (Requested: {batch_size}, Max Junctions: {num_junctions})")
         
         # Route File Handling
         model_name = MODEL_CONFIG.get(MODEL_CONFIG.get("api_type", "local_model"), {}).get("model_name", "N/A")
@@ -149,7 +153,7 @@ class Evaluator:
         try:
             # Automatically loads from MODEL_CONFIG inside VLMAgent
             logger.info(f"[EVAL] Initializing VLM Agent...")
-            self.agent = VLMAgent() 
+            self.agent = VLMAgent(batch_size=self.batch_size) 
         except Exception as e:
              logger.critical(f"[EVAL] Failed to initialize VLM Agent: {e}")
              raise e
@@ -233,98 +237,77 @@ class Evaluator:
             # Save current vehicle/traffic state
             save_to_json(render_json, _render_json_file)
 
-            # --- Decision Making Loop (Multi-Junction) ---
+    
+            # --- 阶段 1: 数据收集与降级处理 ---
             action_dict = {}
+            inference_tasks = [] # 记录需要送入大模型的任务: (jid, img_path, prompt, phase_id)
             
-            # Get sensor data from previous step (or warmup)
             sensor_datas = infos.get('3d_data', {})
             sensor_imgs = sensor_datas.get('image', {})
             
+            # 预先设置默认动作（Fallback），后续成功的推理会将其覆盖
+            num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
+            fallback_action = decision_step % num_phases
+            
             for jid in junctions:
-                jid_action = 0 # Default action
+                action_dict[jid] = fallback_action # 默认填充 fallback
                 
                 # 1. Get Phase Info
                 current_phase_id = 0
-                try:
-                    if 'tls' in render_json and jid in render_json['tls']:
-                         current_phase_id = render_json['tls'][jid]['this_phase_index']
-                    else:
-                         logger.warning(f"[EVAL] Phase info missing for {jid}, using 0")
-                except Exception as e:
-                     logger.warning(f"[EVAL] Error extracting phase for {jid}: {e}")
+                if 'tls' in render_json and jid in render_json['tls']:
+                     current_phase_id = render_json['tls'][jid]['this_phase_index']
 
                 # 2. Get BEV Image
                 bev_image_path = None
                 aircraft_jid = f'aircraft_{jid}'
                 if sensor_imgs and aircraft_jid in sensor_imgs:
-                    # Logic adapted from online_bev_render.py
-                    # Assuming dictionary structure: sensor_imgs[jid]['aircraft_all']
                     try:
                         junction_img_data = sensor_imgs[aircraft_jid].get('aircraft_all')
                         if junction_img_data is not None:
                             raw_bev_path = os.path.join(_step_dir, f"{aircraft_jid}_bev_raw.png")
                             cv2.imwrite(raw_bev_path, convert_rgb_to_bgr(junction_img_data))
-                            
-                            # Add watermark
                             bev_image_path = os.path.join(_step_dir, f"{aircraft_jid}_bev_watermarked.png")
                             add_lane_watermarks(raw_bev_path, bev_image_path)
-                            
                     except Exception as e:
-                         logger.warning(f"[EVAL] Failed to save or watermark image for {aircraft_jid}: {e}")
+                         logger.warning(f"[EVAL] Failed to save/watermark image for {aircraft_jid}: {e}")
 
-                # 3. VLM Agent Decision
+                # 3. 如果图像准备就绪，加入待推理队列
                 if bev_image_path:
-                    try:
-                        prompt = PromptBuilder.build_decision_prompt(
-                            current_phase_id=current_phase_id,
-                            scenario_name=self.scenario_key # Pass scenario key to select correct prompt
-                        )
-                        # VLM Agent Inference
-                        # vlm_response, latency, decided_action, thought = self.agent.get_decision(bev_image_path, prompt)
-                        vlm_response, latncy, decided_action, thought = "ERROR", 0, 0, None # --- IGNORE --- for testing fallback
-                 
-                        # Save Response per Junction
-                        _resp_file = os.path.join(_step_dir, f"response_{jid}.txt")
-                        content_to_save = vlm_response
-                        if thought:
-                            content_to_save += f"\n\n[Thinking Process]\n{thought}"
-                        write_response_to_file(file_path=_resp_file, content=content_to_save)
-                        
-                        # --- Fallback Logic Check ---
-                        is_valid = True
-                        
-                        # Re-verify regex because vlm_agent returns 0 on failure, which is ambiguous
-                        # We want to catch cases where "Action: [...]" is missing
-                        match = re.search(r"Action:?\s*\[?(\d+)\]?", vlm_response, re.IGNORECASE)
-                        if (vlm_response == "ERROR") or (not match):
-                            is_valid = False
-
-                        if is_valid:
-                            logger.info(f"[EVAL] Step: {decision_step} | Sumo_time {sumo_sim_step} | JID: {jid} | Phase: {current_phase_id} | Action: {decided_action} | Latency: {latency:.2f}s")
-                            jid_action = decided_action
-                        else:
-                            num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
-                            fixed_action = decision_step % num_phases
-                            logger.warning(f"[EVAL] VLM Failed/Invalid (Resp: {vlm_response[:30]}...). Fallback to Fixed Timing: Action {fixed_action} (Step {decision_step} % {num_phases})")
-                            jid_action = fixed_action
-                        
-                    except Exception as e:
-                        logger.error(f"[EVAL] VLM Inference failed for {jid} at step {decision_step}: {e}")
-                        
-                        # Fallback
-                        num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
-                        fixed_action = decision_step % num_phases
-                        logger.warning(f"[EVAL] Exception Fallback to Fixed Timing: Action {fixed_action}")
-                        jid_action = fixed_action
+                    prompt = PromptBuilder.build_decision_prompt(
+                        current_phase_id=current_phase_id,
+                        scenario_name=self.scenario_key
+                    )
+                    inference_tasks.append((jid, bev_image_path, prompt, current_phase_id))
                 else:
-                    logger.warning(f"[EVAL] No BEV image available for {jid}, skipping VLM in sumo_time {sumo_sim_step}")
-                    # Fallback
-                    num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
-                    fixed_action = decision_step % num_phases
-                    jid_action = fixed_action
-                
-                # Collect Action
-                action_dict[jid] = jid_action
+                    logger.warning(f"[EVAL] No BEV image available for {jid}, using fallback.")
+
+            # --- 阶段 2: 执行 Batch 推理 ---
+            if inference_tasks:
+                # 按照约束好的 self.batch_size 切分任务并推理
+                for i in range(0, len(inference_tasks), self.batch_size):
+                    batch_tasks = inference_tasks[i:i + self.batch_size]
+                    b_jids = [t[0] for t in batch_tasks]
+                    b_imgs = [t[1] for t in batch_tasks]
+                    b_prompts = [t[2] for t in batch_tasks]
+                    b_phases = [t[3] for t in batch_tasks]
+
+                    # 调用批量推理接口
+                    results = self.agent.get_batch_decision(b_imgs, b_prompts)
+
+                    # --- 阶段 3: 结果分发与持久化 ---
+                    for jid, phase_id, (vlm_resp, latency, decided_action, thought) in zip(b_jids, b_phases, results):
+                        # 存结果
+                        _resp_file = os.path.join(_step_dir, f"response_{jid}.txt")
+                        content_to_save = vlm_resp + (f"\n\n[Thinking Process]\n{thought}" if thought else "")
+                        write_response_to_file(file_path=_resp_file, content=content_to_save)
+
+                        # 验证结果
+                        match = re.search(r"Action:?\s*\[?(\d+)\]?", vlm_resp, re.IGNORECASE)
+                        if vlm_resp != "ERROR" and match:
+                            logger.info(f"[EVAL] Step: {decision_step} | Sumo_time {sumo_sim_step} | JID: {jid} | Phase: {phase_id} | Action: {decided_action} | Latency: {latency:.2f}s")
+                            action_dict[jid] = decided_action
+                        else:
+                            logger.warning(f"[EVAL] VLM Invalid for {jid} (Resp: {vlm_resp[:30]}...). Fallback: Action {fallback_action}")
 
             # --- Environment Step ---
             # Prepare final action payload
