@@ -20,4 +20,7 @@ pandas
 matplotlib
 tenacity
 trl
+# 安装sumo
+apt-get update
+apt-get install sumo sumo-tools sumo-doc
 # Add other specific dependencies as needed

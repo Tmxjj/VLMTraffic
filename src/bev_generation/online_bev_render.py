@@ -10,16 +10,10 @@ import os
 import sys
 import time
 
-# 【深度修复 GPU 渲染节点 1】：
-# 彻底阻断 Xvfb 和 SSH 默认转发的桌面，强制 Panda3D 放弃向系统寻找物理显示器，从而激活 EGL 显卡底层无头模式
-os.environ.pop('DISPLAY', None)
-os.environ.pop('MESA_GL_VERSION_OVERRIDE', None)
-os.environ.pop('MESA_GLSL_VERSION_OVERRIDE', None)
-
-# 【终极 EGL 无头模式注入】：强制绑定设备和物理卡
+# 【 EGL 无头模式】：
 os.environ['EGL_VISIBLE_DEVICES'] = '0' # 指定使用显卡 0
-os.environ['DISPLAY'] = '' # 清空 DISPLAY 而不是删掉，防止 fallback 向 :0 请求
-os.environ['WAYLAND_DISPLAY'] = ''
+os.environ.pop('DISPLAY', None)
+os.environ.pop('WAYLAND_DISPLAY', None)
 
 # 3D TSC ENV
 import re

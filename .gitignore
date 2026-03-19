@@ -5,7 +5,7 @@ __pycache__/
 # 仿真生成的数据 (根据你的代码逻辑)
 TransSimHub/
 *.log
-*.json
+# *.json
 *.jpg
 *.txt
 *.xml
@@ -18,10 +18,12 @@ TransSimHub/
 data/sft_dataset/
 data/dpo_dataset/
 data/bev_images/
+data/raw/
 models/
 
 # VS Code 配置 (个人配置通常不上传，团队协作除外)
 # .vscode/
+* data/
 
 # 系统文件
 .DS_Store
