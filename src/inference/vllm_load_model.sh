@@ -1,12 +1,10 @@
 python -m vllm.entrypoints.openai.api_server \
-    --model models/base_models/Qwen3-VL-8B-Instruct \
+    --model /root/autodl-tmp/base_model/qwen3-vl-8b \
     --trust-remote-code \
-    --served-model-name qwen3-vl-8b \
     --dtype bfloat16 \
-    --enable-prefix-caching \
-    --max-model-len 32768 \
     --gpu-memory-utilization 0.8 \
-    --port 8000
-
-    # --speculative-model [DRAFT_MODEL_PATH_OR_KEYWORD] \
-    # --num-speculative-tokens 5 \
+    --max-model-len 4096 \
+    --max-num-seqs 2 \
+    --enforce-eager \
+    --disable-log-stats \
+    --swap-space 16
