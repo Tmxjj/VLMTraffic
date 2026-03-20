@@ -6,6 +6,15 @@
 LOG_DIR="./log/eval_results"
 MAX_STEPS=120 # Set a default number of decision steps, e.g., 120 for a 1-hour simulation with 10s steps
 
+# 注入 launch.json 中的环境变量
+PROJECT_ROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+export PYTHONPATH="${PROJECT_ROOT}:${PROJECT_ROOT}/src:${PYTHONPATH}"
+
+# 使用 launch.json 中指定的 VirtualGL 包装脚本替代原生 python
+# 确保 vgl_python.sh 在当前运行目录下，并且有可执行权限 (chmod +x vgl_python.sh)
+PYTHON_CMD="./vgl_python.sh" 
+
+
 # --- Scenarios and Routes ---
 
 # JiNan Scenario
@@ -19,8 +28,6 @@ JINAN_ROUTES=(
 )
 
 # Hangzhou Scenario
-# NOTE: The config for "Hangzhou" needs to exist in configs/scenairo_config.py
-# Assuming a "Hangzhou" config exists.
 SCENARIO_HANGZHOU="Hangzhou"
 HANGZHOU_ROUTES=(
     "anon_4_4_hangzhou_real.rou.xml"
@@ -31,14 +38,15 @@ HANGZHOU_ROUTES=(
 
 # --- Execution ---
 
-echo "Starting Batch Evaluation..."
-mkdir -p $LOG_DIR
+echo "Starting Batch Evaluation with VirtualGL (GPU Acceleration)..."
+mkdir -p "$LOG_DIR"
 
 # Run for JiNan
 echo "--- Running Scenario: $SCENARIO_JINAN ---"
 for route in "${JINAN_ROUTES[@]}"; do
     echo "Running with route: $route"
-    python vlm_decision.py \
+    # 👇 修改这里：使用 PYTHON_CMD 替代 python
+    $PYTHON_CMD vlm_decision.py \
         --scenario "$SCENARIO_JINAN" \
         --log_dir "$LOG_DIR" \
         --route_file "$route" \
@@ -54,12 +62,11 @@ echo "--- Finished Scenario: $SCENARIO_JINAN ---"
 
 
 # Run for Hangzhou
-# First, check if a config for Hangzhou exists. We can't do this in bash easily,
-# so we rely on the python script to fail if it doesn't.
 echo "--- Running Scenario: $SCENARIO_HANGZHOU ---"
 for route in "${HANGZHOU_ROUTES[@]}"; do
     echo "Running with route: $route"
-    python vlm_decision.py \
+    # 👇 修改这里：使用 PYTHON_CMD 替代 python
+    $PYTHON_CMD vlm_decision.py \
         --scenario "$SCENARIO_HANGZHOU" \
         --log_dir "$LOG_DIR" \
         --route_file "$route" \
@@ -71,6 +78,5 @@ for route in "${HANGZHOU_ROUTES[@]}"; do
     fi
 done
 echo "--- Finished Scenario: $SCENARIO_HANGZHOU ---"
-
 
 echo "Batch Evaluation Completed."

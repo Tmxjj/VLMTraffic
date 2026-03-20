@@ -13,8 +13,6 @@ import time
 from loguru import logger
 import sys
 
-
-
 from tshub.utils.get_abs_path import get_abs_path
 from tshub.utils.init_log import set_logger
 from utils.make_tsc_env import make_env
@@ -35,7 +33,7 @@ class Evaluator:
     """
     Runs the end-to-end evaluation loop.
     """
-    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None, batch_size=1):
+    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None, batch_size=12):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
         

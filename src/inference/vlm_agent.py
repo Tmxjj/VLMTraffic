@@ -9,6 +9,7 @@ import random
 from io import BytesIO
 from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+import concurrent.futures
 
 from configs.prompt_builder import PromptBuilder
 from configs.model_config import MODEL_CONFIG
@@ -88,32 +89,55 @@ class VLMAgent:
         if not image_paths or not prompts:
             return []
 
-        # 非本地模型暂不支持原生 batch 张量推理，降级为循环处理
-        if self.api_type != "local_model":
-            results = []
-            for img, p in zip(image_paths, prompts):
-                results.append(self.get_decision(img, p))
+        # ==========================================
+        # 1. 针对 vLLM / API 请求：使用多线程触发服务端 Continuous Batching
+        # ==========================================
+        if self.api_type == "requests":
+            start_time = time.perf_counter()
+            results = [None] * len(image_paths) # 预占位，保证返回顺序与输入一致
+            
+            # 使用 batch_size 限制最大并发连接数（保护服务端不被压垮）
+            max_workers = min(self.batch_size, len(image_paths)) if self.batch_size > 0 else len(image_paths)
+            logger.info(f"[EVAL] Starting ThreadPoolExecutor with {max_workers} workers for vLLM API batching.")
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # 提交所有任务
+                future_to_idx = {
+                    executor.submit(self.get_decision, img, p): idx 
+                    for idx, (img, p) in enumerate(zip(image_paths, prompts))
+                }
+                
+                # 收集结果
+                for future in concurrent.futures.as_completed(future_to_idx):
+                    idx = future_to_idx[future]
+                    try:
+                        results[idx] = future.result()
+                    except Exception as e:
+                        logger.error(f"[EVAL] Batch API item {idx} failed: {e}")
+                        results[idx] = ("ERROR", 0.0, 0, None)
+
+            total_latency = time.perf_counter() - start_time
+            logger.info(f"[EVAL] API Batch Inference (Size: {len(image_paths)}) completed in {total_latency:.2f}s total.")
             return results
 
-        start_time = time.perf_counter()
-        
-        try:
-            # 1. 组装 Batch 消息
-            messages_batch = []
-            for img_path, p in zip(image_paths, prompts):
-                messages_batch.append([
-                    {"role": "user", "content": [
-                        {"type": "image", "image": img_path}, 
-                        {"type": "text", "text": p}
-                    ]}
-                ])
+        # ==========================================
+        # 2. 针对 HuggingFace 本地模型：使用原生的张量 Batch (Padding)
+        # ==========================================
+        elif self.api_type == "local_model" and hasattr(self, 'processor') and self.processor is not None:
+            start_time = time.perf_counter()
+            try:
+                messages_batch = []
+                for img_path, p in zip(image_paths, prompts):
+                    messages_batch.append([
+                        {"role": "user", "content": [
+                            {"type": "image", "image": img_path}, 
+                            {"type": "text", "text": p}
+                        ]}
+                    ])
 
-            if hasattr(self, 'processor') and self.processor is not None:
-                # 确保 pad_token 存在，否则 Batch 时的 padding 会报错
                 if self.processor.tokenizer.pad_token_id is None:
                     self.processor.tokenizer.pad_token_id = self.processor.tokenizer.eos_token_id
                     
-                # 2. 批量处理输入 (开启 Padding 对齐)
                 inputs = self.processor.apply_chat_template(
                     messages_batch, 
                     tokenize=True, 
@@ -123,7 +147,6 @@ class VLMAgent:
                     padding=True
                 ).to(self.model.device)
 
-                # 3. 并发推理
                 gen_kwargs = {
                     "max_new_tokens": self.max_tokens, 
                     "temperature": self.temperature, 
@@ -131,30 +154,36 @@ class VLMAgent:
                 }
                 generated_ids = self.model.generate(**inputs, **gen_kwargs)
 
-                # 4. 批量解码
                 trimmed_ids = [
                     out_ids[len(in_ids):] 
                     for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
                 ]
                 responses = self.processor.batch_decode(trimmed_ids, skip_special_tokens=True)
-            else:
-                logger.warning("[EVAL] Batch inference without processor is not fully supported.")
-                responses = ["ERROR"] * len(image_paths)
 
-            # 5. 格式化并返回
-            latency = (time.perf_counter() - start_time) / len(image_paths)
-            batch_results = []
-            for resp in responses:
-                resp = resp.strip()
-                action = self._parse_action(resp)
-                batch_results.append((resp, latency, action, None))
-            
-            logger.info(f"[EVAL] Batch Inference (Size: {len(image_paths)}) completed in {latency * len(image_paths):.2f}s total.")
-            return batch_results
+                latency = (time.perf_counter() - start_time) / len(image_paths)
+                batch_results = []
+                for resp in responses:
+                    resp = resp.strip()
+                    action = self._parse_action(resp)
+                    batch_results.append((resp, latency, action, None))
+                
+                logger.info(f"[EVAL] Tensor Batch Inference (Size: {len(image_paths)}) completed in {latency * len(image_paths):.2f}s total.")
+                return batch_results
 
-        except Exception as e:
-            logger.error(f"[EVAL] Batch Inference Failed: {e}")
-            return [("ERROR", 0, 0, None)] * len(image_paths)
+            except Exception as e:
+                logger.error(f"[EVAL] Tensor Batch Inference Failed: {e}")
+                return [("ERROR", 0.0, 0, None)] * len(image_paths)
+
+        # ==========================================
+        # 3. 其他情况 (OpenAI/Gemini 且未要求并发时)，降级为串行循环
+        # ==========================================
+        else:
+            logger.info("[EVAL] Falling back to sequential processing.")
+            results = []
+            for img, p in zip(image_paths, prompts):
+                results.append(self.get_decision(img, p))
+            return results
+        
 
     # --- 核心重试逻辑包装 (保留用于单路口或 API 调用) ---
     @retry(
