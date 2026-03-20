@@ -3,8 +3,8 @@
 # This script runs batch evaluations for different scenarios and route files.
 
 # --- Configuration ---
-LOG_DIR="./log/eval_results_batch"
-MAX_STEPS=360 # Set a default number of decision steps, e.g., 360 for a 1-hour simulation with 10s steps
+LOG_DIR="./log/eval_results"
+MAX_STEPS=120 # Set a default number of decision steps, e.g., 120 for a 1-hour simulation with 10s steps
 
 # --- Scenarios and Routes ---
 
