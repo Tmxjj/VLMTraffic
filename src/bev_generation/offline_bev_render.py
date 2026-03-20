@@ -8,35 +8,14 @@ import cv2
 import json
 import sys
 import warnings # [新增] 用于发出警告
-from pyvirtualdisplay import Display
 
-# 1. 环境设置
-os.environ['MESA_GL_VERSION_OVERRIDE'] = '3.3'
-os.environ['MESA_GLSL_VERSION_OVERRIDE'] = '330'
 
 class OfflineBEVGenerator:
     def __init__(self, scenario_key, scenario_glb_dir, sensor_cfg, renderer_cfg):
         """
         初始化纯渲染环境
         """
-        # ==================================================================
-        # [安全检查] 检测 Panda3D 是否被提前导入
-        # ==================================================================
-        if 'panda3d.core' in sys.modules or 'direct.showbase.ShowBase' in sys.modules:
-            warning_msg = (
-                "\n"
-                "CRITICAL WARNING: Panda3D modules detected in memory BEFORE Virtual Display initialization!\n"
-            )
-            print(f"\033[91m{warning_msg}\033[0m") # 使用红色字体打印
-            raise RuntimeError("Panda3D imported too early. See warning above.")
-
-      
-        print("Initializing Virtual Display inside class...")
-        self.display = Display(visible=0, size=(800, 600))
-        self.display.start()
-        print(f"Virtual Display started on {os.environ.get('DISPLAY')}")
-
-      
+        print("Initializing TSHubRenderer with VirtualGL Backend...")
         try:
             from tshub.tshub_env3d.vis3d_renderer.tshub_render import TSHubRenderer
         except ImportError as e:
@@ -97,8 +76,7 @@ class OfflineBEVGenerator:
 
     def close(self):
         self.renderer.destroy()
-        self.display.stop()
-
+        
 if __name__ == '__main__':
     # 这里的 import 是安全的，因为 __name__ == '__main__' 只有直接运行此脚本时才执行
     from configs.scenairo_config import SCENARIO_CONFIGS

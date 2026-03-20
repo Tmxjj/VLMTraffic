@@ -13,14 +13,7 @@ import time
 from loguru import logger
 import sys
 
-# 修复 OpenGL 版本报错 (必须放在最前面)
-os.environ['MESA_GL_VERSION_OVERRIDE'] = '3.3'
-os.environ['MESA_GLSL_VERSION_OVERRIDE'] = '330'
 
-from pyvirtualdisplay import Display
-# 启动虚拟显示器
-display = Display(visible=0, size=(800, 600))
-display.start()
 
 from tshub.utils.get_abs_path import get_abs_path
 from tshub.utils.init_log import set_logger
