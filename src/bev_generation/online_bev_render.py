@@ -10,11 +10,6 @@ import os
 import sys
 import time
 
-# 【 EGL 无头模式】：
-os.environ['EGL_VISIBLE_DEVICES'] = '0' # 指定使用显卡 0
-os.environ.pop('DISPLAY', None)
-os.environ.pop('WAYLAND_DISPLAY', None)
-
 # 3D TSC ENV
 import re
 import cv2
@@ -73,7 +68,25 @@ if __name__ == '__main__':
     print("Initialize Environment...")
     init_start = time.perf_counter()
     env = make_env(**params)()
-    print(f"✅ Environment initialized in {time.perf_counter() - init_start:.4f} seconds.\n")
+    # ==========================================================
+    # 🔍 插入 GPU 渲染器硬件检测代码
+    # ==========================================================
+    try:
+        from direct.showbase.ShowBaseGlobal import base
+        if hasattr(base, 'win') and base.win:
+            gsg = base.win.getGsg()
+            if gsg:
+                vendor = gsg.getDriverVendor()
+                renderer = gsg.getDriverRenderer()
+                print("\n" + "*"*50)
+                print(f"🎮 当前 Panda3D 渲染硬件: {vendor} - {renderer}")
+                print("*"*50 + "\n")
+            else:
+                print("⚠️ 警告：无法获取 GSG (Graphics State Guardian)，渲染管道可能异常。")
+        else:
+            print("⚠️ 警告：base.win 不存在，离屏缓冲区未能正确创建。")
+    except Exception as e:
+        print(f"⚠️ 获取渲染硬件信息时出错: {e}")
 
     # Simulation with environment
     obs, _info = env.reset()

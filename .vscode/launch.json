@@ -2,13 +2,24 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python 调试程序: 当前文件",  // <--- 1. 这里补上了逗号
+            "name": "Python 调试: VirtualGL (GPU 加速 + BEV)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            // 👇 核心魔法：让 VSCode 使用我们刚才写的带 GPU 加速的伪装脚本
+            "python": "${workspaceFolder}/vgl_python.sh",
+            "env": {
+                "PYTHONPATH": "${env:PYTHONPATH}:${workspaceFolder}/src" 
+            }
+        },
+        {
+            "name": "Python 调试: 普通当前文件",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
             "env": {
-                // 注意：Linux/Mac 用冒号(:)分隔，Windows 用分号(;)分隔
                 "PYTHONPATH": "${env:PYTHONPATH}:${workspaceFolder}/src" 
             }
         }

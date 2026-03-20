@@ -1,26 +1,39 @@
-torch
-transformers
-modelscope
+# ==========================================
+# 🚗 交通仿真与 3D 渲染 (SUMO & Panda3D)
+# ==========================================
 sumolib
 traci
-numpy
-pandas
-pillow
-scikit-learn
-accelerate
-sft
-mpmath
-google-genai
+panda3d==1.10.14
+panda3d-simplepbr>=0.7.0  # 必须保证最新版，以支持关闭 HDR/ACES 滤镜
+PyOpenGL
+PyOpenGL_accelerate
+
+# ==========================================
+# 🧠 大语言模型与深度学习 (VLM / LLM)
+# ==========================================
+torch
+transformers
 vllm==0.11.0
 accelerate
+trl
+modelscope
+google-genai
+
+# ==========================================
+# 📊 视觉、数据处理与基础工具
+# ==========================================
+numpy
+pandas
+opencv-python     # 对应代码中的 import cv2
+pillow
+scikit-learn
+matplotlib
 tensorboard
+loguru            # 对应代码中的日志管理
+
+# ==========================================
+# 🛠️ 辅助工具与 UI
+# ==========================================
+tenacity
 deep-translator
 streamlit
-pandas
-matplotlib
-tenacity
-trl
-# 安装sumo
-apt-get update
-apt-get install sumo sumo-tools sumo-doc
-# Add other specific dependencies as needed
