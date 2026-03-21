@@ -26,16 +26,16 @@ from src.evaluation.metrics import MetricsCalculator
 from scripts.add_lane_watermarks import add_lane_watermarks
 
 import argparse
-import sys
-import shutil # ensure this is imported if not already
+import shutil 
 
 class Evaluator:
     """
     Runs the end-to-end evaluation loop.
     """
-    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None, batch_size=12):
+    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None, batch_size=12, use_fixed_time=False):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
+        self.use_fixed_time = use_fixed_time
         
         # --- 1. Load Configurations ---
         path_convert = get_abs_path(__file__) 
@@ -52,7 +52,11 @@ class Evaluator:
         logger.info(f"[EVAL] Concurrency set to {self.batch_size} (Requested: {batch_size}, Max Junctions: {num_junctions})")
         
         # Route File Handling
-        model_name = MODEL_CONFIG.get(MODEL_CONFIG.get("api_type", "local_model"), {}).get("model_name", "N/A")
+        if self.use_fixed_time:
+            model_name = "fixed_time"
+        else:
+            model_name = MODEL_CONFIG.get(MODEL_CONFIG.get("api_type", "local_model"), {}).get("model_name", "N/A")
+            
         route_name = "default"
         if route_file:
             route_name = os.path.splitext(os.path.basename(route_file))[0]
@@ -69,7 +73,6 @@ class Evaluator:
         scenario_glb_dir = path_convert(f"data/raw/{self.scenario_name}/3d_assets/")
         
         # Output Folder Structure: data/eval/{Scenario}/{RouteName}/{Model_name}
-        
         self.output_folder = path_convert(f"data/eval/{self.scenario_name}/{route_name}/{model_name}/")
         create_folder(self.output_folder)
 
@@ -86,21 +89,18 @@ class Evaluator:
                 with open(base_sumo_cfg, 'r') as f:
                     cfg_content = f.read()
                 
-                
                 new_route_path = f"./env/{os.path.basename(route_file)}" # Assuming route file is in the env folder relative to sumocfg
                 cfg_content = re.sub(r'<route-files value="[^"]+"/>', f'<route-files value="{new_route_path}"/>', cfg_content, count=1)
                 
                 # Save temp config to the same directory as the original to preserve relative paths
-                temp_cfg_path = os.path.join(os.path.dirname(base_sumo_cfg), f"temp_{route_name}.sumocfg")
-                with open(temp_cfg_path, 'w') as f:
+                self.temp_cfg_path = os.path.join(os.path.dirname(base_sumo_cfg), f"temp_{route_name}.sumocfg")
+                with open(self.temp_cfg_path, 'w') as f:
                     f.write(cfg_content)
                 
-                sumo_cfg = temp_cfg_path
+                sumo_cfg = self.temp_cfg_path
                 logger.info(f"[EVAL] Created temporary SUMO config with route {route_file}: {sumo_cfg}")
             except Exception as e:
                 logger.error(f"[EVAL] Failed to modify SUMO config for route {route_file}: {e}")
-                # Fallback to original if modification fails, though this might run wrong route
-                # raise e # better to fail
                 pass 
 
         # Checking file existence
@@ -131,7 +131,6 @@ class Evaluator:
         # 保存所有配置参数到日志
         self._log_configurations()
 
-
         # --- 2. Initialize Environment ---
         try:
             logger.info(f"[EVAL] Initializing Environment for {self.scenario_name}...")
@@ -141,13 +140,17 @@ class Evaluator:
             raise e
         
         # --- 3. Initialize VLM Agent ---
-        try:
-            # Automatically loads from MODEL_CONFIG inside VLMAgent
-            logger.info(f"[EVAL] Initializing VLM Agent...")
-            self.agent = VLMAgent(batch_size=self.batch_size) 
-        except Exception as e:
-             logger.critical(f"[EVAL] Failed to initialize VLM Agent: {e}")
-             raise e
+        if self.use_fixed_time:
+            logger.info("[EVAL] Running in FIXED TIME mode. VLM Agent initialization bypassed.")
+            self.agent = None
+        else:
+            try:
+                # Automatically loads from MODEL_CONFIG inside VLMAgent
+                logger.info(f"[EVAL] Initializing VLM Agent...")
+                self.agent = VLMAgent(batch_size=self.batch_size) 
+            except Exception as e:
+                 logger.critical(f"[EVAL] Failed to initialize VLM Agent: {e}")
+                 raise e
 
         self.metrics_calc = MetricsCalculator()
 
@@ -164,7 +167,6 @@ class Evaluator:
         logger.info(f"[CFG] {json.dumps(self.scenario_config, indent=2, sort_keys=True, default=str)}")
         
         logger.info(f"[CFG] === Environment Parameters ===")
-        # Hide complex objects or long paths if needed, here we just Dump
         logger.info(f"[CFG] {json.dumps(self.env_params, indent=2, sort_keys=True, default=str)}")
         
         logger.info(f"[CFG] === Model Configuration ===")
@@ -228,7 +230,6 @@ class Evaluator:
             # Save current vehicle/traffic state
             save_to_json(render_json, _render_json_file)
 
-    
             # --- 阶段 1: 数据收集与降级处理 ---
             action_dict = {}
             inference_tasks = [] # 记录需要送入大模型的任务: (jid, img_path, prompt, phase_id)
@@ -282,8 +283,11 @@ class Evaluator:
                     b_prompts = [t[2] for t in batch_tasks]
                     b_phases = [t[3] for t in batch_tasks]
 
-                    # 调用批量推理接口
-                    results = self.agent.get_batch_decision(b_imgs, b_prompts)
+                    # 调用批量推理接口 或 fixed_time mock 结果
+                    if self.use_fixed_time:
+                        results = [("ERROR", 0.0, 0, None)] * len(b_imgs)
+                    else:
+                        results = self.agent.get_batch_decision(b_imgs, b_prompts)
 
                     # --- 阶段 3: 结果分发与持久化 ---
                     for jid, phase_id, (vlm_resp, latency, decided_action, thought) in zip(b_jids, b_phases, results):
@@ -298,7 +302,8 @@ class Evaluator:
                             logger.info(f"[EVAL] Step: {decision_step} | Sumo_time {sumo_sim_step} | JID: {jid} | Phase: {phase_id} | Action: {decided_action} | Latency: {latency:.2f}s")
                             action_dict[jid] = decided_action
                         else:
-                            logger.warning(f"[EVAL] VLM Invalid for {jid} (Resp: {vlm_resp[:30]}...). Fallback: Action {fallback_action}")
+                            log_prefix = "Fixed Time Enforced" if self.use_fixed_time else "VLM Invalid"
+                            logger.warning(f"[EVAL] {log_prefix} for {jid} (Resp: {vlm_resp[:30]}...). Fallback: Action {fallback_action}")
 
             # --- Environment Step ---
             # Prepare final action payload
@@ -319,11 +324,6 @@ class Evaluator:
         total_time = time.time() - current_time
         logger.info(f"[EVAL] Evaluation completed in {total_time:.2f} seconds.")
         
-        # BUG:self.env.close() 时，libsumo 会触发底层的 C++ 清理逻辑以关闭仿真。
-        # 由于 libsumo 和你的 Python 脚本在同一个进程中，底层的退出或崩溃会直接导致整个 Python 脚本立即终止
-        # 方案1: 多进程隔离 (复杂)  -—>代码可读性差 ❌ 
-        # 方案2: 使用traci，而不是 libsumo ，但由于sumo版本问题，暂时无法切换 ❌
-        # 方案3: 后续单独计算指标 不写在日志中 不随evalutor.py运行✅
         if hasattr(self, 'temp_cfg_path') and os.path.exists(self.temp_cfg_path):
             try:
                 os.remove(self.temp_cfg_path)
@@ -337,15 +337,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run VLM-based Traffic Signal Control Evaluation.")
     parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario key (e.g., JiNan, Hongkong_YMT)")
     parser.add_argument("--log_dir", type=str, default="./log/eval_results", help="Directory for logs and evaluation outputs.")
-    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real.rou.xml", help="Name of the .rou.xml file to use (e.g., anon_3_4_jinan_real_2000.rou.xml).")
+    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real.rou.xml", help="Name of the .rou.xml file to use.")
     parser.add_argument("--max_steps", type=int, default=120, help="Maximum number of decision steps for the simulation.")
+    
+    # 新增: fixed_time 模式开关
+    parser.add_argument("--fixed_time", action="store_true", help="Run in fixed-time mode, bypassing the VLM.")
     
     args = parser.parse_args()
 
     evaluator = Evaluator(
         scenario_key=args.scenario, 
         log_dir=args.log_dir,
-        route_file=args.route_file
+        route_file=args.route_file,
+        use_fixed_time=args.fixed_time
     )
     evaluator.run_eval(max_decision_step=args.max_steps)
-

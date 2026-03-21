@@ -1,6 +1,10 @@
 import numpy as np
 import xml.etree.ElementTree as ET
 from loguru import logger
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+from configs.scenairo_config import SCENARIO_CONFIGS
 
 class MetricsCalculator:
     """
@@ -29,17 +33,23 @@ class MetricsCalculator:
             for veh in step_data['arrived_vehicles']:
                 self.vehicle_data[veh['id']] = veh
                 
-    def compute_metrics(self):
+    def compute_metrics(self, scenario_name=None):
         """
         Computes the final metrics based on online updated data.
         """
+        num_junctions = 1
+        if scenario_name and scenario_name in SCENARIO_CONFIGS:
+            junction_name = SCENARIO_CONFIGS[scenario_name].get("JUNCTION_NAME", [])
+            num_junctions = len(junction_name) if isinstance(junction_name, list) else 1
+
         all_travel_times = [v['travel_time'] for v in self.vehicle_data.values()]
         all_waiting_times = [v['waiting_time'] for v in self.vehicle_data.values()]
         
+        queue_mean = np.mean(self.queue_lengths) if self.queue_lengths else 0.0
         metrics = {
             "ATT": np.mean(all_travel_times) if all_travel_times else 0.0,
             "AWT": np.mean(all_waiting_times) if all_waiting_times else 0.0,
-            "AQL": np.mean(self.queue_lengths) if self.queue_lengths else 0.0
+            "AQL": queue_mean / num_junctions
         }
         
         # Special Vehicles
@@ -52,19 +62,25 @@ class MetricsCalculator:
         
         return metrics
 
-    def calculate_from_files(self, statistic_file, queue_file):
+    def calculate_from_files(self, statistic_file, queue_file, scenario_name):
         """
         Calculates metrics from SUMO output files.
         
         Args:
             statistic_file (str): Path to statistic_output.xml
             queue_file (str): Path to queue_output.xml
+            scenario_name (str): Name of the scenario to get junction number
             
         Returns:
             dict: {ATT, AWT, AQL}
         """
         metrics = {"ATT": 0.0, "AWT": 0.0, "AQL": 0.0}
         
+        num_junctions = 1
+        if scenario_name and scenario_name in SCENARIO_CONFIGS:
+            junction_name = SCENARIO_CONFIGS[scenario_name].get("JUNCTION_NAME", [])
+            num_junctions = len(junction_name) if isinstance(junction_name, list) else 1
+
         # 1. Parse Statistic Output for ATT and AWT
         try:
             tree = ET.parse(statistic_file)
@@ -102,7 +118,7 @@ class MetricsCalculator:
             
             # AQL = Average Total Queue Length over time
             if step_count > 0:
-                metrics["AQL"] = total_queue_len / step_count
+                metrics["AQL"] = (total_queue_len / step_count) / num_junctions
                 
         except Exception as e:
             logger.error(f"[EVAL] Error parsing queue file: {e}")
@@ -113,6 +129,7 @@ if __name__ == "__main__":
     # Example usage
     
     calculator = MetricsCalculator()
-    metrics = calculator.calculate_from_files("data/sft_dataset/JiNan/anon_3_4_jinan_real_2500.rou/statistic_output_golden.xml", 
-                                             "data/sft_dataset/JiNan/anon_3_4_jinan_real_2500.rou/queue_output_golden.xml")
+    metrics = calculator.calculate_from_files("data/eval/JiNan/anon_3_4_jinan_real_2000.rou/qwen3-vl-8b/statistic_output.xml", 
+                                             "data/eval/JiNan/anon_3_4_jinan_real_2000.rou/qwen3-vl-8b/queue_output.xml",
+                                             "JiNan")
     print(metrics)
