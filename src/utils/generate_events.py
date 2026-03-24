@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-03-22 19:34:05
-LastEditTime: 2026-03-23 15:32:18
+LastEditTime: 2026-03-24 20:30:06
 Description: 这是一个用于离线生成 SUMO 紧急事件（如车辆碰撞、树枝掉落）的脚本。
              采用“物理和视觉解耦但数据同源”的设计：通过向原有的车辆路由文件中
              插入携带 <stop> 标签的虚拟车辆来实现 SUMO 底层物理阻塞；同时写入 
@@ -118,24 +118,39 @@ class EventManager:
         
         for i in range(num_events):
             junction = random.choice(nodes)
-            # 改为获取出口道 (outgoing edges)
-            out_edges = junction.getOutgoing()
-            if not out_edges:
+            
+            # 随机选择是在交叉口的入口道(上游)还是出口道(下游)
+            direction = random.choice(['upstream', 'downstream'])
+            edges = junction.getIncoming() if direction == 'upstream' else junction.getOutgoing()
+            
+            if not edges:
                 continue
                 
-            edge = random.choice(out_edges)
+            edge = random.choice(edges)
             lanes = edge.getLanes()
             if not lanes: continue
             lane = random.choice(lanes)
             
             lane_len = lane.getLength()
-            # 距离交叉口的距离：在出口道上，即从车道起点(0.0)开始算的距离
-            event_distance_from_intersection = random.uniform(5.0, min(60.0, lane_len))
-            stop_pos = event_distance_from_intersection
+            
+            # 距离交叉口的距离：控制在5到55米范围内
+            event_distance_from_intersection = random.uniform(5.0, min(55.0, lane_len))
+            
+            if direction == 'upstream':
+                # 对于入口道(上游)，车道终点靠近交叉口，坐标为 车道总长 - 距离
+                stop_pos = max(0.0, lane_len - event_distance_from_intersection)
+            else:
+                # 对于出口道(下游)，车道起点靠近交叉口，坐标直接为 距离
+                stop_pos = event_distance_from_intersection
             
             x, y = sumolib.geomhelper.positionAtShapeOffset(lane.getShape(), stop_pos)
             heading = self._get_heading_at_offset(lane.getShape(), stop_pos)
-            event_type = random.choice(list(EVENT_MODELS.keys()))
+            
+            # 使用 weight 控制生成事件的概率：碰撞车辆 70%，树木 30%
+            events_types = ['crash', 'tree_branch']
+            events_weights = [0.7, 0.3]
+            event_type = random.choices(events_types, weights=events_weights, k=1)[0]
+            
             event_start = start_time + random.uniform(0, 3600) 
             event_duration = random.uniform(20, max_duration)
             
@@ -193,10 +208,29 @@ class EventManager:
             for elem in dynamic_elements:
                 root.append(elem)
                 
+            # 修复 XML 格式缩进问题
+            if hasattr(ET, 'indent'):
+                ET.indent(root, space="    ", level=0)
+            else:
+                def indent(elem, level=0):
+                    i = "\n" + level*"    "
+                    if len(elem):
+                        if not elem.text or not elem.text.strip():
+                            elem.text = i + "    "
+                        if not elem.tail or not elem.tail.strip():
+                            elem.tail = i
+                        for e in elem:
+                            indent(e, level+1)
+                        if not elem.tail or not elem.tail.strip():
+                            elem.tail = i
+                    else:
+                        if level and (not elem.tail or not elem.tail.strip()):
+                            elem.tail = i
+                indent(root)
+                
             # 写入新的按时间排序完成的文件
             if output_rou_xml:
                 os.makedirs(os.path.dirname(os.path.abspath(output_rou_xml)), exist_ok=True)
-                # 使用 ET.ElementTree 原生写入，避免缩进变形
                 tree.write(output_rou_xml, encoding="utf-8", xml_declaration=True)
                 logger.info(f"💾 Saved offline SUMO merged route configuration to: {output_rou_xml}")
         else:
@@ -215,10 +249,16 @@ if __name__ == "__main__":
     parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario key in scenairo_config.py (e.g., JiNan)")
     parser.add_argument("--net", default='data/raw/JiNan/env/jinan.net.xml', help="Path to sumo net.xml")
     parser.add_argument("--base_rou", default='data/raw/JiNan/env/anon_3_4_jinan_real.rou.xml', help="Path to base sumo rou.xml")
-    parser.add_argument("--output_rou", default='data/raw/JiNan/env/anon_3_4_jinan_real_events.rou.xml', help="Path to output rou.xml")
-    parser.add_argument("--num", type=int, default=100, help="Number of events to generate")
+    parser.add_argument("--output_rou", default='data/raw/JiNan/env/anon_3_4_jinan_real_incidents.rou.xml', help="Path to output rou.xml")
+    parser.add_argument("--num", type=int, default=150, help="Number of events to generate")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     
     args = parser.parse_args()
+    
+    # 增加对随机种子的固定
+    random.seed(args.seed)
+    logger.info(f"Using random seed: {args.seed}")
+    
     # 动态获取配置
     config = SCENARIO_CONFIGS.get(args.scenario)
     if not config:

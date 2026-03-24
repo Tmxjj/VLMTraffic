@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-03-15 19:38:25
+LastEditTime: 2026-03-24 20:28:53
 Description: Optimized Prompt Builder (Visual-Only Analysis with Lane Numbering)
 FilePath: /VLMTraffic/configs/prompt_builder.py
 '''
@@ -157,7 +157,7 @@ A. Scene Understanding:
 B. Scene Analysis :
 - **Emergency **: Scan for:
     1. **Emergency Vehicles**: Ambulance, Police, or Fire trucks with active lights.
-    2. **Incidents**: Traffic accidents (collisions), road construction/maintenance, or broken-down vehicles.
+    2. **Incidents**: Traffic accidents (collisions), road construction/maintenance, or road obstacles
 - **Mapping**: If detected, specify [Type], [Location - Approach & Lane ID], and the **Directly Affected Phase ID**.
 - **Classification**: State `Special` (Emergency present) or `Normal`.
 

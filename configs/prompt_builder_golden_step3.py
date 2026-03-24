@@ -54,7 +54,7 @@ A. Scene Understanding:
 B. Scene Analysis :
 - **Emergency **: Visually scan the BEV image for:
     1. **Emergency Vehicles**: Ambulance, Police, or Fire trucks with active lights.
-    2. **Incidents**: Traffic accidents (collisions), road construction/maintenance, or broken-down vehicles.
+    2. **Incidents**: Traffic accidents (collisions), road construction/maintenance, or road obstacles
 - **Mapping**: If visually detected, specify [Type], [Location - Approach & Lane ID], and the **Directly Affected Phase ID**.
 - **Classification**: State `Special` (Emergency present) or `Normal`.
 
