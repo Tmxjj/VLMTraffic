@@ -12,11 +12,11 @@ PYTHON_CMD="./vgl_python.sh"
 # --- Scenarios and Routes ---
 SCENARIO_JINAN="JiNan"
 JINAN_ROUTES=(
-    "anon_3_4_jinan_real_2000.rou.xml"
-    "anon_3_4_jinan_real.rou.xml"
-    "anon_3_4_jinan_real_2500.rou.xml"
-    "anon_3_4_jinan_synthetic_24000_60min.rou.xml"
-    "anon_3_4_jinan_synthetic_24h_6000.rou.xml"
+    # "anon_3_4_jinan_real_2000.rou.xml"
+    # "anon_3_4_jinan_real.rou.xml"
+    # "anon_3_4_jinan_real_2500.rou.xml"
+    # "anon_3_4_jinan_synthetic_24000_60min.rou.xml"
+    # "anon_3_4_jinan_synthetic_24h_6000.rou.xml"
 )
 
 SCENARIO_HANGZHOU="Hangzhou"
@@ -29,9 +29,9 @@ HANGZHOU_ROUTES=(
 # --- Helper Function: Cleanup ---
 cleanup_sumo() {
     echo "Cleaning up potential zombie processes..."
-    pkill -9 -f "sumo" 2>/dev/null
-    pkill -9 -f "vlm_decision.py" 2>/dev/null
-    sleep 3  # 稍微多等一会儿，让显存回收
+    # pkill -9 -f "sumo" 2>/dev/null
+    # pkill -9 -f "vlm_decision.py" 2>/dev/null
+    sleep 10  # 稍微多等一会儿，让显存回收
 }
 
 # --- Execution ---
@@ -45,14 +45,14 @@ for route in "${JINAN_ROUTES[@]}"; do
     echo "Running with route: $route"
     
     # 核心修复：不要在反斜杠后面直接接注释
+    # 如果需要 --fixed_time，请加在上面一行末尾并补上反斜杠
     (
         $PYTHON_CMD vlm_decision.py \
             --scenario "$SCENARIO_JINAN" \
             --log_dir "$LOG_DIR" \
             --route_file "$route" \
-            --max_steps "$MAX_STEPS" \
-            --fixed_time
-            # 如果需要 --fixed_time，请加在上面一行末尾并补上反斜杠
+            --max_steps "$MAX_STEPS" 
+            
     )
     
     RET_CODE=$?
@@ -74,8 +74,7 @@ for route in "${HANGZHOU_ROUTES[@]}"; do
             --scenario "$SCENARIO_HANGZHOU" \
             --log_dir "$LOG_DIR" \
             --route_file "$route" \
-            --max_steps "$MAX_STEPS" \
-            --fixed_time 
+            --max_steps "$MAX_STEPS" 
     )
 
     RET_CODE=$?
