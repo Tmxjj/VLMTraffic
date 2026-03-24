@@ -127,9 +127,38 @@ class MetricsCalculator:
 
 if __name__ == "__main__":
     # Example usage
-    
-    calculator = MetricsCalculator()
-    metrics = calculator.calculate_from_files("data/eval/JiNan/anon_3_4_jinan_real_2000.rou/qwen3-vl-8b/statistic_output.xml", 
-                                             "data/eval/JiNan/anon_3_4_jinan_real_2000.rou/qwen3-vl-8b/queue_output.xml",
-                                             "JiNan")
-    print(metrics)
+    secnario_list = ["Hangzhou"]
+    net_files = [
+        "anon_4_4_hangzhou_real.rou",
+        "anon_4_4_hangzhou_real_5816.rou",
+        "anon_4_4_hangzhou_synthetic_24000_60min.rou",
+    ]
+    methods = [
+        'fixed_time',
+        # 'qwen3-vl-8b'
+    ]
+
+    for secnario_name in secnario_list:
+        for net_file in net_files:
+            for method in methods:
+                # 1. 提取路径变量，方便管理
+                base_path = f"data/eval/{secnario_name}/{net_file}/{method}"
+                stat_path = f"{base_path}/statistic_output.xml"
+                queue_path = f"{base_path}/queue_output.xml"
+
+                # 2. 检查两个必要文件是否存在
+                if not os.path.exists(stat_path) or not os.path.exists(queue_path):
+                    print(f"⚠️  [Skip] 文件缺失，跳过目录: {base_path}")
+                    continue
+
+                # 3. 文件存在，执行计算
+                try:
+                    calculator = MetricsCalculator()
+                    metrics = calculator.calculate_from_files(
+                        stat_path, 
+                        queue_path,
+                        f"{secnario_name}"
+                    )
+                    print(f"✅ {secnario_name}/{net_file}/{method}", metrics)
+                except Exception as e:
+                    print(f"❌ {secnario_name}/{net_file}/{method} 处理出错: {e}")
