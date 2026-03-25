@@ -93,7 +93,7 @@ class MetricsCalculator:
                 metrics["ATT"] = float(veh_stats.get('duration', 0.0))
                 metrics["AWT"] = float(veh_stats.get('waitingTime', 0.0))
         except Exception as e:
-            logger.error(f"[EVAL] Error parsing statistic file: {e}")
+            logger.error(f"[EVAL] Error parsing statistic file: {e} - {statistic_file}")
 
         # 2. Parse Queue Output for AQL
         try:
@@ -121,7 +121,7 @@ class MetricsCalculator:
                 metrics["AQL"] = (total_queue_len / step_count) / num_junctions
                 
         except Exception as e:
-            logger.error(f"[EVAL] Error parsing queue file: {e}")
+            logger.error(f"[EVAL] Error parsing queue file: {e} - {queue_file}")
             
         return metrics
 
@@ -130,10 +130,10 @@ if __name__ == "__main__":
     secnario_dict ={
         "JiNan": [
         "anon_3_4_jinan_real_2000.rou",
-        "anon_3_4_jinan_real.rou",
-        "anon_3_4_jinan_real_2500.rou",
+        # "anon_3_4_jinan_real.rou",
+        # "anon_3_4_jinan_real_2500.rou",
         # "anon_3_4_jinan_synthetic_24h_6000.rou",
-        "anon_3_4_jinan_synthetic_24000_60min.rou"
+        # "anon_3_4_jinan_synthetic_24000_60min.rou"
     ],
         "Hangzhou": [
         "anon_4_4_hangzhou_real.rou",
@@ -144,8 +144,8 @@ if __name__ == "__main__":
     
     methods = [
         'fixed_time',
-        'qwen3-vl-8b'
-        'qwen3-vl-4b'
+        # 'qwen3-vl-8b'
+        # 'qwen3-vl-4b'
     ]
 
     for secnario_name, net_files in secnario_dict.items():

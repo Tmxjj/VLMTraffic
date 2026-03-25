@@ -14,8 +14,8 @@ MODEL_CONFIG = {
     "api_type": "requests", 
     
     # Global generation settings
-    "temperature": 0.7, # 0.0 to 1.0
-    "max_new_tokens": 4096, # Max tokens to generate
+    "temperature": 0, # 0.0 to 1.0
+    "max_new_tokens": 8192, # Max tokens to generate
 
     # Configuration for specific backends
     # "local_model": {
