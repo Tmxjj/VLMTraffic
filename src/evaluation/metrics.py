@@ -127,18 +127,28 @@ class MetricsCalculator:
 
 if __name__ == "__main__":
     # Example usage
-    secnario_list = ["Hangzhou"]
-    net_files = [
+    secnario_dict ={
+        "JiNan": [
+        "anon_3_4_jinan_real_2000.rou",
+        "anon_3_4_jinan_real.rou",
+        "anon_3_4_jinan_real_2500.rou",
+        # "anon_3_4_jinan_synthetic_24h_6000.rou",
+        "anon_3_4_jinan_synthetic_24000_60min.rou"
+    ],
+        "Hangzhou": [
         "anon_4_4_hangzhou_real.rou",
         "anon_4_4_hangzhou_real_5816.rou",
         "anon_4_4_hangzhou_synthetic_24000_60min.rou",
     ]
+    }
+    
     methods = [
         'fixed_time',
-        # 'qwen3-vl-8b'
+        'qwen3-vl-8b'
+        'qwen3-vl-4b'
     ]
 
-    for secnario_name in secnario_list:
+    for secnario_name, net_files in secnario_dict.items():
         for net_file in net_files:
             for method in methods:
                 # 1. 提取路径变量，方便管理
