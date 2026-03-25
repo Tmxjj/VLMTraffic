@@ -10,11 +10,11 @@ Model configuration for VLMAgent.
 """
 
 MODEL_CONFIG = {
-    # Default API type to use: "local_model", "openai_sdk", "gemini_sdk", "requests"
+    # Default API type to use: "openai_sdk", "gemini_sdk", "requests"
     "api_type": "requests", 
     
     # Global generation settings
-    "temperature": 0, # 0.0 to 1.0
+    "temperature": 0, # inference 0；generate golden data for training 0.7
     "max_new_tokens": 8192, # Max tokens to generate
 
     # Configuration for specific backends
