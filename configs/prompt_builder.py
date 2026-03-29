@@ -118,7 +118,6 @@ West Approach: Lane 1 (Straight):<int>, Lane 2 (Straight):<int>, Lane 3 (Straigh
         return PromptBuilder.SCENARIO_DESCRIPTIONS.get(config_key, PromptBuilder.SCENARIO_DESCRIPTIONS["4_JUNCTION"]).strip()
 
     @staticmethod
-    @staticmethod
     def build_decision_prompt(current_phase_id: int, scenario_name: str = "JiNan") -> str:
         phase_explanation = PromptBuilder.get_phase_description(scenario_name)
         scenario_description = PromptBuilder.get_scenario_description(scenario_name)

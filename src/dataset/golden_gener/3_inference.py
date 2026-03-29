@@ -174,7 +174,7 @@ class Step3Inferencer:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run Step 3 VLM Inference using GT annotated data")
     parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario name (e.g. JiNan)")
-    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real_2500.rou", help="Route file name")
+    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real_incidents.rou", help="Route file name")
     parser.add_argument("--jsonl", type=str, default=None, help="Path to input dataset_annotated.jsonl. If not provided, inferred from scenario and route_file.")
     parser.add_argument("--output", type=str, default=None, help="Path to output jsonl")
     args = parser.parse_args()

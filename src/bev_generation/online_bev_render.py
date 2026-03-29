@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-03-16 10:46:50
+LastEditTime: 2026-03-24 20:31:12
 Description: this script is used to generate BEV images from 3D TSC env
 FilePath: /VLMTraffic/src/bev_generation/online_bev_render.py
 '''
@@ -45,7 +45,7 @@ if __name__ == '__main__':
     # #########
     # Init Env
     # #########
-    sumo_cfg = path_convert(f"../../data/raw/{SCENARIO_NAME}/{NETFILE}.sumocfg")
+    sumo_cfg = path_convert(f"../../data/raw/{SCENARIO_NAME}/{NETFILE}_incidents.sumocfg")
     scenario_glb_dir = path_convert(f"../../data/raw/{SCENARIO_NAME}/3d_assets/")
     trip_info = path_convert(f"../../data/test/{SCENARIO_NAME}/tripinfo.out.xml")
     create_folder(path_convert(f"../../data/test/{SCENARIO_NAME}/"))

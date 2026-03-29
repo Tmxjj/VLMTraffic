@@ -454,7 +454,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate Golden Dataset")
     parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario key (e.g., JiNan_test, NewYork)")
     parser.add_argument("--max_steps", type=int, default=22, help="Maximum decision steps")
-    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real_2000.rou.xml", help="Name of the .rou.xml file to use (e.g., anon_3_4_jinan_real_2000.rou.xml).")
+    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real_incidents.rou.xml", help="Name of the .rou.xml file to use (e.g., anon_3_4_jinan_real_2000.rou.xml).")
     parser.add_argument("--log_dir", type=str, default="./log/golden_dataset", help="Directory for logs")
     
     args = parser.parse_args()

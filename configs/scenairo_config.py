@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-03-05 15:04:11
+LastEditTime: 2026-03-24 19:30:36
 Description: this script is used to store the configuration of different TSC scenarios
 FilePath: /VLMTraffic/configs/scenairo_config.py
 '''
@@ -70,7 +70,7 @@ SCENARIO_CONFIGS = {
         "CENTER_COORDINATES": (173, 244, 100),
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:1, 2:0},
         "RENDERER_CFG": {
-            "preset": "720P",
+            "preset": "SQUARE_1024",
             "resolution": 1.0,
             "vehicle_model": "high",
             "render_mode": "offscreen",
