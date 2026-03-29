@@ -6,7 +6,7 @@
 ### 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 model_name=qwen3_vl_8b_dpo # 用于拼接输出文件夹名称
-method=dpo
+method=rpo
 
 
 beta=0.1

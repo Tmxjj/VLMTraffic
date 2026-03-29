@@ -157,7 +157,7 @@ def main():
 
     if method == "sft":
         training_args = DPOConfig(
-            loss_type=["sft"],
+            loss_type="sft",
             output_dir=output_dir,
             per_device_train_batch_size=per_device_train_batch_size,
             per_device_eval_batch_size=8,
@@ -185,7 +185,7 @@ def main():
         )
     elif method == "dpo":
         training_args = DPOConfig(
-            loss_type=["sigmoid"],
+            loss_type="sigmoid",
             output_dir=output_dir,
             per_device_train_batch_size=per_device_train_batch_size,
             per_device_eval_batch_size=1,
@@ -209,6 +209,9 @@ def main():
             remove_unused_columns=True, # 防止移除我们需要的手动构建的 labels
             # precompute_ref_log_probs 不支持zero-3，因为 ref_model 的参数不在 Trainer 管理的范围内，设置为 True 会导致训练时找不到预计算的 log_probs，从而报错。对于 Zero-3，必须保持 precompute_ref_log_probs=False，让 Trainer 在每个训练步骤动态计算参考模型的 log_probs。
             precompute_ref_log_probs=False, 
+            # 开始梯度检查
+            gradient_checkpointing=True,
+            gradient_checkpointing_kwargs={'use_reentrant': False},
             bf16=True,
         )
 
@@ -220,79 +223,18 @@ def main():
             # eval_dataset=test_dataset,
             processing_class = processor,
         )
-    elif method == 'mdpo':
-        training_args = DPOConfig(
-            loss_type=["sigmoid"],
-            output_dir=output_dir,
-            per_device_train_batch_size=per_device_train_batch_size,
-            per_device_eval_batch_size=1,
-            max_prompt_length=4096,
-            max_length=4096,
-            max_completion_length=4096,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            num_train_epochs=num_train_epochs,
-            lr_scheduler_type="cosine",
-            warmup_ratio=0.05,
-            learning_rate=learning_rate,
-            beta=beta,
-            save_strategy="epoch",
-            save_only_model=True,
-            save_total_limit=None,
-            eval_strategy="no",
-            # eval_steps=40,
-            logging_steps=1,
-            max_grad_norm=1.0,
-            use_liger_loss=False
-        )
-
-        trainer = MDPOTrainer(
-            model=model,
-            args=training_args,
-            train_dataset=train_dataset,
-            # eval_dataset=test_dataset,
-        )
-    elif method == 'mrpo':
-        training_args = DPOConfig(
-            loss_type=["sigmoid"],
-            rpo_alpha=1.0,
-            output_dir=output_dir,
-            per_device_train_batch_size=per_device_train_batch_size,
-            per_device_eval_batch_size=1,
-            max_prompt_length=4096,
-            max_length=4096,
-            max_completion_length=4096,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            num_train_epochs=num_train_epochs,
-            lr_scheduler_type="cosine",
-            warmup_ratio=0.05,
-            learning_rate=learning_rate,
-            beta=beta,
-            save_strategy="epoch",
-            save_only_model=True,
-            save_total_limit=None,
-            eval_strategy="no",
-            # eval_steps=40,
-            logging_steps=1,
-            max_grad_norm=1.0,
-            use_liger_loss=False
-        )
-
-        trainer = MDPOTrainer(
-            model=model,
-            args=training_args,
-            train_dataset=train_dataset,
-            # eval_dataset=test_dataset,
-        )
     elif method == "rpo":
         training_args = DPOConfig(
-            loss_type=["sigmoid"],
-            rpo_alpha=1.0,
+            loss_type="sigmoid",
+            rpo_alpha=1.0,  # 🌟 RPO 的核心参数，保留
             output_dir=output_dir,
             per_device_train_batch_size=per_device_train_batch_size,
             per_device_eval_batch_size=1,
-            max_prompt_length=7680,
-            max_length = 8192,
-            max_completion_length=512,
+            # ====== 同步 DPO 的长度设置，防止 OOM ======
+            max_prompt_length=4096,
+            max_length=4096, 
+            max_completion_length=4096,
+            # ==========================================
             gradient_accumulation_steps=gradient_accumulation_steps,
             num_train_epochs=num_train_epochs,
             lr_scheduler_type="cosine",
@@ -301,106 +243,180 @@ def main():
             beta=beta,
             save_strategy="epoch",
             save_only_model=True,
-            save_total_limit= None,
+            save_total_limit=None,
             eval_strategy="no",
-            eval_steps=40,
             logging_steps=1,
-        )
-
-        trainer = DPOTrainer(
-            model=model,
-            # ref_model=ref_model, #for zero-3
-            args=training_args,
-            train_dataset=train_dataset,
-            # eval_dataset=test_dataset,
-        )
-    elif method == "nca":
-        training_args = DPOConfig(
-            loss_type=["nca_pair"],
-            output_dir=output_dir,
-            per_device_train_batch_size=per_device_train_batch_size,
-            per_device_eval_batch_size=8,
-            max_prompt_length=512,
-            # max_completion_length=512,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            num_train_epochs=num_train_epochs,
-            lr_scheduler_type="cosine",
-            warmup_ratio=0.05,
-            learning_rate=learning_rate,
-            beta=beta,
-            save_strategy="epoch",
-            save_only_model=True,
-            save_total_limit=1,
-            eval_strategy="steps",
-            eval_steps=40,
-            logging_steps=1,
+            max_grad_norm=1.0,
+            
+            # ====== 同步 DPO 的底层与显存优化机制 ======
+            remove_unused_columns=True, 
+            precompute_ref_log_probs=False, # ZeRO-3 必须为 False
+            gradient_checkpointing=True,    # 救命的显存优化
+            gradient_checkpointing_kwargs={'use_reentrant': False},
+            bf16=True,
+            # ==========================================
         )
 
         trainer = DPOTrainer(
             model=model,
             args=training_args,
+            ref_model=ref_model,             # 🌟 取消注释：ZeRO-3 下必须显式传入 ref_model
             train_dataset=train_dataset,
             # eval_dataset=test_dataset,
-            tokenizer = tokenizer
-        )
-    elif method == "kto":
-        training_args = KTOConfig(
-            loss_type="kto",
-            output_dir=output_dir,
-            per_device_train_batch_size=per_device_train_batch_size,
-            per_device_eval_batch_size=8,
-            max_prompt_length=512,
-            max_completion_length=512,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            num_train_epochs=num_train_epochs,
-            lr_scheduler_type="cosine",
-            warmup_ratio=0.05,
-            learning_rate=learning_rate,
-            beta=beta,
-            save_strategy="epoch",
-            save_only_model=True,
-            save_total_limit=1,
-            eval_strategy="no",
-            eval_steps=40,
-            logging_steps=1,
+            processing_class=processor,      # 🌟 同步 DPO：多模态模型必须传入 processor
         )
 
-        trainer = KTOTrainer(
-            model=model,
-            args=training_args,
-            processing_class=tokenizer,
-            train_dataset=train_dataset,
-            eval_dataset=test_dataset,
-        )
-    elif method == "ddpo":
-        ddpo_training_args = DDPOConfig(
-            output_dir=output_dir,
-            per_device_train_batch_size=per_device_train_batch_size,
-            per_device_eval_batch_size=8,
-            num_generations=4,
-            temperature=1.0,
-            max_prompt_length=512,
-            max_completion_length=512,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            num_train_epochs=num_train_epochs,
-            lr_scheduler_type="cosine",
-            warmup_ratio=0.05,
-            learning_rate=learning_rate,
-            beta=beta,
-            save_strategy="epoch",
-            save_only_model=True,
-            save_total_limit=1,
-            eval_strategy="steps",
-            eval_steps=40,
-            logging_steps=1,
-        )
+    # elif method == 'mdpo':
+    #     training_args = DPOConfig(
+    #         loss_type="sigmoid",
+    #         output_dir=output_dir,
+    #         per_device_train_batch_size=per_device_train_batch_size,
+    #         per_device_eval_batch_size=1,
+    #         max_prompt_length=4096,
+    #         max_length=4096,
+    #         max_completion_length=4096,
+    #         gradient_accumulation_steps=gradient_accumulation_steps,
+    #         num_train_epochs=num_train_epochs,
+    #         lr_scheduler_type="cosine",
+    #         warmup_ratio=0.05,
+    #         learning_rate=learning_rate,
+    #         beta=beta,
+    #         save_strategy="epoch",
+    #         save_only_model=True,
+    #         save_total_limit=None,
+    #         eval_strategy="no",
+    #         # eval_steps=40,
+    #         logging_steps=1,
+    #         max_grad_norm=1.0,
+    #         use_liger_loss=False
+    #     )
 
-        trainer = DDPOTrainer(
-            model=model,
-            args=ddpo_training_args,
-            train_dataset=train_dataset,
-            eval_dataset=test_dataset,
-        )
+    #     trainer = MDPOTrainer(
+    #         model=model,
+    #         args=training_args,
+    #         train_dataset=train_dataset,
+    #         # eval_dataset=test_dataset,
+    #     )
+
+    # elif method == 'mrpo':
+    #     training_args = DPOConfig(
+    #         loss_type="sigmoid",
+    #         rpo_alpha=1.0,
+    #         output_dir=output_dir,
+    #         per_device_train_batch_size=per_device_train_batch_size,
+    #         per_device_eval_batch_size=1,
+    #         max_prompt_length=4096,
+    #         max_length=4096,
+    #         max_completion_length=4096,
+    #         gradient_accumulation_steps=gradient_accumulation_steps,
+    #         num_train_epochs=num_train_epochs,
+    #         lr_scheduler_type="cosine",
+    #         warmup_ratio=0.05,
+    #         learning_rate=learning_rate,
+    #         beta=beta,
+    #         save_strategy="epoch",
+    #         save_only_model=True,
+    #         save_total_limit=None,
+    #         eval_strategy="no",
+    #         # eval_steps=40,
+    #         logging_steps=1,
+    #         max_grad_norm=1.0,
+    #         use_liger_loss=False
+    #     )
+
+    #     trainer = MDPOTrainer(
+    #         model=model,
+    #         args=training_args,
+    #         train_dataset=train_dataset,
+    #         # eval_dataset=test_dataset,
+    #     )
+    # elif method == "nca":
+    #     training_args = DPOConfig(
+    #         loss_type=["nca_pair"],
+    #         output_dir=output_dir,
+    #         per_device_train_batch_size=per_device_train_batch_size,
+    #         per_device_eval_batch_size=8,
+    #         max_prompt_length=512,
+    #         # max_completion_length=512,
+    #         gradient_accumulation_steps=gradient_accumulation_steps,
+    #         num_train_epochs=num_train_epochs,
+    #         lr_scheduler_type="cosine",
+    #         warmup_ratio=0.05,
+    #         learning_rate=learning_rate,
+    #         beta=beta,
+    #         save_strategy="epoch",
+    #         save_only_model=True,
+    #         save_total_limit=1,
+    #         eval_strategy="steps",
+    #         eval_steps=40,
+    #         logging_steps=1,
+    #     )
+
+    #     trainer = DPOTrainer(
+    #         model=model,
+    #         args=training_args,
+    #         train_dataset=train_dataset,
+    #         # eval_dataset=test_dataset,
+    #         tokenizer = tokenizer
+    #     )
+    # elif method == "kto":
+    #     training_args = KTOConfig(
+    #         loss_type="kto",
+    #         output_dir=output_dir,
+    #         per_device_train_batch_size=per_device_train_batch_size,
+    #         per_device_eval_batch_size=8,
+    #         max_prompt_length=512,
+    #         max_completion_length=512,
+    #         gradient_accumulation_steps=gradient_accumulation_steps,
+    #         num_train_epochs=num_train_epochs,
+    #         lr_scheduler_type="cosine",
+    #         warmup_ratio=0.05,
+    #         learning_rate=learning_rate,
+    #         beta=beta,
+    #         save_strategy="epoch",
+    #         save_only_model=True,
+    #         save_total_limit=1,
+    #         eval_strategy="no",
+    #         eval_steps=40,
+    #         logging_steps=1,
+    #     )
+
+    #     trainer = KTOTrainer(
+    #         model=model,
+    #         args=training_args,
+    #         processing_class=tokenizer,
+    #         train_dataset=train_dataset,
+    #         eval_dataset=test_dataset,
+    #     )
+    # elif method == "ddpo":
+    #     ddpo_training_args = DDPOConfig(
+    #         output_dir=output_dir,
+    #         per_device_train_batch_size=per_device_train_batch_size,
+    #         per_device_eval_batch_size=8,
+    #         num_generations=4,
+    #         temperature=1.0,
+    #         max_prompt_length=512,
+    #         max_completion_length=512,
+    #         gradient_accumulation_steps=gradient_accumulation_steps,
+    #         num_train_epochs=num_train_epochs,
+    #         lr_scheduler_type="cosine",
+    #         warmup_ratio=0.05,
+    #         learning_rate=learning_rate,
+    #         beta=beta,
+    #         save_strategy="epoch",
+    #         save_only_model=True,
+    #         save_total_limit=1,
+    #         eval_strategy="steps",
+    #         eval_steps=40,
+    #         logging_steps=1,
+    #     )
+
+    #     trainer = DDPOTrainer(
+    #         model=model,
+    #         args=ddpo_training_args,
+    #         train_dataset=train_dataset,
+    #         eval_dataset=test_dataset,
+    #     )
     else:
         raise NotImplementedError
 

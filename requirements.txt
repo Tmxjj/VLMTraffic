@@ -15,7 +15,7 @@ torch
 transformers=4.57.5
 vllm==0.11.0
 accelerate
-trl
+trl==1.13.0 #其他版本的trl中DPOConfig没有max_prompt_length的参数
 modelscope
 google-genai
 ninja

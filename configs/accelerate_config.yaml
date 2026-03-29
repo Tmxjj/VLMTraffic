@@ -6,7 +6,7 @@ machine_rank: 0
 main_training_function: main
 mixed_precision: bf16
 num_machines: 1
-num_processes: 2
+num_processes: 4
 rdzv_backend: static
 same_network: true
 tpu_env: []
@@ -15,10 +15,12 @@ tpu_use_sudo: false
 use_cpu: false
 deepspeed_config:
   deepspeed_multinode_launcher: standard
-  gradient_accumulation_steps: 16
+  gradient_accumulation_steps: 4
   gradient_clipping: 1.0
   zero3_init_flag: false
   zero_stage: 3
   # 建议开启 Offload 到 CPU（如果内存足够）
   offload_optimizer_device: cpu
   offload_param_device: cpu
+  # 强制 ZeRO-3 只保存 16-bit 模型权重
+  zero3_save_16bit_model: true
