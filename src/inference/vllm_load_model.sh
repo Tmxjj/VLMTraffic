@@ -3,7 +3,7 @@ python -m vllm.entrypoints.openai.api_server \
     --trust-remote-code \
     --dtype bfloat16 \
     --gpu-memory-utilization 0.8 \
-    --max-model-len 8096 \
+    --max-model-len 16192 \
     --max-num-seqs 16 \
     --served-model-name qwen3-vl-8b \
     --port 8000
