@@ -18,6 +18,9 @@ accelerate
 trl
 modelscope
 google-genai
+ninja
+deepspeed
+
 
 # ==========================================
 # 📊 视觉、数据处理与基础工具
@@ -30,6 +33,7 @@ scikit-learn
 matplotlib
 tensorboard
 loguru            # 对应代码中的日志管理
+debugpy
 
 # ==========================================
 # 🛠️ 辅助工具与 UI

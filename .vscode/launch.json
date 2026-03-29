@@ -2,12 +2,27 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python 调试: 附加到 Accelerate (端口 5679)",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5679
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}",
+                    "remoteRoot": "${workspaceFolder}"
+                }
+            ],
+            "justMyCode": false 
+        },
+        {
             "name": "Python 调试: VirtualGL (GPU 加速 + BEV)",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            // 👇 核心魔法：让 VSCode 使用我们刚才写的带 GPU 加速的伪装脚本
             "python": "${workspaceFolder}/vgl_python.sh",
             "env": {
                 "PYTHONPATH": "${env:PYTHONPATH}:${workspaceFolder}/src" 

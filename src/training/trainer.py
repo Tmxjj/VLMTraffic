@@ -10,24 +10,79 @@ FilePath: /VLMTraffic/src/training/trainer.py
 import argparse
 import torch
 from datasets import load_dataset
-from trl import DPOConfig, DPOTrainer, KTOConfig, KTOTrainer, MDPOTrainer
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from ddpo_config import DDPOConfig
+from trl import DPOConfig, DPOTrainer, KTOConfig, KTOTrainer
+from transformers import AutoModelForCausalLM, AutoTokenizer,Qwen3VLForConditionalGeneration, AutoProcessor, AutoConfig
+# from ddpo_config import DDPOConfig
 from accelerate import Accelerator
+import PIL.Image
 import os
 import debugpy
+import sys
 
-# 从环境变量中读取是否开启调试
-# 只有在主进程 (local_rank 0) 且环境变量设置为 "true" 时才启动调试器
-if os.environ.get("ACCELERATE_LOCAL_RANK", "0") == "0" and os.environ.get("ENABLE_DEBUGPY") == "true":
-    print("!!! DEBUGPY IS WAITING FOR ATTACHMENT !!!")
-    # 允许远程连接
-    debugpy.listen(("0.0.0.0", 5679))
-    # 等待 VS Code 等客户端连接
-    debugpy.wait_for_client()
-    print("!!! DEBUGPY CLIENT ATTACHED !!!")
+# # 同时兼容多种启动器的 Rank 环境变量
+# local_rank = os.environ.get("LOCAL_RANK", os.environ.get("ACCELERATE_LOCAL_RANK", "0"))
+
+# if not (hasattr(sys, 'gettrace') and sys.gettrace() is not None):
+#     # 严格限定只有 local_rank 为 "0" 的主进程才能启动调试器
+#     if str(local_rank) == "0" and os.environ.get("ENABLE_DEBUGPY") == "true":
+#         import debugpy
+#         print(f"!!! [Rank {local_rank}] DEBUGPY IS WAITING FOR ATTACHMENT ON PORT 5679 !!!")
+#         debugpy.listen(("0.0.0.0", 5679))
+#         debugpy.wait_for_client()
+#         print(f"!!! [Rank {local_rank}] DEBUGPY CLIENT ATTACHED !!!")
 
 
+def format_qwen_dpo_dataset(example):
+    """
+    用于 dataset.map() 的单条数据处理函数，
+    将不完全规范的 chosen/rejected 转换为标准多模态对话格式。
+    """
+    # === 1. 处理 Prompt (读取图片并继承格式) ===
+    prompt_messages = example["prompt"]
+    images_list = []  # 初始化图片列表
+    for msg in prompt_messages:
+        if msg["role"] == "user":
+            for content in msg["content"]:
+                if content["type"] == "image" and isinstance(content["image"], str):
+                    img_path = content["image"]
+                    if os.path.exists(img_path):
+                        # 读取为 PIL 对象，Qwen-VL 的 processor 需要这个
+                        img = PIL.Image.open(img_path).convert("RGB")
+                        content["image"] = img # 留在消息体内，兼容 Qwen
+                        images_list.append(img) # 🟢 追加到独立列表中，兼容 TRL
+
+                    else:
+                        print(f"⚠️ 警告: 找不到图片 {img_path}")
+
+    # === 2. 处理 Chosen (将其转化为 List of Dict 格式) ===
+    # 取出原来 dict 里的字符串
+    chosen_raw_text = example["chosen"][0]["content"] 
+    chosen_messages = [
+        {
+            "role": "assistant", 
+            "content": [
+                {"type": "text", "text": chosen_raw_text}
+            ]
+        }
+    ]
+
+    # === 3. 处理 Rejected (将其转化为 List of Dict 格式) ===
+    rejected_raw_text = example["rejected"][0]["content"]
+    rejected_messages = [
+        {
+            "role": "assistant", 
+            "content": [
+                {"type": "text", "text": rejected_raw_text}
+            ]
+        }
+    ]
+
+    return {
+        "prompt": prompt_messages,
+        "chosen": chosen_messages,
+        "rejected": rejected_messages,
+        "images": images_list, 
+    }
 def main():
     # 1. 创建解析器并定义命令行参数
     parser = argparse.ArgumentParser(description="Run fine-tuning with different methods.")
@@ -59,14 +114,45 @@ def main():
     per_device_train_batch_size= args.per_device_train_batch_size
     learning_rate= args.learning_rate
 
-    # TODO:对于Qwen3-vl 加载模型和tokenizer需要特殊处理
-    model = AutoModelForCausalLM.from_pretrained(model_path)
-    tokenizer = AutoTokenizer.from_pretrained(model_path)    
+    # 对于Qwen3-vl 加载模型和tokenizer需要特殊处理
+    config = AutoConfig.from_pretrained(model_path)
+    
+    # 补丁：处理 transformers 5.x 到 4.x 的版本兼容问题
+    if hasattr(config.text_config, "rope_parameters") and getattr(config.text_config, "rope_scaling", None) is None:
+        print("⚠️ 检测到 transformers 版本配置冲突，正在将 rope_parameters 转换为 rope_scaling...")
+        # 把新版的 rope_parameters 原封不动地赋给旧版的 rope_scaling
+        config.text_config.rope_scaling = config.text_config.rope_parameters
+
+    # 🟢 加载训练模型 (Policy Model)
+    model = Qwen3VLForConditionalGeneration.from_pretrained(
+        model_path,
+        config=config,
+        dtype=torch.bfloat16
+    )
+
+    # 🟢 加载参考模型 (Reference Model)
+    # ZeRO-3 要求必须手动实例化，不能让 Trainer 自动创建
+    ref_model = Qwen3VLForConditionalGeneration.from_pretrained(
+        model_path,
+        config=config,
+        dtype=torch.bfloat16
+    )
+    processor = AutoProcessor.from_pretrained(model_path)
+    if hasattr(processor, 'tokenizer'):
+        tokenizer = processor.tokenizer
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(model_path)
 
     train_dataset = load_dataset(
-        "parquet",                           # 指定文件格式为 "parquet"
+        "json",                           # 指定文件格式为 "json"
         data_files={"train": dataset_path}, # 提供一个字典，将文件名映射到你想要创建的split名称
         split="train"                        # 从上一步创建的splits中选择 "train" split
+    )
+    # num_proc=8 开启多进程加速处理，remove_columns 丢掉多余的 id 等字段
+    train_dataset = train_dataset.map(
+        format_qwen_dpo_dataset,
+        num_proc=8,
+        desc="Formatting DPO dataset for Qwen3-VL"
     )
 
     if method == "sft":
@@ -104,7 +190,8 @@ def main():
             per_device_train_batch_size=per_device_train_batch_size,
             per_device_eval_batch_size=1,
             max_prompt_length=4096,
-            max_length=4096,
+            #For VLMs, truncating may remove image tokens, leading to errors during training. To avoid this, set max_length=None in the DPOConfig. This allows the model to process the full sequence length without truncating image tokens. 但是在评测中 tokne为2376，避免显存溢出，暂时设置为4086，后续可以根据实际情况调整。
+            max_length=4096, 
             max_completion_length=4096,
             gradient_accumulation_steps=gradient_accumulation_steps,
             num_train_epochs=num_train_epochs,
@@ -119,14 +206,19 @@ def main():
             # eval_steps=40,
             logging_steps=1,
             max_grad_norm=1.0,
-            remove_unused_columns=False, # 防止移除我们需要的手动构建的 labels
+            remove_unused_columns=True, # 防止移除我们需要的手动构建的 labels
+            # precompute_ref_log_probs 不支持zero-3，因为 ref_model 的参数不在 Trainer 管理的范围内，设置为 True 会导致训练时找不到预计算的 log_probs，从而报错。对于 Zero-3，必须保持 precompute_ref_log_probs=False，让 Trainer 在每个训练步骤动态计算参考模型的 log_probs。
+            precompute_ref_log_probs=False, 
+            bf16=True,
         )
 
         trainer = DPOTrainer(
             model=model,
             args=training_args,
+            ref_model=ref_model,
             train_dataset=train_dataset,
             # eval_dataset=test_dataset,
+            processing_class = processor,
         )
     elif method == 'mdpo':
         training_args = DPOConfig(
