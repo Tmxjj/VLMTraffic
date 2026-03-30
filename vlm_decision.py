@@ -299,9 +299,16 @@ class Evaluator:
 
                     # --- 阶段 3: 结果分发与持久化 ---
                     for jid, phase_id, (vlm_resp, latency, decided_action, thought) in zip(b_jids, b_phases, results):
+                        # 获取当前路口的 gt_vehicle_counts
+                        gt_vehicle_counts = {}
+                        aircraft_id = f'aircraft_{jid}'
+                        if 'bev_lane_vehicle_counts' in sensor_datas and aircraft_id in sensor_datas['bev_lane_vehicle_counts']:
+                            gt_vehicle_counts = sensor_datas['bev_lane_vehicle_counts'][aircraft_id]
+                            
                         # 存结果
                         _resp_file = os.path.join(_step_dir, f"response_{jid}.txt")
                         content_to_save = vlm_resp + (f"\n\n[Thinking Process]\n{thought}" if thought else "")
+                        content_to_save += f"\n\n[GT Vehicle Counts]\n{json.dumps(gt_vehicle_counts, ensure_ascii=False, indent=4)}"
                         write_response_to_file(file_path=_resp_file, content=content_to_save)
 
                         # 验证结果
