@@ -242,7 +242,7 @@ class VLMAgent:
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens
             }
-            resp = requests.post(self.url, headers=self.headers, json=payload, timeout=60)
+            resp = requests.post(self.url, headers=self.headers, json=payload, timeout=300)
             resp.raise_for_status()
             return resp.json()
 

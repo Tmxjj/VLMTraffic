@@ -15,7 +15,7 @@ MODEL_CONFIG = {
     
     # Global generation settings
     "temperature": 0, # inference 0；generate golden data for training 0.7
-    "max_new_tokens": 8192, # Max tokens to generate
+    "max_new_tokens": 4096, # Max tokens to generate
 
     # Configuration for specific backends
     # "local_model": {

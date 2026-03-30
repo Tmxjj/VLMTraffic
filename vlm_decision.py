@@ -32,10 +32,12 @@ class Evaluator:
     """
     Runs the end-to-end evaluation loop.
     """
-    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None, batch_size=12, use_fixed_time=False):
+    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None, batch_size=12, use_fixed_time=False, api_url=None, model_name_override=None):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
         self.use_fixed_time = use_fixed_time
+        self.api_url = api_url
+        self.model_name_override = model_name_override
         
         # --- 1. Load Configurations ---
         path_convert = get_abs_path(__file__) 
@@ -55,7 +57,7 @@ class Evaluator:
         if self.use_fixed_time:
             model_name = "fixed_time"
         else:
-            model_name = MODEL_CONFIG.get(MODEL_CONFIG.get("api_type", "local_model"), {}).get("model_name", "N/A")
+            model_name = self.model_name_override if self.model_name_override else MODEL_CONFIG.get(MODEL_CONFIG.get("api_type", "local_model"), {}).get("model_name", "N/A")
             
         route_name = "default"
         if route_file:
@@ -147,7 +149,13 @@ class Evaluator:
             try:
                 # Automatically loads from MODEL_CONFIG inside VLMAgent
                 logger.info(f"[EVAL] Initializing VLM Agent...")
-                self.agent = VLMAgent(batch_size=self.batch_size) 
+                agent_kwargs = {}
+                if self.api_url:
+                    agent_kwargs["url"] = self.api_url
+                if self.model_name_override:
+                    agent_kwargs["model_name"] = self.model_name_override
+                    
+                self.agent = VLMAgent(batch_size=self.batch_size, **agent_kwargs) 
             except Exception as e:
                  logger.critical(f"[EVAL] Failed to initialize VLM Agent: {e}")
                  raise e
@@ -343,12 +351,18 @@ if __name__ == "__main__":
     # 新增: fixed_time 模式开关
     parser.add_argument("--fixed_time", action="store_true", help="Run in fixed-time mode, bypassing the VLM.")
     
+    # 新增: 允许从命令行覆盖 api url 和 model name
+    parser.add_argument("--api_url", type=str, default=None, help="Override api url in model config")
+    parser.add_argument("--model_name", type=str, default=None, help="Override model name in model config")
+    
     args = parser.parse_args()
 
     evaluator = Evaluator(
         scenario_key=args.scenario, 
         log_dir=args.log_dir,
         route_file=args.route_file,
-        use_fixed_time=args.fixed_time
+        use_fixed_time=args.fixed_time,
+        api_url=args.api_url,
+        model_name_override=args.model_name
     )
     evaluator.run_eval(max_decision_step=args.max_steps)
