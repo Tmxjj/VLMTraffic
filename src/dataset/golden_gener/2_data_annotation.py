@@ -52,8 +52,8 @@ class VLMDataAnnotator:
             
         base_dir = f"data/raw/{scenario}"
         possible_paths = [
-            os.path.join(PROJECT_ROOT, base_dir, "env", f"{config['NETFILE']}.net.xml"),
-            os.path.join(PROJECT_ROOT, base_dir, f"{config['NETFILE']}.net.xml")
+            os.path.join(PROJECT_ROOT,'..', base_dir, "env", f"{config['NETFILE']}.net.xml"),
+            os.path.join(PROJECT_ROOT,'..', base_dir, f"{config['NETFILE']}.net.xml")
         ]
         for p in possible_paths:
             if os.path.exists(p):
@@ -237,7 +237,7 @@ class VLMDataAnnotator:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Annotate VLM outputs with GT and calculate error for DPO")
-    parser.add_argument("--jsonl", type=str, default='data/sft_dataset/JiNan/anon_3_4_jinan_real_incidents.rou/01_dataset_raw.jsonl', help="Path to input 01_dataset_raw.jsonl")
+    parser.add_argument("--jsonl", type=str, default='data/sft_dataset/Hangzhou/anon_4_4_hangzhou_real.rou/01_dataset_raw.jsonl', help="Path to input 01_dataset_raw.jsonl")
     parser.add_argument("--output", type=str, default=None, help="Path to output jsonl")
     args = parser.parse_args()
     

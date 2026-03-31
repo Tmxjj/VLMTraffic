@@ -2,9 +2,9 @@
 ###
  # @Author: yufei Ji
  # @Date: 2026-03-10 23:24:40
- # @LastEditTime: 2026-03-17 10:16:48
+ # @LastEditTime: 2026-03-31 22:29:26
  # @Description: this script is used to 
- # @FilePath: /VLMTraffic/src/dataset/run_inference_jinan.sh
+ # @FilePath: /VLMTraffic/src/dataset/golden_gener/run_inference_jinan.sh
 ### 
 
 # This script runs the 3_inference.py script in the background
@@ -22,9 +22,9 @@
 echo "Starting inference process in the background..."
 echo "Output will be saved to inference_step3.log"
 
-nohup python src/dataset/3_inference.py \
+nohup python src/dataset/golden_gener/3_inference.py \
     --scenario Hangzhou \
-    --route_file anon_4_4_hangzhou_real_5816.rou \
+    --route_file anon_4_4_hangzhou_real.rou \
     > inference_step3_hangzhou.log 2>&1 &
 
 echo "Process started with PID $!"

@@ -2,7 +2,7 @@
 Author: yufei Ji
 Date: 2026-01-19
 Description: Generate golden dataset using VLM and simulation rollouts
-FilePath: /VLMTraffic/src/dataset/1_golden_generation.py
+FilePath: /VLMTraffic/src/dataset/golden_gener/1_golden_generation.py
 '''
 import os
 import re
@@ -13,12 +13,8 @@ import copy
 import traci
 import shutil
 import sys
-# Add scripts folder to sys.path
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'scripts'))
-try:
-    from add_lane_watermarks import add_lane_watermarks
-except ImportError:
-    logger.warning("Could not import add_lane_watermarks from scripts/ folder.")
+from scripts.add_lane_watermarks import add_lane_watermarks
+
 
 from loguru import logger
 import numpy as np
@@ -64,20 +60,20 @@ class GoldenGenerator:
         
         # Determine file paths
         # input
-        base_sumo_cfg = path_convert(f"../../data/raw/{self.scenario_name}/{self.scenario_config['NETFILE']}.sumocfg")
-        scenario_glb_dir = path_convert(f"../../data/raw/{self.scenario_name}/3d_assets/")
+        base_sumo_cfg = path_convert(f"../../../data/raw/{self.scenario_name}/{self.scenario_config['NETFILE']}.sumocfg")
+        scenario_glb_dir = path_convert(f"../../../data/raw/{self.scenario_name}/3d_assets/")
         tls_add = [
-            path_convert(f"../../data/raw/{self.scenario_name}/add/e2.add.xml"),
-            path_convert(f"../../data/raw/{self.scenario_name}/add/tls_programs.add.xml")
+            path_convert(f"../../../data/raw/{self.scenario_name}/add/e2.add.xml"),
+            path_convert(f"../../../data/raw/{self.scenario_name}/add/tls_programs.add.xml")
         ]
         # output
-        self.output_dir = path_convert(f"../../data/sft_dataset/{self.scenario_name}/{route_name}/")
+        self.output_dir = path_convert(f"../../../data/sft_dataset/{self.scenario_name}/{route_name}/")
         create_folder(self.output_dir)
 
-        trip_info = path_convert(f"../../data/sft_dataset/{self.scenario_name}/{route_name}/tripinfo_golden.out.xml")
-        statistic_output = path_convert(f"../../data/sft_dataset/{self.scenario_name}/{route_name}/statistic_output_golden.xml")
-        summary = path_convert(f"../../data/sft_dataset/{self.scenario_name}/{route_name}/summary_golden.txt")
-        queue_output = path_convert(f"../../data/sft_dataset/{self.scenario_name}/{route_name}/queue_output_golden.xml")
+        trip_info = path_convert(f"../../../data/sft_dataset/{self.scenario_name}/{route_name}/tripinfo_golden.out.xml")
+        statistic_output = path_convert(f"../../../data/sft_dataset/{self.scenario_name}/{route_name}/statistic_output_golden.xml")
+        summary = path_convert(f"../../../data/sft_dataset/{self.scenario_name}/{route_name}/summary_golden.txt")
+        queue_output = path_convert(f"../../../data/sft_dataset/{self.scenario_name}/{route_name}/queue_output_golden.xml")
 
         # Handle Custom Route File
         sumo_cfg = base_sumo_cfg
