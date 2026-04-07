@@ -2,7 +2,7 @@
 ###
  # @Author: yufei Ji
  # @Date: 2026-03-10 23:24:40
- # @LastEditTime: 2026-03-31 22:29:26
+ # @LastEditTime: 2026-03-31 22:31:56
  # @Description: this script is used to 
  # @FilePath: /VLMTraffic/src/dataset/golden_gener/run_inference_jinan.sh
 ### 
@@ -21,7 +21,7 @@
 
 echo "Starting inference process in the background..."
 echo "Output will be saved to inference_step3.log"
-
+export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src
 nohup python src/dataset/golden_gener/3_inference.py \
     --scenario Hangzhou \
     --route_file anon_4_4_hangzhou_real.rou \

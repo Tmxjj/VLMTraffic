@@ -2,9 +2,9 @@
 ###
  # @Author: yufei Ji
  # @Date: 2026-03-10 23:24:40
- # @LastEditTime: 2026-03-25 15:26:26
+ # @LastEditTime: 2026-04-07 18:31:52
  # @Description: this script is used to 
- # @FilePath: /VLMTraffic/src/dataset/run_inference_emergy.sh
+ # @FilePath: /VLMTraffic/src/dataset/golden_gener/run_inference_emergy.sh
 ### 
 
 # This script runs the 3_inference.py script in the background
@@ -21,12 +21,12 @@
 
 echo "Starting inference process in the background..."
 echo "Output will be saved to inference_emergy_step3.log"
-
-nohup python src/dataset/3_inference.py \
-    --scenario JiNan \
-    --route_file anon_3_4_jinan_real_incidents.rou \
-    > inference_incidents_step3.log 2>&1 &
+export PYTHONPATH=$PYTHONPATH:$(pwd):$(pwd)/src
+nohup python src/dataset/golden_gener/3_inference.py \
+    --scenario Hangzhou \
+    --route_file anon_4_4_hangzhou_real_emergy.rou \
+    > inference_emergy_step3.log 2>&1 &
 
 echo "Process started with PID $!"
-echo "You can check the progress with: tail -f inference_incidents_step3.log"
+echo "You can check the progress with: tail -f inference_emergy_step3.log"
     
