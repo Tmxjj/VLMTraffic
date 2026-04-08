@@ -66,23 +66,27 @@ def main():
 
     # 初始化 VLMAgent
     # 假设使用 batch inference，这里配置 batch_size
-    batch_size = 8
+    batch_size = 10
     print("Initializing VLMAgent...")
     agent = VLMAgent(batch_size=batch_size)
     
     with open(input_file, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
+        content = f.read()
         
     all_data = []
-    # Parse all data
-    for line in lines:
-        if not line.strip():
-            continue
+    decoder = json.JSONDecoder()
+    pos = 0
+    content = content.lstrip()
+    
+    while pos < len(content):
         try:
-            data = json.loads(line)
+            data, idx = decoder.raw_decode(content[pos:])
             all_data.append(data)
+            pos += idx
+            while pos < len(content) and content[pos].isspace():
+                pos += 1
         except json.JSONDecodeError:
-            pass
+            break
 
     print(f"Loaded {len(all_data)} samples.")
     
@@ -117,14 +121,7 @@ def main():
             prompt_text = ""
             for item in prompt_content:
                 if item['type'] == 'image':
-                    # 将DPO里的远程替换地址重新回退到本地绝对路径
-                    image_path_raw = item['image']
-                    old_prefix = "/root/autodl-tmp/golden_data/"
-                    new_prefix = "/home/jyf/code/trafficVLM/code/VLMTraffic/data/sft_dataset/"
-                    if image_path_raw.startswith(old_prefix):
-                        image_path = image_path_raw.replace(old_prefix, new_prefix)
-                    else:
-                        image_path = image_path_raw
+                    image_path = item['image']
                 elif item['type'] == 'text':
                     prompt_text = item['text']
             
@@ -137,6 +134,12 @@ def main():
                 batch_image_paths.clear()
                 batch_prompts.clear()
                 batch_indices.clear()
+                
+                # 每处理100个样本后（即idx接近整百时）保存一次
+                if (idx + 1) % 100 == 0:
+                    with open(output_file, 'w', encoding='utf-8') as f_out:
+                        for d in all_data:
+                            f_out.write(json.dumps(d, ensure_ascii=False) + '\n')
                 
         except Exception as e:
             print(f"Error preparing data for {data.get('id', 'unknown')}: {e}")

@@ -195,9 +195,9 @@ def process_dpo_data():
         with open(output_file, 'w', encoding='utf-8') as f_out:
             for item in all_dpo_data:
                 # 写入标准 jsonl 格式（人类可读的方式）
-                f_out.write(json.dumps(item, indent=4, ensure_ascii=False) + '\n')
+                # f_out.write(json.dumps(item, indent=4, ensure_ascii=False) + '\n')
                 # 写入标准 jsonl 格式（一行一个 json 对象）
-                # f_out.write(json.dumps(item, ensure_ascii=False) + '\n')
+                f_out.write(json.dumps(item, ensure_ascii=False) + '\n')
         print(f"Successfully saved {len(all_dpo_data)} DPO samples to {output_file}")
     except Exception as e:
         print(f"Error saving output file: {str(e)}")
