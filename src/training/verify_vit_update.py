@@ -1,11 +1,9 @@
 """
 验证 DPO 训练中 Qwen3-VL 的 ViT (Visual Encoder) 是否真正参与参数更新。
+增加了针对 ViT 和 Merger(Projector) 的精准冻结控制。
 
 依赖版本要求（在远程服务器上执行）:
     pip install trl==0.29.1
-
-TRL >= 0.29.1 修复了 image_grid_thw 未传递给模型的 bug（PR #3906 / Issue #4071），
-无需任何 monkey-patch，直接使用官方 API 即可正确运行 Qwen3-VL 的多模态 DPO。
 
 运行方式:
     CUDA_VISIBLE_DEVICES=0 python src/training/verify_vit_update.py
@@ -19,8 +17,50 @@ from trl import DPOConfig, DPOTrainer
 from PIL import Image
 
 
+def freeze_multimodal_components(model, freeze_vit=True, freeze_merger=True):
+    """
+    根据 Qwen3-VL 的具体参数架构，精准冻结多模态组件。
+    """
+    print("\n================ 开始配置参数冻结 ================")
+    # ViT 相关的参数前缀
+    vit_prefixes = [
+        "visual.patch_embed", 
+        "visual.pos_embed", 
+        "visual.blocks"
+    ]
+    # Merger/Projector 相关的参数前缀 (包含深层 merger 列表)
+    merger_prefixes = [
+        "visual.merger", 
+        "visual.deepstack_merger_list"
+    ]
+
+    frozen_vit_params = 0
+    frozen_merger_params = 0
+    vit_layer_num = 0
+    merger_later_num = 0
+
+    for name, param in model.named_parameters():
+        # 1. 冻结 ViT
+        if freeze_vit and any(name.startswith(f"model.{p}") for p in vit_prefixes):
+            param.requires_grad = False
+            frozen_vit_params += param.numel()
+            vit_layer_num +=1
+            
+        # 2. 冻结 Merger
+        elif freeze_merger and any(name.startswith(f"model.{p}") for p in merger_prefixes):
+            param.requires_grad = False
+            frozen_merger_params += param.numel()
+            merger_later_num +=1
+
+    print(f"✅ 冻结配置完成:")
+    print(f" - 冻结 ViT: {freeze_vit} (锁定了{vit_layer_num}层，{frozen_vit_params / 1e6:.2f} M 个参数)")
+    print(f" - 冻结 Merger: {freeze_merger} (锁定了{merger_later_num}层 {frozen_merger_params / 1e6:.2f} M 个参数)")
+    print("==================================================\n")
+    return model
+
+
 def main():
-    model_path = "/root/autodl-tmp/model/qwen3_vl_8b_sft"
+    model_path = "/root/autodl-tmp/model/qwen3-vl-4b"
 
     print("正在加载模型配置...")
     config = AutoConfig.from_pretrained(model_path)
@@ -36,34 +76,31 @@ def main():
     ).to("cuda")
     processor = AutoProcessor.from_pretrained(model_path)
 
-    # ---- 检查 ViT 冻结状态 ----
-    print("\n检查 Visual Encoder (ViT) 参数的 requires_grad 属性:")
-    vit_name = "visual"
-    has_frozen_vit = False
-    for name, param in model.named_parameters():
-        if vit_name in name and not param.requires_grad:
-            has_frozen_vit = True
-            print(f"发现被冻结的视觉层: {name}")
-            break
-    if not has_frozen_vit:
-        print("视觉编码器 (ViT) 的参数没有被冻结, requires_grad=True")
+    # ==========================================
+    # ---- 核心修改点：调用冻结函数 ----
+    # 在这里自由控制是否冻结 ViT 和 Merger
+    # ==========================================
+    model = freeze_multimodal_components(
+        model, 
+        freeze_vit=False,     # 设为 True 冻结视觉主干
+        freeze_merger=False   # 设为 True 冻结投影融合层
+    )
 
-    # ---- 记录初始权重 ----
-    target_layer_name = None
-    initial_weight = None
+    # ---- 记录初始权重 (用于最终对比验证) ----
+    # 无论是否被冻结，我们都强行抓取 ViT 的第一层投影权重和 Merger 的第一层权重进行观察
+    target_vit_layer = "model.visual.patch_embed.proj.weight"
+    target_merger_layer = "model.visual.merger.linear_fc1.weight"
+    
+    initial_vit_weight = None
+    initial_merger_weight = None
+    
     for name, param in model.named_parameters():
-        if vit_name in name and "weight" in name and param.requires_grad:
-            target_layer_name = name
-            initial_weight = param.clone().detach().cpu()
-            break
-    print(f"\n选取观察的视觉层: {target_layer_name}")
+        if name == target_vit_layer:
+            initial_vit_weight = param.clone().detach().cpu()
+        elif name == target_merger_layer:
+            initial_merger_weight = param.clone().detach().cpu()
 
     # ---- 构造数据集 ----
-    # TRL 0.29.1 的 DataCollatorForVisionPreference 期望原始格式（不做预处理）:
-    #   - images: 每个样本的 PIL 图像列表
-    #   - prompt / chosen / rejected: 对话格式（message dict 列表，content 为纯字符串即可）
-    # prepare_multimodal_messages 会自动把 images 注入 prompt 消息的 image 占位符，
-    # 无需手动写 {"type": "image"} 占位符。
     img_path_1 = "/root/autodl-tmp/golden_data/JiNan/anon_3_4_jinan_real_2500.rou/step_8/intersection_3_1_bev_watermarked.png"
     img_path_2 = "/root/autodl-tmp/golden_data/JiNan/anon_3_4_jinan_real_2500.rou/step_9/intersection_3_1_bev_watermarked.png"
 
@@ -87,21 +124,18 @@ def main():
     })
 
     # ---- 训练配置 ----
-    # TRL 0.29.1 的 DPOConfig:
-    #   - 移除了 max_prompt_length、max_completion_length（仅保留 max_length）
-    #   - 视觉数据集自动保留所需列（无需 remove_unused_columns=False）
-    #   - 视觉数据集跳过预处理流水线，由 DataCollatorForVisionPreference 负责 on-the-fly 处理
     print("\n开始 DPO 训练...")
     training_args = DPOConfig(
-        output_dir="./tmp_dpo_verify",
+        output_dir="/root/autodl-tmp/model/tmp_dpo_verify",
         per_device_train_batch_size=1,
-        max_length=None,  # VLM 必须禁用截断：截断会移除部分图像token，导致与pixel_values的特征数不匹配
+        max_length=None,
         max_steps=2,
         learning_rate=1e-5,
         precompute_ref_log_probs=False,
         gradient_checkpointing=True,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         bf16=True,
+        save_strategy="no",  # 测试脚本不保存权重，防止爆磁盘
         logging_steps=1,
     )
 
@@ -117,17 +151,26 @@ def main():
     trainer.train()
 
     # ---- 验证权重变化 ----
-    print("\n训练结束，对比权重变化...")
+    print("\n================ 训练结束，对比权重变化 ================")
     for name, param in model.named_parameters():
-        if name == target_layer_name:
+        if name == target_vit_layer and initial_vit_weight is not None:
             final_weight = param.detach().cpu()
-            max_diff = torch.max(torch.abs(initial_weight.float() - final_weight.float())).item()
-            print(f"[{target_layer_name}] 最大权重差异: {max_diff:.8f}")
-            if max_diff > 0:
-                print("结论: ViT 参数发生了变化，在 DPO 训练中参与了反向传播和更新！")
+            max_diff = torch.max(torch.abs(initial_vit_weight.float() - final_weight.float())).item()
+            print(f"[{target_vit_layer}] (ViT) 最大权重差异: {max_diff:.8f}")
+            if max_diff > 1e-7:
+                print(" 👉 结论: ViT 参数发生了变化，参与了更新！(未冻结)")
             else:
-                print("结论: ViT 参数没有变化，可能被冻结或学习率过小。")
-            break
+                print(" 👉 结论: ViT 参数没有变化，已被成功冻结！")
+                
+        elif name == target_merger_layer and initial_merger_weight is not None:
+            final_weight = param.detach().cpu()
+            max_diff = torch.max(torch.abs(initial_merger_weight.float() - final_weight.float())).item()
+            print(f"[{target_merger_layer}] (Merger) 最大权重差异: {max_diff:.8f}")
+            if max_diff > 1e-7:
+                print(" 👉 结论: Merger 参数发生了变化，参与了更新！(未冻结)")
+            else:
+                print(" 👉 结论: Merger 参数没有变化，已被成功冻结！")
+    print("========================================================\n")
 
 
 if __name__ == "__main__":

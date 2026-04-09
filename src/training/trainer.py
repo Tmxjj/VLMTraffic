@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-14 16:43:47
-LastEditTime: 2026-04-09 23:05:32
+LastEditTime: 2026-04-09 23:32:53
 Description: 使用不同偏好优化方法（DPO / RPO / SFT）对 Qwen3-VL 进行多模态微调。
              适配 TRL >= 0.29.1，修复了 image_grid_thw 未传递的 bug（PR #3906）。
 FilePath: /VLMTraffic/src/training/trainer.py
@@ -25,7 +25,39 @@ from datasets import load_dataset
 from transformers import AutoConfig, AutoProcessor, Qwen3VLForConditionalGeneration
 from trl import DPOConfig, DPOTrainer
 
+# ===========================================================================
+# 模型参数冻结函数 
+# ===========================================================================
 
+def freeze_multimodal_components(model, freeze_vit=True, freeze_merger=True):
+    """
+    根据 Qwen3-VL 的具体参数架构，精准冻结多模态组件以节省显存。
+    """
+    print("\n================ 开始配置参数冻结 ================")
+    # ViT 相关的参数前缀
+    vit_keywords = ["visual.patch_embed", "visual.pos_embed", "visual.blocks"]
+    # Merger/Projector 相关的参数前缀 (包含深层 merger 列表)
+    merger_keywords = ["visual.merger", "visual.deepstack_merger_list"]
+
+    frozen_vit_params = 0
+    frozen_merger_params = 0
+
+    for name, param in model.named_parameters():
+        # 1. 冻结 ViT
+        if freeze_vit and any(kw in name for kw in vit_keywords):
+            param.requires_grad = False
+            frozen_vit_params += param.numel()
+            
+        # 2. 冻结 Merger
+        elif freeze_merger and any(kw in name for kw in merger_keywords):
+            param.requires_grad = False
+            frozen_merger_params += param.numel()
+
+    print(f"✅ 冻结配置完成:")
+    print(f" - 冻结 ViT: {freeze_vit} (锁定了 {frozen_vit_params / 1e6:.2f} M 个参数)")
+    print(f" - 冻结 Merger: {freeze_merger} (锁定了 {frozen_merger_params / 1e6:.2f} M 个参数)")
+    print("==================================================\n")
+    return model
 # ===========================================================================
 # 数据预处理函数
 # ===========================================================================
@@ -119,6 +151,15 @@ def main():
     parser.add_argument("--learning_rate", type=float, required=True, help="学习率")
     args, _ = parser.parse_known_args()
 
+    parser.add_argument("--freeze_vit", type=str, default="true", choices=["true", "false"], help="是否冻结视觉主干参数")
+    parser.add_argument("--freeze_merger", type=str, default="true", choices=["true", "false"], help="是否冻结投影融合层参数")
+    
+    args, _ = parser.parse_known_args()
+
+    # 参数类型转换
+    freeze_vit_bool = args.freeze_vit.lower() == "true"
+    freeze_merger_bool = args.freeze_merger.lower() == "true"
+
     print(f"训练参数: {args}")
 
     # 梯度异常检测（调试用，生产环境可关闭以提升性能）
@@ -146,6 +187,8 @@ def main():
         dtype=torch.bfloat16,
         device_map=None,  # ZeRO-3 必须为 None，参数由 deepspeed 跨卡分片
     )
+    #在模型加载后立即应用冻结策略
+    model = freeze_multimodal_components(model, freeze_vit=freeze_vit_bool, freeze_merger=freeze_merger_bool)
 
     # 加载参考模型（Reference Model）：用于计算 KL 散度，参数在训练过程中固定不变。
     # ZeRO-3 下必须显式实例化，不能让 TRL 自动复制（自动复制与 ZeRO-3 的参数分片机制不兼容）。
