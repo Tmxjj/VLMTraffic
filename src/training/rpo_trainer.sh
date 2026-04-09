@@ -2,7 +2,7 @@
  # @Author: yufei Ji
  # @Date: 2026-03-29
  # @Description: this script is used to train VLM model with DPO method
- # @FilePath: /VLMTraffic/src/training/dpo_trainer.sh
+ # @FilePath: /VLMTraffic/src/training/rpo_trainer.sh
 ### 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 model_name=qwen3_vl_8b_dpo # 用于拼接输出文件夹名称
@@ -15,6 +15,9 @@ per_device_train_batch_size=4
 gradient_accumulation_steps=4 # 通过累积梯度实现等效的全局 Batch Size，适合显存受限的情况
 learning_rate=3e-6 # DPO 的学习率通常比 SFT 低一个数量级
 num_gpus=4 # 设定为 4 张 A100
+
+freeze_vit="true"     # 是否冻结视觉主干 (ViT)
+freeze_merger="true"  # 是否冻结投影融合层 (Projector)
 
 # 路径配置
 model_path=/root/autodl-tmp/model/qwen3_vl_8b_sft
@@ -38,4 +41,6 @@ accelerate launch --config_file /root/code/VLMTraffic/configs/accelerate_config.
     --gradient_accumulation_steps ${gradient_accumulation_steps} \
     --beta ${beta} \
     --learning_rate ${learning_rate} \
-    --num_train_epochs ${num_train_epochs}
+    --num_train_epochs ${num_train_epochs} \
+    --freeze_vit ${freeze_vit} \
+    --freeze_merger ${freeze_merger}

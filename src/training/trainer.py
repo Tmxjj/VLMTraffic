@@ -1,426 +1,300 @@
 '''
 Author: yufei Ji
 Date: 2026-01-14 16:43:47
-LastEditTime: 2026-01-30 10:55:21
-Description: this script is used to train the VLM model with different methods
+LastEditTime: 2026-04-09 23:05:32
+Description: 使用不同偏好优化方法（DPO / RPO / SFT）对 Qwen3-VL 进行多模态微调。
+             适配 TRL >= 0.29.1，修复了 image_grid_thw 未传递的 bug（PR #3906）。
 FilePath: /VLMTraffic/src/training/trainer.py
+
+依赖版本:
+    trl >= 0.29.1
+    transformers >= 4.56.2
+    accelerate >= 1.4.0
+
+运行方式 (通过 rpo_trainer.sh 调用):
+    accelerate launch --config_file configs/accelerate_config.yaml \
+        src/training/trainer.py --method rpo --model_path ... ...
 '''
 
-
 import argparse
+import os
+
+import PIL.Image
 import torch
 from datasets import load_dataset
-from trl import DPOConfig, DPOTrainer, KTOConfig, KTOTrainer
-from transformers import AutoModelForCausalLM, AutoTokenizer,Qwen3VLForConditionalGeneration, AutoProcessor, AutoConfig
-# from ddpo_config import DDPOConfig
-from accelerate import Accelerator
-import PIL.Image
-import os
-import debugpy
-import sys
+from transformers import AutoConfig, AutoProcessor, Qwen3VLForConditionalGeneration
+from trl import DPOConfig, DPOTrainer
 
-# # 同时兼容多种启动器的 Rank 环境变量
-# local_rank = os.environ.get("LOCAL_RANK", os.environ.get("ACCELERATE_LOCAL_RANK", "0"))
 
-# if not (hasattr(sys, 'gettrace') and sys.gettrace() is not None):
-#     # 严格限定只有 local_rank 为 "0" 的主进程才能启动调试器
-#     if str(local_rank) == "0" and os.environ.get("ENABLE_DEBUGPY") == "true":
-#         import debugpy
-#         print(f"!!! [Rank {local_rank}] DEBUGPY IS WAITING FOR ATTACHMENT ON PORT 5679 !!!")
-#         debugpy.listen(("0.0.0.0", 5679))
-#         debugpy.wait_for_client()
-#         print(f"!!! [Rank {local_rank}] DEBUGPY CLIENT ATTACHED !!!")
-
+# ===========================================================================
+# 数据预处理函数
+# ===========================================================================
 
 def format_qwen_dpo_dataset(example):
     """
-    用于 dataset.map() 的单条数据处理函数，
-    将不完全规范的 chosen/rejected 转换为标准多模态对话格式。
+    用于 dataset.map() 的单条数据处理函数。
+
+    将原始 JSON 数据转换为 TRL 0.29.1 的 DataCollatorForVisionPreference 所需格式：
+      - prompt  : 包含 {"type": "image"} 占位符的消息列表（不含 PIL 对象）
+      - chosen  : assistant 回复消息列表
+      - rejected: assistant 回复消息列表
+      - images  : 该样本对应的 PIL 图像列表
+
+    设计原则：
+      PIL 图像只放在 images 字段，不放在 content["image"] 里。
+      TRL 的 prepare_multimodal_messages 会在 collate 阶段自动将 images 中的
+      PIL 图像注入到消息内容的 {"type": "image"} 占位符中，避免序列化问题。
     """
-    # === 1. 处理 Prompt (读取图片并继承格式) ===
+    # === 1. 处理 Prompt：提取图片路径，构建干净的占位符消息 ===
     prompt_messages = example["prompt"]
-    images_list = []  # 初始化图片列表
+    images_list = []  # 用于存放该样本的所有 PIL 图像
+
     for msg in prompt_messages:
         if msg["role"] == "user":
             for content in msg["content"]:
-                if content["type"] == "image" and isinstance(content["image"], str):
-                    img_path = content["image"]
-                    if os.path.exists(img_path):
-                        # 读取为 PIL 对象，Qwen-VL 的 processor 需要这个
-                        img = PIL.Image.open(img_path).convert("RGB")
-                        content["image"] = img # 留在消息体内，兼容 Qwen
-                        images_list.append(img) # 🟢 追加到独立列表中，兼容 TRL
+                if content["type"] == "image":
+                    img_path = content.get("image", "")
+                    if isinstance(img_path, str) and os.path.exists(img_path):
+                        # 加载 PIL 图像，追加到独立列表
+                        images_list.append(PIL.Image.open(img_path).convert("RGB"))
+                        # 移除路径键，只保留 {"type": "image"} 占位符
+                        # DataCollatorForVisionPreference 会在 collate 时注入真实 PIL 对象
+                        content.pop("image", None)
+                    elif isinstance(img_path, str):
+                        print(f"警告: 图片路径不存在 → {img_path}")
 
-                    else:
-                        print(f"⚠️ 警告: 找不到图片 {img_path}")
+    # === 2. 处理 Chosen：统一为 [{"role": "assistant", "content": str}] 格式 ===
+    # 原始数据可能是 [{"role": "assistant", "content": "..."}]（content 为字符串）
+    # 或 [{"role": "assistant", "content": [{"type": "text", "text": "..."}]}]（已结构化）
+    # TRL 0.29.1 的 prepare_multimodal_messages 两种格式都能处理，此处统一为字符串。
+    chosen_raw = example["chosen"]
+    if isinstance(chosen_raw[0]["content"], list):
+        # 已结构化 → 提取纯文本
+        chosen_text = "".join(
+            part["text"] for part in chosen_raw[0]["content"] if part.get("type") == "text"
+        )
+    else:
+        chosen_text = chosen_raw[0]["content"]
+    chosen_messages = [{"role": "assistant", "content": chosen_text}]
 
-    # === 2. 处理 Chosen (将其转化为 List of Dict 格式) ===
-    # 取出原来 dict 里的字符串
-    chosen_raw_text = example["chosen"][0]["content"] 
-    chosen_messages = [
-        {
-            "role": "assistant", 
-            "content": [
-                {"type": "text", "text": chosen_raw_text}
-            ]
-        }
-    ]
-
-    # === 3. 处理 Rejected (将其转化为 List of Dict 格式) ===
-    rejected_raw_text = example["rejected"][0]["content"]
-    rejected_messages = [
-        {
-            "role": "assistant", 
-            "content": [
-                {"type": "text", "text": rejected_raw_text}
-            ]
-        }
-    ]
+    # === 3. 处理 Rejected：与 Chosen 处理方式相同 ===
+    rejected_raw = example["rejected"]
+    if isinstance(rejected_raw[0]["content"], list):
+        rejected_text = "".join(
+            part["text"] for part in rejected_raw[0]["content"] if part.get("type") == "text"
+        )
+    else:
+        rejected_text = rejected_raw[0]["content"]
+    rejected_messages = [{"role": "assistant", "content": rejected_text}]
 
     return {
-        "prompt": prompt_messages,
-        "chosen": chosen_messages,
-        "rejected": rejected_messages,
-        "images": images_list, 
+        "prompt": prompt_messages,       # 含 {"type": "image"} 占位符的消息列表
+        "chosen": chosen_messages,        # assistant 偏好回复
+        "rejected": rejected_messages,    # assistant 非偏好回复
+        "images": images_list,            # 对应的 PIL 图像列表
     }
-def main():
-    # 1. 创建解析器并定义命令行参数
-    parser = argparse.ArgumentParser(description="Run fine-tuning with different methods.")
-    parser.add_argument("--method", type=str, required=True, choices=["sft", "dpo", "rpo", "nca", "kto", "ddpo","mdpo","mrpo"], help="The fine-tuning method to use.")
-    parser.add_argument("--model_path", type=str, required=True, help="Path to the pretrained model.")
-    parser.add_argument("--dataset_path", type=str, required=True, help="Path to the training dataset file (e.g., .parquet).")
-    parser.add_argument("--output_dir", type=str, required=True, help="Directory to save the output checkpoints.")
-    parser.add_argument("--beta", type=float, required=True, help="Beta value.")
-    parser.add_argument("--num_train_epochs", type=int, required=True)
-    parser.add_argument("--gradient_accumulation_steps", type=int, required=True)
-    parser.add_argument("--per_device_train_batch_size", type=int, required=True)
-    parser.add_argument("--learning_rate", type=float, required=True)
 
-    # 2. 解析参数
+
+# ===========================================================================
+# 主函数
+# ===========================================================================
+
+def main():
+    # ------------------------------------------------------------------
+    # 1. 命令行参数解析
+    # ------------------------------------------------------------------
+    parser = argparse.ArgumentParser(description="Qwen3-VL 多模态偏好优化训练脚本 (TRL >= 0.29.1)")
+    parser.add_argument(
+        "--method", type=str, required=True,
+        choices=["sft", "dpo", "rpo"],
+        help="偏好优化方法: sft=监督微调, dpo=直接偏好优化, rpo=鲁棒偏好优化"
+    )
+    parser.add_argument("--model_path", type=str, required=True, help="预训练模型路径")
+    parser.add_argument("--dataset_path", type=str, required=True, help="训练数据集路径 (.jsonl)")
+    parser.add_argument("--output_dir", type=str, required=True, help="模型检查点输出目录")
+    parser.add_argument("--beta", type=float, required=True, help="DPO KL 散度惩罚系数（越大越保守）")
+    parser.add_argument("--num_train_epochs", type=int, required=True, help="训练轮数")
+    parser.add_argument("--gradient_accumulation_steps", type=int, required=True, help="梯度累积步数")
+    parser.add_argument("--per_device_train_batch_size", type=int, required=True, help="每卡 batch size")
+    parser.add_argument("--learning_rate", type=float, required=True, help="学习率")
     args, _ = parser.parse_known_args()
 
+    print(f"训练参数: {args}")
+
+    # 梯度异常检测（调试用，生产环境可关闭以提升性能）
     torch.autograd.set_detect_anomaly(True)
 
-    print(args)
+    # ------------------------------------------------------------------
+    # 2. 模型加载
+    # ------------------------------------------------------------------
 
-    # 3. 使用从命令行传入的参数
-    method = args.method
-    model_path = args.model_path
-    dataset_path = args.dataset_path
-    output_dir = args.output_dir
-    beta = args.beta
-    num_train_epochs = args.num_train_epochs
-    gradient_accumulation_steps= args.gradient_accumulation_steps
-    per_device_train_batch_size= args.per_device_train_batch_size
-    learning_rate= args.learning_rate
-
-    # 对于Qwen3-vl 加载模型和tokenizer需要特殊处理
-    config = AutoConfig.from_pretrained(model_path)
-    
-    # 补丁：处理 transformers 5.x 到 4.x 的版本兼容问题
-    if hasattr(config.text_config, "rope_parameters") and getattr(config.text_config, "rope_scaling", None) is None:
-        print("⚠️ 检测到 transformers 版本配置冲突，正在将 rope_parameters 转换为 rope_scaling...")
-        # 把新版的 rope_parameters 原封不动地赋给旧版的 rope_scaling
+    # 加载模型配置，并处理 transformers 版本兼容问题：
+    # transformers >= 5.x 使用 rope_parameters，而 4.x 使用 rope_scaling，
+    # 此处做一次兼容转换，确保旧版 transformers 能正确读取新版保存的配置。
+    config = AutoConfig.from_pretrained(args.model_path)
+    if hasattr(config.text_config, "rope_parameters") and \
+            getattr(config.text_config, "rope_scaling", None) is None:
+        print("检测到 transformers 版本配置差异，正在适配 rope_parameters → rope_scaling ...")
         config.text_config.rope_scaling = config.text_config.rope_parameters
 
-    # 🟢 加载训练模型 (Policy Model)
+    # 加载策略模型（Policy Model）：即需要被优化的模型
+    # dtype=torch.bfloat16 可节省约 50% 显存，同时保持训练稳定性
+    # device_map=None：ZeRO-3 要求不使用 device_map，由 deepspeed 统一管理参数分布
     model = Qwen3VLForConditionalGeneration.from_pretrained(
-        model_path,
+        args.model_path,
         config=config,
-        dtype=torch.bfloat16
+        dtype=torch.bfloat16,
+        device_map=None,  # ZeRO-3 必须为 None，参数由 deepspeed 跨卡分片
     )
 
-    # 🟢 加载参考模型 (Reference Model)
-    # ZeRO-3 要求必须手动实例化，不能让 Trainer 自动创建
+    # 加载参考模型（Reference Model）：用于计算 KL 散度，参数在训练过程中固定不变。
+    # ZeRO-3 下必须显式实例化，不能让 TRL 自动复制（自动复制与 ZeRO-3 的参数分片机制不兼容）。
     ref_model = Qwen3VLForConditionalGeneration.from_pretrained(
-        model_path,
+        args.model_path,
         config=config,
-        dtype=torch.bfloat16
+        dtype=torch.bfloat16,
+        device_map=None,
     )
-    processor = AutoProcessor.from_pretrained(model_path)
-    if hasattr(processor, 'tokenizer'):
-        tokenizer = processor.tokenizer
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(model_path)
 
+    # 加载多模态处理器（Processor）：同时包含 tokenizer 和图像处理器
+    processor = AutoProcessor.from_pretrained(args.model_path)
+
+    # ------------------------------------------------------------------
+    # 3. 数据集加载与预处理
+    # ------------------------------------------------------------------
+
+    # 从 JSONL 文件加载原始数据集
     train_dataset = load_dataset(
-        "json",                           # 指定文件格式为 "json"
-        data_files={"train": dataset_path}, # 提供一个字典，将文件名映射到你想要创建的split名称
-        split="train"                        # 从上一步创建的splits中选择 "train" split
+        "json",
+        data_files={"train": args.dataset_path},
+        split="train",
     )
-    # num_proc=8 开启多进程加速处理，remove_columns 丢掉多余的 id 等字段
+
+    # 将原始数据转换为 TRL 0.29.1 所需格式：
+    #   - 提取图片路径 → 加载为 PIL 图像 → 存入 images 字段
+    #   - 清理消息内容中的路径，只保留 {"type": "image"} 占位符
+    # 注意：num_proc=1 避免多进程 PIL 序列化问题（PIL 对象跨进程传输不稳定）
     train_dataset = train_dataset.map(
         format_qwen_dpo_dataset,
-        num_proc=8,
-        desc="Formatting DPO dataset for Qwen3-VL"
+        num_proc=1,
+        desc="格式化数据集（加载图片）",
     )
 
-    if method == "sft":
+    # ------------------------------------------------------------------
+    # 4. 公共训练参数（所有方法共用）
+    # ------------------------------------------------------------------
+
+    # 通用 DPOConfig 参数说明：
+    #
+    # max_length=None：
+    #   VLM 必须禁用截断。图像被转化为大量视觉 token（本项目约 2048 个），
+    #   任何截断都会导致 pixel_values 的特征数与 input_ids 中的图像 token 数不一致，
+    #   引发 "Image features and image tokens do not match" 错误。
+    #
+    # precompute_ref_log_probs=False：
+    #   ZeRO-3 下参考模型参数分散在多张卡上，无法在训练前统一预计算 log_probs，
+    #   必须在每个训练步骤动态计算，代价是每步多一次 ref_model 的前向传播。
+    #
+    # gradient_checkpointing=True：
+    #   用计算换显存：前向传播时不保存所有中间激活值，反向传播时重新计算。
+    #   对 8B 规模的模型在 A100 上训练是必须开启的。
+    #
+    # gradient_checkpointing_kwargs={"use_reentrant": False}：
+    #   PyTorch 推荐的新版检查点实现，避免 use_reentrant=True 的内存泄漏问题。
+
+    common_config = dict(
+        output_dir=args.output_dir,
+        per_device_train_batch_size=args.per_device_train_batch_size,
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        num_train_epochs=args.num_train_epochs,
+        max_length=None,                # VLM 必须禁用截断，见上方说明
+        lr_scheduler_type="cosine",     # 余弦退火，训练后期平滑降低学习率
+        warmup_ratio=0.05,              # 前 5% 步骤线性预热，防止初期梯度爆炸
+        learning_rate=args.learning_rate,
+        beta=args.beta,
+        save_strategy="epoch",          # 每个 epoch 保存一次检查点
+        save_only_model=True,           # 只保存模型权重，不保存优化器状态（节省磁盘）
+        save_total_limit=1,             # 最多保留 1 个检查点，自动删除旧的
+        eval_strategy="no",             # 不做评估，节省训练时间
+        logging_steps=1,                # 每步打印一次训练日志
+        max_grad_norm=1.0,              # 梯度裁剪，防止梯度爆炸
+        precompute_ref_log_probs=False, # ZeRO-3 必须为 False，见上方说明
+        gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+        bf16=True,                      # 使用 bfloat16 混合精度训练
+    )
+
+    # ------------------------------------------------------------------
+    # 5. 按方法构建 Trainer
+    # ------------------------------------------------------------------
+
+    if args.method == "sft":
+        # ------ SFT（监督微调）------
+        # 用 DPOConfig 的 loss_type="sft" 实现：
+        # 只在 chosen 回复上计算 NLL 损失，等价于标准 SFT，忽略 rejected 数据。
+        # 通常用于 DPO 的热身阶段，先在 chosen 数据上做 SFT，再做 DPO。
         training_args = DPOConfig(
             loss_type="sft",
-            output_dir=output_dir,
-            per_device_train_batch_size=per_device_train_batch_size,
-            per_device_eval_batch_size=8,
-            max_prompt_length=4096,
-            # max_completion_length=512,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            num_train_epochs=num_train_epochs,
-            lr_scheduler_type="cosine",
-            warmup_ratio=0.03,
-            learning_rate=learning_rate,
-            beta=beta,
-            save_strategy="epoch",
-            save_only_model=True,
-            save_total_limit=None,
-            eval_strategy="steps",
-            eval_steps=40,
-            logging_steps=1,
+            **common_config,
         )
-
         trainer = DPOTrainer(
             model=model,
+            ref_model=None,             # SFT 不需要参考模型
             args=training_args,
             train_dataset=train_dataset,
-            # eval_dataset=test_dataset
-        )
-    elif method == "dpo":
-        training_args = DPOConfig(
-            loss_type="sigmoid",
-            output_dir=output_dir,
-            per_device_train_batch_size=per_device_train_batch_size,
-            per_device_eval_batch_size=1,
-            max_prompt_length=4096,
-            #For VLMs, truncating may remove image tokens, leading to errors during training. To avoid this, set max_length=None in the DPOConfig. This allows the model to process the full sequence length without truncating image tokens. 但是在评测中 tokne为2376，避免显存溢出，暂时设置为4086，后续可以根据实际情况调整。
-            max_length=4096, 
-            max_completion_length=4096,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            num_train_epochs=num_train_epochs,
-            lr_scheduler_type="cosine",
-            warmup_ratio=0.05,
-            learning_rate=learning_rate,
-            beta=beta,
-            save_strategy="epoch",
-            save_only_model=True,
-            save_total_limit=None,
-            eval_strategy="no",
-            # eval_steps=40,
-            logging_steps=1,
-            max_grad_norm=1.0,
-            remove_unused_columns=True, # 防止移除我们需要的手动构建的 labels
-            # precompute_ref_log_probs 不支持zero-3，因为 ref_model 的参数不在 Trainer 管理的范围内，设置为 True 会导致训练时找不到预计算的 log_probs，从而报错。对于 Zero-3，必须保持 precompute_ref_log_probs=False，让 Trainer 在每个训练步骤动态计算参考模型的 log_probs。
-            precompute_ref_log_probs=False, 
-            # 开始梯度检查
-            gradient_checkpointing=True,
-            gradient_checkpointing_kwargs={'use_reentrant': False},
-            bf16=True,
+            processing_class=processor,
         )
 
+    elif args.method == "dpo":
+        # ------ DPO（直接偏好优化）------
+        # 标准 sigmoid DPO 损失：
+        #   L = -E[log σ(β * (log π(y_w|x)/π_ref(y_w|x) - log π(y_l|x)/π_ref(y_l|x)))]
+        # β 控制与参考模型的偏离程度：β 越大，策略越保守（越靠近 ref_model）。
+        training_args = DPOConfig(
+            loss_type="sigmoid",
+            **common_config,
+        )
         trainer = DPOTrainer(
             model=model,
-            args=training_args,
             ref_model=ref_model,
+            args=training_args,
             train_dataset=train_dataset,
-            # eval_dataset=test_dataset,
-            processing_class = processor,
-        )
-    elif method == "rpo":
-        training_args = DPOConfig(
-            loss_type="sigmoid",
-            rpo_alpha=1.0,  # 🌟 RPO 的核心参数，保留
-            output_dir=output_dir,
-            per_device_train_batch_size=per_device_train_batch_size,
-            per_device_eval_batch_size=1,
-            # ====== 同步 DPO 的长度设置，防止 OOM ======
-            max_prompt_length=4096,
-            max_length=4096, 
-            max_completion_length=4096,
-            # ==========================================
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            num_train_epochs=num_train_epochs,
-            lr_scheduler_type="cosine",
-            warmup_ratio=0.05,
-            learning_rate=learning_rate,
-            beta=beta,
-            save_strategy="epoch",
-            save_only_model=True,
-            save_total_limit=None,
-            eval_strategy="no",
-            logging_steps=1,
-            max_grad_norm=1.0,
-            
-            # ====== 同步 DPO 的底层与显存优化机制 ======
-            remove_unused_columns=True, 
-            precompute_ref_log_probs=False, # ZeRO-3 必须为 False
-            gradient_checkpointing=True,    # 救命的显存优化
-            gradient_checkpointing_kwargs={'use_reentrant': False},
-            bf16=True,
-            # ==========================================
+            processing_class=processor,
         )
 
+    elif args.method == "rpo":
+        # ------ RPO（鲁棒偏好优化）------
+        # RPO = DPO 损失 + SFT 损失（在 chosen 回复上的 NLL），即：
+        #   L_RPO = L_DPO + α * L_SFT(chosen)
+        #
+        # TRL 0.13.0 用 rpo_alpha 参数实现，TRL 0.29.1 已移除该参数，
+        # 改用 loss_type 多损失组合方式实现等价效果：
+        #   loss_type=["sigmoid", "sft"] + loss_weights=[1.0, rpo_alpha]
+        #
+        # RPO 的优势：在偏好学习的同时，SFT 损失防止 chosen 回复质量退化，
+        # 对于复杂推理任务（如交通信号相位决策）比纯 DPO 更稳定。
+        rpo_alpha = 1.0  # SFT 损失权重，与原 rpo_alpha 含义相同，默认 1.0
+        training_args = DPOConfig(
+            loss_type=["sigmoid", "sft"],   # DPO loss + SFT loss 组合
+            loss_weights=[1.0, rpo_alpha],  # L_total = 1.0 * L_DPO + rpo_alpha * L_SFT
+            **common_config,
+        )
         trainer = DPOTrainer(
             model=model,
+            ref_model=ref_model,
             args=training_args,
-            ref_model=ref_model,             # 🌟 取消注释：ZeRO-3 下必须显式传入 ref_model
             train_dataset=train_dataset,
-            # eval_dataset=test_dataset,
-            processing_class=processor,      # 🌟 同步 DPO：多模态模型必须传入 processor
+            processing_class=processor,
         )
 
-    # elif method == 'mdpo':
-    #     training_args = DPOConfig(
-    #         loss_type="sigmoid",
-    #         output_dir=output_dir,
-    #         per_device_train_batch_size=per_device_train_batch_size,
-    #         per_device_eval_batch_size=1,
-    #         max_prompt_length=4096,
-    #         max_length=4096,
-    #         max_completion_length=4096,
-    #         gradient_accumulation_steps=gradient_accumulation_steps,
-    #         num_train_epochs=num_train_epochs,
-    #         lr_scheduler_type="cosine",
-    #         warmup_ratio=0.05,
-    #         learning_rate=learning_rate,
-    #         beta=beta,
-    #         save_strategy="epoch",
-    #         save_only_model=True,
-    #         save_total_limit=None,
-    #         eval_strategy="no",
-    #         # eval_steps=40,
-    #         logging_steps=1,
-    #         max_grad_norm=1.0,
-    #         use_liger_loss=False
-    #     )
-
-    #     trainer = MDPOTrainer(
-    #         model=model,
-    #         args=training_args,
-    #         train_dataset=train_dataset,
-    #         # eval_dataset=test_dataset,
-    #     )
-
-    # elif method == 'mrpo':
-    #     training_args = DPOConfig(
-    #         loss_type="sigmoid",
-    #         rpo_alpha=1.0,
-    #         output_dir=output_dir,
-    #         per_device_train_batch_size=per_device_train_batch_size,
-    #         per_device_eval_batch_size=1,
-    #         max_prompt_length=4096,
-    #         max_length=4096,
-    #         max_completion_length=4096,
-    #         gradient_accumulation_steps=gradient_accumulation_steps,
-    #         num_train_epochs=num_train_epochs,
-    #         lr_scheduler_type="cosine",
-    #         warmup_ratio=0.05,
-    #         learning_rate=learning_rate,
-    #         beta=beta,
-    #         save_strategy="epoch",
-    #         save_only_model=True,
-    #         save_total_limit=None,
-    #         eval_strategy="no",
-    #         # eval_steps=40,
-    #         logging_steps=1,
-    #         max_grad_norm=1.0,
-    #         use_liger_loss=False
-    #     )
-
-    #     trainer = MDPOTrainer(
-    #         model=model,
-    #         args=training_args,
-    #         train_dataset=train_dataset,
-    #         # eval_dataset=test_dataset,
-    #     )
-    # elif method == "nca":
-    #     training_args = DPOConfig(
-    #         loss_type=["nca_pair"],
-    #         output_dir=output_dir,
-    #         per_device_train_batch_size=per_device_train_batch_size,
-    #         per_device_eval_batch_size=8,
-    #         max_prompt_length=512,
-    #         # max_completion_length=512,
-    #         gradient_accumulation_steps=gradient_accumulation_steps,
-    #         num_train_epochs=num_train_epochs,
-    #         lr_scheduler_type="cosine",
-    #         warmup_ratio=0.05,
-    #         learning_rate=learning_rate,
-    #         beta=beta,
-    #         save_strategy="epoch",
-    #         save_only_model=True,
-    #         save_total_limit=1,
-    #         eval_strategy="steps",
-    #         eval_steps=40,
-    #         logging_steps=1,
-    #     )
-
-    #     trainer = DPOTrainer(
-    #         model=model,
-    #         args=training_args,
-    #         train_dataset=train_dataset,
-    #         # eval_dataset=test_dataset,
-    #         tokenizer = tokenizer
-    #     )
-    # elif method == "kto":
-    #     training_args = KTOConfig(
-    #         loss_type="kto",
-    #         output_dir=output_dir,
-    #         per_device_train_batch_size=per_device_train_batch_size,
-    #         per_device_eval_batch_size=8,
-    #         max_prompt_length=512,
-    #         max_completion_length=512,
-    #         gradient_accumulation_steps=gradient_accumulation_steps,
-    #         num_train_epochs=num_train_epochs,
-    #         lr_scheduler_type="cosine",
-    #         warmup_ratio=0.05,
-    #         learning_rate=learning_rate,
-    #         beta=beta,
-    #         save_strategy="epoch",
-    #         save_only_model=True,
-    #         save_total_limit=1,
-    #         eval_strategy="no",
-    #         eval_steps=40,
-    #         logging_steps=1,
-    #     )
-
-    #     trainer = KTOTrainer(
-    #         model=model,
-    #         args=training_args,
-    #         processing_class=tokenizer,
-    #         train_dataset=train_dataset,
-    #         eval_dataset=test_dataset,
-    #     )
-    # elif method == "ddpo":
-    #     ddpo_training_args = DDPOConfig(
-    #         output_dir=output_dir,
-    #         per_device_train_batch_size=per_device_train_batch_size,
-    #         per_device_eval_batch_size=8,
-    #         num_generations=4,
-    #         temperature=1.0,
-    #         max_prompt_length=512,
-    #         max_completion_length=512,
-    #         gradient_accumulation_steps=gradient_accumulation_steps,
-    #         num_train_epochs=num_train_epochs,
-    #         lr_scheduler_type="cosine",
-    #         warmup_ratio=0.05,
-    #         learning_rate=learning_rate,
-    #         beta=beta,
-    #         save_strategy="epoch",
-    #         save_only_model=True,
-    #         save_total_limit=1,
-    #         eval_strategy="steps",
-    #         eval_steps=40,
-    #         logging_steps=1,
-    #     )
-
-    #     trainer = DDPOTrainer(
-    #         model=model,
-    #         args=ddpo_training_args,
-    #         train_dataset=train_dataset,
-    #         eval_dataset=test_dataset,
-    #     )
     else:
-        raise NotImplementedError
+        raise NotImplementedError(f"不支持的训练方法: {args.method}")
 
+    # ------------------------------------------------------------------
+    # 6. 启动训练
+    # ------------------------------------------------------------------
     trainer.train()
-    
+
+
 if __name__ == "__main__":
     main()

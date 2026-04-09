@@ -1,98 +1,108 @@
+"""
+验证 DPO 训练中 Qwen3-VL 的 ViT (Visual Encoder) 是否真正参与参数更新。
+
+依赖版本要求（在远程服务器上执行）:
+    pip install trl==0.29.1
+
+TRL >= 0.29.1 修复了 image_grid_thw 未传递给模型的 bug（PR #3906 / Issue #4071），
+无需任何 monkey-patch，直接使用官方 API 即可正确运行 Qwen3-VL 的多模态 DPO。
+
+运行方式:
+    CUDA_VISIBLE_DEVICES=0 python src/training/verify_vit_update.py
+"""
+
 import os
 import torch
-import copy
 from transformers import AutoConfig, Qwen3VLForConditionalGeneration, AutoProcessor
 from datasets import Dataset
 from trl import DPOConfig, DPOTrainer
+from PIL import Image
+
 
 def main():
-    # 1. 设置路径 (替换为你实际的基础模型路径)
     model_path = "/root/autodl-tmp/model/qwen3_vl_8b_sft"
-    
-    print("⏳ 正在加载模型配置...")
+
+    print("正在加载模型配置...")
     config = AutoConfig.from_pretrained(model_path)
     if hasattr(config.text_config, "rope_parameters") and getattr(config.text_config, "rope_scaling", None) is None:
         config.text_config.rope_scaling = config.text_config.rope_parameters
 
-    print("⏳ 正在加载模型 (这可能需要一些时间)...")
-    # 为了防止 OOM，这里加载为 bfloat16 类型
+    print("正在加载模型...")
     model = Qwen3VLForConditionalGeneration.from_pretrained(
-        model_path,
-        config=config,
-        dtype=torch.bfloat16,
-        device_map="cuda:0" # 加载到单卡即可验证
-    )
-    
-    # DPO 还需要一个参考模型 (Reference Model)
+        model_path, config=config, dtype=torch.bfloat16,
+    ).to("cuda")
     ref_model = Qwen3VLForConditionalGeneration.from_pretrained(
-        model_path,
-        config=config,
-        dtype=torch.bfloat16,
-        device_map="cuda:0"
-    )
-    
+        model_path, config=config, dtype=torch.bfloat16,
+    ).to("cuda")
     processor = AutoProcessor.from_pretrained(model_path)
 
-    # 2. 检查 ViT 模块的冻结状态
-    print("\n🔍 检查 Visual Encoder (ViT) 参数的 requires_grad 属性:")
-    vit_name = "visual" # 根据具体模型的参数名称，通常包含 visual 或者是 vision_tower
+    # ---- 检查 ViT 冻结状态 ----
+    print("\n检查 Visual Encoder (ViT) 参数的 requires_grad 属性:")
+    vit_name = "visual"
     has_frozen_vit = False
     for name, param in model.named_parameters():
-        if vit_name in name:
-            if not param.requires_grad:
-                has_frozen_vit = True
-                print(f"⚠️ 发现被冻结的视觉层: {name}")
-                break
-    
+        if vit_name in name and not param.requires_grad:
+            has_frozen_vit = True
+            print(f"发现被冻结的视觉层: {name}")
+            break
     if not has_frozen_vit:
-        print("✅ 视觉编码器 (ViT) 的参数没有被冻结， requires_grad=True")
+        print("视觉编码器 (ViT) 的参数没有被冻结, requires_grad=True")
 
-    # 3. 记录训练前视觉模块某层的初始权重
-    # 取视觉模块的第一个具有权重的层作为观察对象
+    # ---- 记录初始权重 ----
     target_layer_name = None
     initial_weight = None
     for name, param in model.named_parameters():
         if vit_name in name and "weight" in name and param.requires_grad:
             target_layer_name = name
-            # clone 复制一份权重，以防被 inplace 操作覆盖
             initial_weight = param.clone().detach().cpu()
             break
-            
-    print(f"\n📸 选取观察的视觉层: {target_layer_name}")
+    print(f"\n选取观察的视觉层: {target_layer_name}")
 
-    # 4. 伪造极少量的 DPO 数据
-    # 为了跑通训练，我们需要符合格式的 chosen 和 rejected
-    dummy_data = {
+    # ---- 构造数据集 ----
+    # TRL 0.29.1 的 DataCollatorForVisionPreference 期望原始格式（不做预处理）:
+    #   - images: 每个样本的 PIL 图像列表
+    #   - prompt / chosen / rejected: 对话格式（message dict 列表，content 为纯字符串即可）
+    # prepare_multimodal_messages 会自动把 images 注入 prompt 消息的 image 占位符，
+    # 无需手动写 {"type": "image"} 占位符。
+    img_path_1 = "/root/autodl-tmp/golden_data/JiNan/anon_3_4_jinan_real_2500.rou/step_8/intersection_3_1_bev_watermarked.png"
+    img_path_2 = "/root/autodl-tmp/golden_data/JiNan/anon_3_4_jinan_real_2500.rou/step_9/intersection_3_1_bev_watermarked.png"
+
+    train_dataset = Dataset.from_dict({
         "prompt": [
-            [{"role": "user", "content": [{"type": "text", "text": "Describe the traffic."}]}],
-            [{"role": "user", "content": [{"type": "text", "text": "What is in the image?"}]}]
+            [{"role": "user", "content": "Describe the traffic situation in the image."}],
+            [{"role": "user", "content": "What traffic elements are visible in the image?"}],
         ],
         "chosen": [
-            [{"role": "assistant", "content": [{"type": "text", "text": "There are cars."}]}],
-            [{"role": "assistant", "content": [{"type": "text", "text": "A red car."}]}]
+            [{"role": "assistant", "content": "There are several vehicles at the intersection."}],
+            [{"role": "assistant", "content": "I can see traffic lights and multiple lanes."}],
         ],
         "rejected": [
-            [{"role": "assistant", "content": [{"type": "text", "text": "I don't know."}]}],
-            [{"role": "assistant", "content": [{"type": "text", "text": "Nothing."}]}]
+            [{"role": "assistant", "content": "I cannot determine the traffic situation."}],
+            [{"role": "assistant", "content": "The image is unclear."}],
         ],
-        "images": [[], []] # 简单起见，这里不放置真实图片，如果有需要可以填充 dummy images
-    }
-    train_dataset = Dataset.from_dict(dummy_data)
+        "images": [
+            [Image.open(img_path_1).convert("RGB")],
+            [Image.open(img_path_2).convert("RGB")],
+        ],
+    })
 
-    # 5. 配置并启动极简 DPO 训练
-    print("\n🚀 开始仅迭代几个 step 的 DPO 训练...")
+    # ---- 训练配置 ----
+    # TRL 0.29.1 的 DPOConfig:
+    #   - 移除了 max_prompt_length、max_completion_length（仅保留 max_length）
+    #   - 视觉数据集自动保留所需列（无需 remove_unused_columns=False）
+    #   - 视觉数据集跳过预处理流水线，由 DataCollatorForVisionPreference 负责 on-the-fly 处理
+    print("\n开始 DPO 训练...")
     training_args = DPOConfig(
         output_dir="./tmp_dpo_verify",
-        per_device_train_batch_size=1,  # 极小的 BS
-        max_prompt_length=128,
-        max_length=256,
-        max_completion_length=128,
-        max_steps=2,                    # 只跑 2 步用于验证
+        per_device_train_batch_size=1,
+        max_length=None,  # VLM 必须禁用截断：截断会移除部分图像token，导致与pixel_values的特征数不匹配
+        max_steps=2,
         learning_rate=1e-5,
-        remove_unused_columns=False,
-        gradient_checkpointing=True,    # 开启重算节省显存
-        gradient_checkpointing_kwargs={'use_reentrant': False},
+        precompute_ref_log_probs=False,
+        gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
         bf16=True,
+        logging_steps=1,
     )
 
     trainer = DPOTrainer(
@@ -100,28 +110,25 @@ def main():
         ref_model=ref_model,
         args=training_args,
         train_dataset=train_dataset,
-        processing_class=processor
+        processing_class=processor,
     )
 
-    # 关闭 Wandb 避免因为没有 key 报错
     os.environ["WANDB_DISABLED"] = "true"
-    
     trainer.train()
 
-    # 6. 验证训练后权重是否发生变化
-    print("\n⚖️ 训练结束，对比权重变化...")
+    # ---- 验证权重变化 ----
+    print("\n训练结束，对比权重变化...")
     for name, param in model.named_parameters():
         if name == target_layer_name:
             final_weight = param.detach().cpu()
-            # 计算绝对差异的最大值
             max_diff = torch.max(torch.abs(initial_weight.float() - final_weight.float())).item()
-            
-            print(f"[{target_layer_name}] 训练前后权重的最大差异: {max_diff:.8f}")
+            print(f"[{target_layer_name}] 最大权重差异: {max_diff:.8f}")
             if max_diff > 0:
-                print("🎉 结论: ViT 模块的参数发生了变化，在 DPO 阶段**并未被冻结**，参与了反向传播和更新！")
+                print("结论: ViT 参数发生了变化，在 DPO 训练中参与了反向传播和更新！")
             else:
-                print("⚠️ 结论: ViT 模块的参数没有发生变化。可能是被框架某个角落冻结了，或者 lr 实在太小导致误差被忽略。")
+                print("结论: ViT 参数没有变化，可能被冻结或学习率过小。")
             break
+
 
 if __name__ == "__main__":
     main()
