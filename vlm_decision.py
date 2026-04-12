@@ -1,12 +1,13 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:49:26
-LastEditTime: 2026-03-17 23:34:55
-Description: this script is used to 
+LastEditTime: 2026-04-11 14:47:24
+Description: 端到端 LVLM 交通信号控制评测主脚本，支持 VLM / FixedTime / MaxPressure 三种模式
 FilePath: /VLMTraffic/vlm_decision.py
 '''
 import os
 import re
+import copy
 import cv2
 import json
 import time
@@ -26,21 +27,27 @@ from src.evaluation.metrics import MetricsCalculator
 from scripts.add_lane_watermarks import add_lane_watermarks
 
 import argparse
-import shutil 
+import shutil
 
 class Evaluator:
     """
-    Runs the end-to-end evaluation loop.
+    端到端评测主类，支持三种运行模式：
+      - VLM 模式（默认）：调用视觉语言模型进行信号决策
+      - FixedTime 模式（--fixed_time）：固定配时，用于传统基线对比
+      - MaxPressure 模式（--max_pressure）：基于相位占有率的 MaxPressure 算法基线
     """
-    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None, batch_size=12, use_fixed_time=False, api_url=None, model_name_override=None):
+    def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None,
+                 batch_size=12, use_fixed_time=False, use_max_pressure=False,
+                 api_url=None, model_name_override=None):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
         self.use_fixed_time = use_fixed_time
+        self.use_max_pressure = use_max_pressure
         self.api_url = api_url
         self.model_name_override = model_name_override
-        
+
         # --- 1. Load Configurations ---
-        path_convert = get_abs_path(__file__) 
+        path_convert = get_abs_path(__file__)
         self.scenario_config = SCENARIO_CONFIGS.get(scenario_key)
         if not self.scenario_config:
             logger.error(f"[EVAL] Scenario {scenario_key} not found in SCENARIO_CONFIGS")
@@ -52,9 +59,11 @@ class Evaluator:
         num_junctions = len(self.junction_name) if isinstance(self.junction_name, list) else 1
         self.batch_size = min(batch_size, num_junctions)
         logger.info(f"[EVAL] Concurrency set to {self.batch_size} (Requested: {batch_size}, Max Junctions: {num_junctions})")
-        
-        # Route File Handling
-        if self.use_fixed_time:
+
+        # Route File Handling：根据运行模式确定 model_name（用于日志目录和 CSV 写入）
+        if self.use_max_pressure:
+            model_name = "max_pressure"
+        elif self.use_fixed_time:
             model_name = "fixed_time"
         else:
             model_name = self.model_name_override if self.model_name_override else MODEL_CONFIG.get(MODEL_CONFIG.get("api_type", "local_model"), {}).get("model_name", "N/A")
@@ -130,19 +139,31 @@ class Evaluator:
             'tshub_env_cfg': TSHUB_ENV_CONFIG,
         }
 
+        # --- MaxPressure 专项优化：禁用 3D 渲染和传感器，大幅降低仿真开销 ---
+        # MaxPressure 只需要 SUMO 的交通流数据（occupancy），无需 BEV 图像
+        if self.use_max_pressure:
+            logger.info("[EVAL] MaxPressure mode: disabling 3D rendering and sensors for speed.")
+            mp_renderer_cfg = copy.deepcopy(self.env_params.get('renderer_cfg') or {})
+            mp_renderer_cfg['is_render'] = False          # 关闭 3D 渲染
+            self.env_params['renderer_cfg'] = mp_renderer_cfg
+            self.env_params['sensor_cfg'] = None          # 关闭所有传感器（不需要图像）
+
         # 保存所有配置参数到日志
         self._log_configurations()
 
         # --- 2. Initialize Environment ---
         try:
             logger.info(f"[EVAL] Initializing Environment for {self.scenario_name}...")
-            self.env = make_env(**self.env_params)() 
+            self.env = make_env(**self.env_params)()
         except Exception as e:
             logger.critical(f"[EVAL] Failed to create environment: {e}")
             raise e
-        
+
         # --- 3. Initialize VLM Agent ---
-        if self.use_fixed_time:
+        if self.use_max_pressure:
+            logger.info("[EVAL] Running in MAX PRESSURE mode. VLM Agent initialization bypassed.")
+            self.agent = None
+        elif self.use_fixed_time:
             logger.info("[EVAL] Running in FIXED TIME mode. VLM Agent initialization bypassed.")
             self.agent = None
         else:
@@ -241,21 +262,51 @@ class Evaluator:
             # --- 阶段 1: 数据收集与降级处理 ---
             action_dict = {}
             inference_tasks = [] # 记录需要送入大模型的任务: (jid, img_path, prompt, phase_id)
-            
+
             sensor_datas = infos.get('3d_data', {})
             sensor_imgs = sensor_datas.get('image', {})
-            
+
             # 预先设置默认动作（Fallback），后续成功的推理会将其覆盖
             num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
             fallback_action = decision_step % num_phases
-            
+
             for jid in junctions:
-                action_dict[jid] = fallback_action # 默认填充 fallback
-                
+                action_dict[jid] = fallback_action  # 默认填充 fallback
+
+                # ── MaxPressure 模式：用感应线圈排队车辆数（jam_length_vehicle）计算相位压力 ──
+                # 注意：这里使用 render_json（上一步的 TLS 状态）而非 infos['phase_occ']（占有率）
+                # jam_length_vehicle 是 e2 检测器上报的排队车辆数，对应真实场景感应线圈能测到的量，
+                # 比 last_step_occupancy（连续时间占有率）更贴近实际部署条件。
+                if self.use_max_pressure:
+                    tls_state = render_json.get('tls', {}).get(jid, {})
+                    movement_ids   = tls_state.get('movement_ids', [])
+                    jam_veh        = tls_state.get('jam_length_vehicle', [])
+                    phase2movements = tls_state.get('phase2movements', {})
+
+                    if movement_ids and jam_veh and phase2movements:
+                        # movement → 排队车辆数 的映射
+                        movement_queue = {mid: ql for mid, ql in zip(movement_ids, jam_veh)}
+                        # 每个相位的压力 = 该相位所有 movement 的排队车辆数之和
+                        phase_pressure = {
+                            phase_idx: sum(movement_queue.get(mid, 0) for mid in movements)
+                            for phase_idx, movements in phase2movements.items()
+                        }
+                        mp_action = max(phase_pressure, key=phase_pressure.get)
+                        action_dict[jid] = mp_action
+                        logger.info(
+                            f"[MaxPressure] Step {decision_step} | {jid} | "
+                            f"pressure={phase_pressure} | selected phase={mp_action}"
+                        )
+                    else:
+                        logger.warning(
+                            f"[MaxPressure] jam_length_vehicle 数据缺失 ({jid} step {decision_step})，使用 fallback。"
+                        )
+                    continue  # MaxPressure 不需要图像，直接进入下一个路口
+
                 # 1. Get Phase Info
                 current_phase_id = 0
                 if 'tls' in render_json and jid in render_json['tls']:
-                     current_phase_id = render_json['tls'][jid]['this_phase_index']
+                    current_phase_id = render_json['tls'][jid]['this_phase_index']
 
                 # 2. Get BEV Image
                 bev_image_path = None
@@ -269,7 +320,7 @@ class Evaluator:
                             bev_image_path = os.path.join(_step_dir, f"{aircraft_jid}_bev_watermarked.png")
                             add_lane_watermarks(raw_bev_path, bev_image_path)
                     except Exception as e:
-                         logger.warning(f"[EVAL] Failed to save/watermark image for {aircraft_jid}: {e}")
+                        logger.warning(f"[EVAL] Failed to save/watermark image for {aircraft_jid}: {e}")
 
                 # 3. 如果图像准备就绪，加入待推理队列
                 if bev_image_path:
@@ -338,7 +389,7 @@ class Evaluator:
 
         total_time = time.time() - current_time
         logger.info(f"[EVAL] Evaluation completed in {total_time:.2f} seconds.")
-        
+
         if hasattr(self, 'temp_cfg_path') and os.path.exists(self.temp_cfg_path):
             try:
                 os.remove(self.temp_cfg_path)
@@ -347,29 +398,41 @@ class Evaluator:
                 logger.warning(f"[EVAL] Failed to remove temporary config file {self.temp_cfg_path}: {e}")
         self.env.close()
 
-   
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run VLM-based Traffic Signal Control Evaluation.")
-    parser.add_argument("--scenario", type=str, default="JiNan", help="Scenario key (e.g., JiNan, Hongkong_YMT)")
-    parser.add_argument("--log_dir", type=str, default="./log/eval_results", help="Directory for logs and evaluation outputs.")
-    parser.add_argument("--route_file", type=str, default="anon_3_4_jinan_real.rou.xml", help="Name of the .rou.xml file to use.")
-    parser.add_argument("--max_steps", type=int, default=120, help="Maximum number of decision steps for the simulation.")
-    
-    # 新增: fixed_time 模式开关
-    parser.add_argument("--fixed_time", action="store_true", help="Run in fixed-time mode, bypassing the VLM.")
-    
-    # 新增: 允许从命令行覆盖 api url 和 model name
-    parser.add_argument("--api_url", type=str, default=None, help="Override api url in model config")
-    parser.add_argument("--model_name", type=str, default=None, help="Override model name in model config")
-    
+    parser.add_argument("--scenario",    type=str, default="JiNan",
+                        help="场景键名 (e.g., JiNan, Hangzhou, Hongkong_YMT)")
+    parser.add_argument("--log_dir",     type=str, default="./log/eval_results",
+                        help="日志和评测输出目录")
+    parser.add_argument("--route_file",  type=str, default="anon_3_4_jinan_real.rou.xml",
+                        help="使用的 .rou.xml 路由文件名")
+    parser.add_argument("--max_steps",   type=int, default=120,
+                        help="最大决策步数 (1h=120, 24h=2880)")
+
+    # 运行模式开关（三选一，默认 VLM 模式）
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--fixed_time",    action="store_true",
+                            help="固定配时模式，跳过 VLM 推理（传统基线）")
+    mode_group.add_argument("--max_pressure",  action="store_true",
+                            help="MaxPressure 模式，基于相位占有率最大化压力选相（对比基线）")
+
+    # 允许从命令行覆盖 API 端口和模型名（VLM 模式专用）
+    parser.add_argument("--api_url",     type=str, default=None,
+                        help="覆盖 model_config 中的 api_url")
+    parser.add_argument("--model_name",  type=str, default=None,
+                        help="覆盖 model_config 中的 model_name")
+
     args = parser.parse_args()
+    args.fixed_time = True
 
     evaluator = Evaluator(
-        scenario_key=args.scenario, 
+        scenario_key=args.scenario,
         log_dir=args.log_dir,
         route_file=args.route_file,
         use_fixed_time=args.fixed_time,
+        use_max_pressure=args.max_pressure,
         api_url=args.api_url,
-        model_name_override=args.model_name
+        model_name_override=args.model_name,
     )
     evaluator.run_eval(max_decision_step=args.max_steps)

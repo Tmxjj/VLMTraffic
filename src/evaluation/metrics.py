@@ -1,3 +1,4 @@
+import csv
 import numpy as np
 import xml.etree.ElementTree as ET
 from loguru import logger
@@ -5,6 +6,89 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from configs.scenairo_config import SCENARIO_CONFIGS
+
+# 项目根目录
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# 对比结果 CSV 路径
+COMPARISON_CSV_PATH = os.path.join(PROJECT_ROOT, "results", "comparsion_result.csv")
+
+# 路由文件名（带 .rou 后缀，去掉 .xml）→ 对比 CSV 中 (ATT列, AWT列, AQL列) 的 0-indexed 列号
+# CSV 列结构: col0=Category, col1=Method,
+#   col2-4=JiNan_real, col5-7=JiNan_real_2000, col8-10=JiNan_real_2500,
+#   col11-13=Jinan_synthetic, col14-16=Hangzhou, col17-19=Hangzhou_5816, col20-22=Hangzhou_synthetic
+ROUTE_TO_CSV_COLS = {
+    "anon_3_4_jinan_real.rou":                     (2,  3,  4),
+    "anon_3_4_jinan_real_2000.rou":                (5,  6,  7),
+    "anon_3_4_jinan_real_2500.rou":                (8,  9,  10),
+    "anon_3_4_jinan_synthetic_24000_60min.rou":    (11, 12, 13),
+    "anon_4_4_hangzhou_real.rou":                  (14, 15, 16),
+    "anon_4_4_hangzhou_real_5816.rou":             (17, 18, 19),
+    "anon_4_4_hangzhou_synthetic_24000_60min.rou": (20, 21, 22),
+}
+
+# 方法目录名 → CSV 中 Method 列的字符串
+METHOD_TO_CSV_ROW_KEY = {
+    "max_pressure": "MaxPressure",
+    "fixed_time":   "FixedTime",
+}
+
+
+def update_comparison_csv(metrics: dict, route_key: str, row_key: str):
+    """
+    将 ATT/AWT/AQL 写入 results/comparsion_result.csv 对应的行列位置。
+
+    Args:
+        metrics (dict): 包含 ATT, AWT, AQL 的指标字典
+        route_key (str): 路由文件名，带 .rou 后缀（如 "anon_3_4_jinan_real_2000.rou"）
+        row_key (str): CSV 中 Method 列的值（如 "MaxPressure", "FixedTime"）
+    """
+    col_indices = ROUTE_TO_CSV_COLS.get(route_key)
+    if col_indices is None:
+        print(f"⚠️  [CSV] 路由 '{route_key}' 未在 ROUTE_TO_CSV_COLS 中配置，跳过 CSV 更新。")
+        return
+
+    if not os.path.exists(COMPARISON_CSV_PATH):
+        print(f"⚠️  [CSV] 对比 CSV 文件不存在: {COMPARISON_CSV_PATH}")
+        return
+
+    att_col, awt_col, aql_col = col_indices
+
+    try:
+        with open(COMPARISON_CSV_PATH, 'r', newline='', encoding='utf-8') as f:
+            rows = list(csv.reader(f))
+
+        # 找到目标行（Method 列 == row_key）
+        target_row_idx = None
+        for idx, row in enumerate(rows):
+            if len(row) > 1 and row[1].strip() == row_key:
+                target_row_idx = idx
+                break
+
+        if target_row_idx is None:
+            print(f"⚠️  [CSV] 未找到 Method='{row_key}' 的行，跳过 CSV 更新。")
+            return
+
+        target_row = rows[target_row_idx]
+
+        # 确保行长度足够
+        max_col = max(att_col, awt_col, aql_col)
+        while len(target_row) <= max_col:
+            target_row.append('')
+
+        target_row[att_col] = f"{metrics['ATT']:.6f}"
+        target_row[awt_col] = f"{metrics['AWT']:.6f}"
+        target_row[aql_col] = f"{metrics['AQL']:.6f}"
+        rows[target_row_idx] = target_row
+
+        with open(COMPARISON_CSV_PATH, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerows(rows)
+
+        print(f"✅ [CSV] 已更新 '{row_key}' | 路由='{route_key}' | "
+              f"ATT={metrics['ATT']:.2f}, AWT={metrics['AWT']:.2f}, AQL={metrics['AQL']:.6f}")
+    except Exception as e:
+        print(f"❌ [CSV] 写入对比 CSV 失败: {e}")
 
 class MetricsCalculator:
     """
@@ -126,24 +210,24 @@ class MetricsCalculator:
         return metrics
 
 if __name__ == "__main__":
-    # Example usage
-    secnario_dict ={
+    # 扫描 data/eval/ 下的所有场景/路由/方法目录，计算指标并写入对比 CSV
+    secnario_dict = {
         "JiNan": [
-        "anon_3_4_jinan_real_2000.rou",
-        # "anon_3_4_jinan_real.rou",
-        # "anon_3_4_jinan_real_2500.rou",
-        # "anon_3_4_jinan_synthetic_24h_6000.rou",
-        # "anon_3_4_jinan_synthetic_24000_60min.rou"
-    ],
+            "anon_3_4_jinan_real.rou",
+            "anon_3_4_jinan_real_2000.rou",
+            "anon_3_4_jinan_real_2500.rou",
+            "anon_3_4_jinan_synthetic_24000_60min.rou",
+        ],
         "Hangzhou": [
-        "anon_4_4_hangzhou_real.rou",
-        "anon_4_4_hangzhou_real_5816.rou",
-        "anon_4_4_hangzhou_synthetic_24000_60min.rou",
-    ]
+            "anon_4_4_hangzhou_real.rou",
+            "anon_4_4_hangzhou_real_5816.rou",
+            "anon_4_4_hangzhou_synthetic_24000_60min.rou",
+        ]
     }
-    
+
     methods = [
-        'fixed_time',
+        # 'fixed_time',
+        'max_pressure',
         # 'qwen3-vl-8b'
         # 'qwen3-vl-4b'
     ]
@@ -151,24 +235,26 @@ if __name__ == "__main__":
     for secnario_name, net_files in secnario_dict.items():
         for net_file in net_files:
             for method in methods:
-                # 1. 提取路径变量，方便管理
+                # 1. 提取路径变量
                 base_path = f"data/eval/{secnario_name}/{net_file}/{method}"
                 stat_path = f"{base_path}/statistic_output.xml"
                 queue_path = f"{base_path}/queue_output.xml"
 
-                # 2. 检查两个必要文件是否存在
+                # 2. 检查必要文件是否存在
                 if not os.path.exists(stat_path) or not os.path.exists(queue_path):
                     print(f"⚠️  [Skip] 文件缺失，跳过目录: {base_path}")
                     continue
 
-                # 3. 文件存在，执行计算
+                # 3. 计算指标
                 try:
                     calculator = MetricsCalculator()
-                    metrics = calculator.calculate_from_files(
-                        stat_path, 
-                        queue_path,
-                        f"{secnario_name}"
-                    )
+                    metrics = calculator.calculate_from_files(stat_path, queue_path, secnario_name)
                     print(f"✅ {secnario_name}/{net_file}/{method}", metrics)
                 except Exception as e:
                     print(f"❌ {secnario_name}/{net_file}/{method} 处理出错: {e}")
+                    continue
+
+                # 4. 将指标写入对比 CSV（仅支持已配置的基线方法）
+                row_key = METHOD_TO_CSV_ROW_KEY.get(method)
+                if row_key:
+                    update_comparison_csv(metrics, net_file, row_key)
