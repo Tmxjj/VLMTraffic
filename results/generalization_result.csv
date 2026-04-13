@@ -1,0 +1,7 @@
+Category,Method,SouthKorea_Songdo,,,France_Massy,,,Hongkong_YMT,,,NewYork_double,,,NewYork_triple,,
+,,ATT↓,AWT↓,AQL↓,ATT↓,AWT↓,AQL↓,ATT↓,AWT↓,AQL↓,ATT↓,AWT↓,AQL↓,ATT↓,AWT↓,AQL↓
+Traditional,FixedTime,,,,,,,,,,,,,,,
+,MaxPressure,,,,,,,,,,,,,,,
+VLM,qwen3-8b-vl Zero-Shot,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT+DPO,,,,,,,,,,,,,,,

@@ -1,0 +1,7 @@
+Category,Method,JiNan_emergy,,,,,Hangzhou_emergy,,,,,SouthKorea_Songdo_emergy,,,,,France_Massy_emergy,,,,,Hongkong_YMT_emergy,,,,,NewYork_double_emergy,,,,
+,,ATT↓,AWT↓,AQL↓,EATT↓,EAWT↓,ATT↓,AWT↓,AQL↓,EATT↓,EAWT↓,ATT↓,AWT↓,AQL↓,EATT↓,EAWT↓,ATT↓,AWT↓,AQL↓,EATT↓,EAWT↓,ATT↓,AWT↓,AQL↓,EATT↓,EAWT↓,ATT↓,AWT↓,AQL↓,EATT↓,EAWT↓
+Traditional,FixedTime,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,MaxPressure,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+VLM,qwen3-8b-vl Zero-Shot,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT+DPO,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

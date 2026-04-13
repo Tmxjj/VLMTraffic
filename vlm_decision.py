@@ -140,13 +140,20 @@ class Evaluator:
         }
 
         # --- MaxPressure 专项优化：禁用 3D 渲染和传感器，大幅降低仿真开销 ---
-        # MaxPressure 只需要 SUMO 的交通流数据（occupancy），无需 BEV 图像
+        # MaxPressure / FixedTime 不依赖 BEV 图像，禁用 3D 渲染和传感器以节省资源
         if self.use_max_pressure:
             logger.info("[EVAL] MaxPressure mode: disabling 3D rendering and sensors for speed.")
             mp_renderer_cfg = copy.deepcopy(self.env_params.get('renderer_cfg') or {})
             mp_renderer_cfg['is_render'] = False          # 关闭 3D 渲染
             self.env_params['renderer_cfg'] = mp_renderer_cfg
             self.env_params['sensor_cfg'] = None          # 关闭所有传感器（不需要图像）
+        elif self.use_fixed_time:
+            # FixedTime 同样不使用 BEV 图像，禁用渲染可避免不必要的 GPU 开销
+            logger.info("[EVAL] FixedTime mode: disabling 3D rendering and sensors for speed.")
+            ft_renderer_cfg = copy.deepcopy(self.env_params.get('renderer_cfg') or {})
+            ft_renderer_cfg['is_render'] = False
+            self.env_params['renderer_cfg'] = ft_renderer_cfg
+            self.env_params['sensor_cfg'] = None
 
         # 保存所有配置参数到日志
         self._log_configurations()
@@ -317,8 +324,10 @@ class Evaluator:
                         if junction_img_data is not None:
                             raw_bev_path = os.path.join(_step_dir, f"{aircraft_jid}_bev_raw.png")
                             cv2.imwrite(raw_bev_path, convert_rgb_to_bgr(junction_img_data))
+                            # 为所有场景添加车道数字水印，具体布局由 scenario_name 自动选择
                             bev_image_path = os.path.join(_step_dir, f"{aircraft_jid}_bev_watermarked.png")
-                            add_lane_watermarks(raw_bev_path, bev_image_path)
+                            add_lane_watermarks(raw_bev_path, bev_image_path,
+                                                scenario_name=self.scenario_key)
                     except Exception as e:
                         logger.warning(f"[EVAL] Failed to save/watermark image for {aircraft_jid}: {e}")
 

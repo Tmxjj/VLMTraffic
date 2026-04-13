@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-03-03 20:25:07
-LastEditTime: 2026-04-13 20:24:58
+LastEditTime: 2026-04-13 21:25:03
 Description: 为路口 BEV 图像在各进口道车道上添加淡色数字水印，支持多种场景拓扑：
              - 标准四叉路口 RHT 3 车道 (JiNan, Hangzhou, NewYork)
              - T 型三叉路口 RHT 2 车道 (France_Massy)
@@ -54,7 +54,7 @@ WATERMARK_CONFIGS = {
     # 标准四叉路口 RHT，每方向 3 车道
     # 适用场景：JiNan / Hangzhou / JiNan_test / NewYork
     # ════════════════════════════════════════════════════════════════
-
+    # 60m高度
     # "4_WAY_RHT_3LANE": {
     #     "approaches": {
     #         "South": {
@@ -95,6 +95,7 @@ WATERMARK_CONFIGS = {
     #         }
     #     }
     # },
+    # 70m高度
     "4_WAY_RHT_3LANE": {
         "approaches": {
             "South": {

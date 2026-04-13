@@ -136,29 +136,31 @@ class MetricsCalculator:
             "AQL": queue_mean / num_junctions
         }
         
-        # Special Vehicles
-        special_types = ['ambulance', 'fire', 'police']
+        # Special Vehicles (online 模式下从仿真步数据更新，类型名与 rou.xml 中 vType id 一致)
+        special_types = {'ambulance', 'fire', 'fire_engine', 'police', 'emergency'}
         special_travel_times = [v['travel_time'] for v in self.vehicle_data.values() if v.get('type') in special_types]
         special_waiting_times = [v['waiting_time'] for v in self.vehicle_data.values() if v.get('type') in special_types]
-        
+
         metrics["Special_ATT"] = np.mean(special_travel_times) if special_travel_times else 0.0
         metrics["Special_AWT"] = np.mean(special_waiting_times) if special_waiting_times else 0.0
         
         return metrics
 
-    def calculate_from_files(self, statistic_file, queue_file, scenario_name):
+    def calculate_from_files(self, statistic_file, queue_file, scenario_name, tripinfo_file=None):
         """
         Calculates metrics from SUMO output files.
-        
+
         Args:
             statistic_file (str): Path to statistic_output.xml
-            queue_file (str): Path to queue_output.xml
-            scenario_name (str): Name of the scenario to get junction number
-            
+            queue_file     (str): Path to queue_output.xml
+            scenario_name  (str): Name of the scenario to get junction number
+            tripinfo_file  (str): Path to tripinfo.out.xml（可选；提供后计算紧急车辆指标）
+
         Returns:
-            dict: {ATT, AWT, AQL}
+            dict: {ATT, AWT, AQL, Special_ATT, Special_AWT}
+                  Special_ATT/AWT 仅在 tripinfo_file 存在且含紧急车辆时有值，否则为 0.0
         """
-        metrics = {"ATT": 0.0, "AWT": 0.0, "AQL": 0.0}
+        metrics = {"ATT": 0.0, "AWT": 0.0, "AQL": 0.0, "Special_ATT": 0.0, "Special_AWT": 0.0}
         
         num_junctions = 1
         if scenario_name and scenario_name in SCENARIO_CONFIGS:
@@ -206,7 +208,31 @@ class MetricsCalculator:
                 
         except Exception as e:
             logger.error(f"[EVAL] Error parsing queue file: {e} - {queue_file}")
-            
+
+        # 3. Parse Tripinfo Output for Special Vehicle ATT / AWT
+        # tripinfo.out.xml 含每辆车的 vType、duration、waitingTime 字段
+        SPECIAL_TYPES = {"ambulance", "fire", "fire_engine", "police", "emergency"}
+        if tripinfo_file and os.path.exists(tripinfo_file):
+            try:
+                tree = ET.parse(tripinfo_file)
+                root = tree.getroot()
+                special_durations = []
+                special_waits = []
+                for ti in root.findall('tripinfo'):
+                    if ti.get('vType', '') in SPECIAL_TYPES:
+                        dur = ti.get('duration')
+                        wt  = ti.get('waitingTime')
+                        if dur is not None:
+                            special_durations.append(float(dur))
+                        if wt is not None:
+                            special_waits.append(float(wt))
+                if special_durations:
+                    metrics["Special_ATT"] = float(np.mean(special_durations))
+                if special_waits:
+                    metrics["Special_AWT"] = float(np.mean(special_waits))
+            except Exception as e:
+                logger.error(f"[EVAL] Error parsing tripinfo file: {e} - {tripinfo_file}")
+
         return metrics
 
 if __name__ == "__main__":
