@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:42
-LastEditTime: 2026-03-24 20:28:53
+LastEditTime: 2026-04-13 21:00:35
 Description: Optimized Prompt Builder (Visual-Only Analysis with Lane Numbering)
 FilePath: /VLMTraffic/configs/prompt_builder.py
 '''
@@ -40,8 +40,8 @@ Note: Left-turning vehicles are unrestricted and permitted to turn at any time
         "JiNan": "4_PHASE_STANDARD",
         "NewYork": "4_PHASE_STANDARD",
         "Hangzhou": "4_PHASE_STANDARD",
-        "SouthKorea_Songdo": "todo",  
-        "Hongkong_YMT": "Hongkong_SPECIAL_PHASE", 
+        "SouthKorea_Songdo": "4_PHASE_STANDARD",  # 与 Jinan/Hangzhou 相同的四相位标准方案
+        "Hongkong_YMT": "Hongkong_SPECIAL_PHASE",
         "France_Massy": "2_PHASE_T_JUNCTION",
         "JiNan_test": "4_PHASE_STANDARD"
     }
@@ -69,6 +69,51 @@ The intersection is a high-capacity 4-way urban junction operating under **Left-
     - **East Inlet**: Has a **Left-Turn Lane** located at the **OUTERMOST Lane** (Lane 3, next to white curb).
     - **South Inlet**: Has a **Right-Turn Lane** located at the **INNERMOST Lane** (Lane 1, next to yellow median).
     - **North & West Inlets**: No dedicated turn lanes; all lanes are straight-only.
+        ''',
+
+        "T_JUNCTION": '''
+A T-shaped three-way junction under **Right-Hand Traffic (RHT)** rules.
+- **Intersection Layout**:
+    - **Major Road (North–South)**: Runs vertically through the junction. Vehicles approach from both the **North** (top) and **South** (bottom).
+    - **Minor Road (West)**: Enters from the **left side**, terminating at the junction (no through-route).
+- **Lane Layout & Numbering**:
+  Each approach has **2 lanes**. From the yellow median (center line) outward to the white curb:
+    - **North Approach** (Major Road): Lane 1 (Straight-Through), Lane 2 (Right-Turn toward West)
+    - **South Approach** (Major Road): Lane 1 (Left-Turn toward West), Lane 2 (Straight-Through)
+    - **West Approach** (Minor Road): Lane 1 (Left-Turn toward South), Lane 2 (Right-Turn toward North)
+        ''',
+
+        "SONGDO_5LANE_JUNCTION": '''
+A high-capacity four-way intersection under **Right-Hand Traffic (RHT)** rules, designed for heavy urban traffic.
+- **Lane Layout & Numbering**:
+  Lanes are numbered from the **Median (Innermost)** outward to the **Curb (Outermost)**.
+  Approach lane counts are **asymmetric**:
+    - **North Approach** (6 lanes):
+        - Lane 1 (Innermost): Left-Turn
+        - Lane 2: Left-Turn
+        - Lane 3: Straight
+        - Lane 4: Straight
+        - Lane 5: Straight
+        - Lane 6 (Outermost): Right-Turn
+    - **West Approach** (6 lanes):
+        - Lane 1 (Innermost): Left-Turn
+        - Lane 2: Straight
+        - Lane 3: Straight
+        - Lane 4: Straight
+        - Lane 5: Straight
+        - Lane 6 (Outermost): Right-Turn
+    - **East Approach** (5 lanes):
+        - Lane 1 (Innermost): Left-Turn
+        - Lane 2: Straight
+        - Lane 3: Straight
+        - Lane 4: Straight
+        - Lane 5 (Outermost): Right-Turn
+    - **South Approach** (5 lanes):
+        - Lane 1 (Innermost): Left-Turn
+        - Lane 2: Straight
+        - Lane 3: Straight
+        - Lane 4: Straight
+        - Lane 5 (Outermost): Right-Turn
         '''
     }
 
@@ -76,8 +121,8 @@ The intersection is a high-capacity 4-way urban junction operating under **Left-
         "JiNan": "4_JUNCTION",
         "NewYork": "4_JUNCTION",
         "Hangzhou": "4_JUNCTION",
-        "SouthKorea_Songdo": "todo",  
-        "Hongkong_YMT": "Hongkong_SPECIAL_JUNCTION", 
+        "SouthKorea_Songdo": "SONGDO_5LANE_JUNCTION",  # 5 车道/进口道的高容量路口
+        "Hongkong_YMT": "Hongkong_SPECIAL_JUNCTION",
         "France_Massy": "T_JUNCTION",
         "JiNan_test": "4_JUNCTION"
     }
@@ -97,7 +142,18 @@ East Approach: Lane 1 (Straight):<int>, Lane 2 (Straight):<int>, Lane 3 (Left-Tu
 West Approach: Lane 1 (Straight):<int>, Lane 2 (Straight):<int>, Lane 3 (Straight):<int>.
         ''',
         
-        "T_JUNCTION": "todo"
+        "T_JUNCTION": '''
+North Approach (Major Road): Lane 1(Straight):<int>, Lane 2(Right-Turn):<int>
+South Approach (Major Road): Lane 1(Left-Turn):<int>, Lane 2(Straight):<int>
+West Approach (Minor Road): Lane 1(Left-Turn):<int>, Lane 2(Right-Turn):<int>
+        ''',
+
+        "SONGDO_5LANE_JUNCTION": '''
+North Approach (6 lanes): Lane 1(Left-Turn):<int>, Lane 2(Left-Turn):<int>, Lane 3(Straight):<int>, Lane 4(Straight):<int>, Lane 5(Straight):<int>, Lane 6(Right-Turn):<int>
+West Approach (6 lanes): Lane 1(Left-Turn):<int>, Lane 2(Straight):<int>, Lane 3(Straight):<int>, Lane 4(Straight):<int>, Lane 5(Straight):<int>, Lane 6(Right-Turn):<int>
+East Approach (5 lanes): Lane 1(Left-Turn):<int>, Lane 2(Straight):<int>, Lane 3(Straight):<int>, Lane 4(Straight):<int>, Lane 5(Right-Turn):<int>
+South Approach (5 lanes): Lane 1(Left-Turn):<int>, Lane 2(Straight):<int>, Lane 3(Straight):<int>, Lane 4(Straight):<int>, Lane 5(Right-Turn):<int>
+        '''
     }
     @staticmethod
     def get_cot_lane_template(scenario_name: str) -> str:

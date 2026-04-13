@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-03-24 19:30:36
+LastEditTime: 2026-04-13 15:42:06
 Description: this script is used to store the configuration of different TSC scenarios
 FilePath: /VLMTraffic/configs/scenairo_config.py
 '''
@@ -33,7 +33,7 @@ SCENARIO_CONFIGS = {
             },
             "aircraft": {
                 "sensor_types": ["aircraft_all"],
-                "height": 55.0
+                "height": 65.0
             }
         } # 传感器支持三类：vehicle, tls, aircraft
     },
@@ -45,7 +45,7 @@ SCENARIO_CONFIGS = {
         "CENTER_COORDINATES": (900, 1641, 100),
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:1, 3:0},
         "RENDERER_CFG": {
-            "preset": "720P",
+            "preset": "SQUARE_2048",
             "resolution": 1.0,
             "vehicle_model": "high",
             "render_mode": "offscreen",
@@ -58,8 +58,13 @@ SCENARIO_CONFIGS = {
         "SENSOR_CFG": {
             "aircraft": {
                 "sensor_types": ["aircraft_all"],
-                "height": 110.0
-            }       
+                "height": 85.0,
+                # Songdo 路口道路走向为 NE/NW/SE/SW（约 45° 角），
+                # 通过旋转相机朝向 45° 使四个进口道对齐到 N/S/E/W 方向。
+                # heading 向量经 vec_to_radians 转换后传给 Panda3D setH(degrees)：
+                #   [-1, 1, 0] → 45° → 相机顺时针旋转 45°，NE 进口道显示在图像顶部（北方）
+                "camera_heading": [-1, 1, 0]
+            }
         }
     },
     "France_Massy": {
