@@ -10,22 +10,12 @@
 - **贡献 1：提出了基于 LVLM (Large Vision-Language Model) 的交通信号控制框架**
   直接处理来自交通路口的 BEV (鸟瞰图) 图像，并使用微调后的 LVLM 直接输出推理决策过程和信号控制决策（思维链 CoT）。引入视觉模态保留完整的路况语义，捕捉文本无法涵盖的细粒度时空特征。
 
-- **贡献 2：针对“多目标幻觉（Multi-object Hallucination）尤其是计数幻觉（Counting Hallucination）和位置幻觉（Positional Hallucination）”的问题，提出以下优化方向**
+- **贡献 2：针对”多目标幻觉（Multi-object Hallucination）尤其是计数幻觉（Counting Hallucination）和位置幻觉（Positional Hallucination）”的问题，提出以下优化方向**
   
-  - **优化方向 1：针对多模态思维链的“逻辑因果”细粒度对齐 (Causal Step-DPO for Multimodal CoT)**
-    - **目前痛点**：当前 Prompt 中使用了典型的思维链（CoT）：`Scene Understanding -> Scene Analysis -> Selection Logic`。目前 DPO 把一整段话切成句子来算 Loss，但忽略了句子之间的因果依赖（例如，因为数错了车导致拥堵等级判断错误，最后选错了相位）。
-    - **核心创新**：提出一种逻辑因果感知的细粒度 DPO。在构建偏好对时，故意针对 CoT 的不同阶段进行干预。比如设计：*样本对 A（视觉感知错误，但逻辑推导正确）；样本对 B（视觉感知正确，但逻辑推导错误）*。在 C-DPO 的基础上设计阶段性 Mask 机制，引导模型：如果前提条件（如车道拥堵数）给定了，哪怕前提是错的，逻辑推导必须是对的。将“感知幻觉”和“逻辑幻觉”解耦并分别计算 DPO 惩罚权重。
-    - **落地场景 (TSC)**：这能大幅提升在复杂交通路口（如香港左侧通行特例）下的决策稳定性，确保即使模型看不清某辆车，其给出的信号灯调度逻辑依然符合交通工程常识。
-
   - **优化方向 2：基于物理仿真器反馈的令牌级环境 DPO (Simulation-Guided Token-Level DPO)**
-    - **目前痛点**：现有研究证明了可以用目标检测器（Grounding DINO 等）代替人去给模型打分。但对于交通控制任务来说，“选对选错”的终极裁判不是视觉检测器，而是物理世界的交通效率。
+    - **目前痛点**：现有研究证明了可以用目标检测器（Grounding DINO 等）代替人去给模型打分。但对于交通控制任务来说，”选对选错”的终极裁判不是视觉检测器，而是物理世界的交通效率。
     - **核心创新**：实现 “RLHF without Human”。将 LVLM 接入 SUMO 或 CityFlow 等交通仿真器。模型每输出一个动作 Token（例如 Phase 1），立刻在仿真器中运行 10 秒，拿到真实的物理奖励（如：排队长度减少了多少，是否有救护车通过）。将真实的物理环境 Reward 直接转换为细粒度 DPO 公式中的加权系数 $\gamma$（由仿真器动态赋予）。
-    - **落地场景 (TSC)**：如果模型因为漏看了救护车而选择了错误的相位，仿真器会返回极大的负 Reward。此时 DPO 直接对“漏看救护车”的那些 Token 施加毁灭性的打击。这将是交通领域首个闭环环境反馈多模态偏好对齐框架。
-  
-  - **优化方向 3：空间规则与数值距离感知的连续偏好对齐 (Spatial-Rule & Numerically-Sensitive Continuous DPO)**
-  - **目前痛点**：现有的 DPO 都是“离散的、非黑即白的”。预测 4 辆车（实际 5 辆）和预测 15 辆车（实际 5 辆），在标准 DPO 眼里都是等价的“负样本（$y_l$）”，惩罚力度完全一样。同时，在交通场景下，模型往往是因为违反了 Prompt 中定义的“停止线约束”或“方向约束”从而导致数量数错，现有的优化方法无法纠正这一根本原因。
-  - **核心创新**：提出一种基于数值误差与物理规则的连续动态惩罚机制。一方面引入“数值距离惩罚（Distance-Calibrated Margin）”，打破标准 DPO 固定的 $\beta$ 裕度，误差 $|N_{pred} - N_{gt}|$ 越大，该负样本的排斥力度越强，让模型明白“数错1辆是小错，数错10辆是大错”；另一方面进行“空间规则逆向采样”，故意构造包含了越过停止线（负样本 $y_{l_1}$）或对向车道车辆（负样本 $y_{l_2}$）的“踩坑”负样本，与严格遵守规则的正确输出（正样本 $y_w$）形成对比。
-  - **落地场景 (TSC)**：结合 Prompt 中的视觉约束（Visual Constraints）。在 C-DPO 计算时，不仅 Mask 掉前置上下文，还专门针对那些由于“越线”或“逆向”导致计数错误的 Token 施加定向的、带有物理意义的惩罚权重。这不仅能有效治愈模型的“计数幻觉”，更能强行将人类的交通拓扑规则直接刻入 LVLM 的模型权重中。
+    - **落地场景 (TSC)**：如果模型因为漏看了救护车而选择了错误的相位，仿真器会返回极大的负 Reward。此时 DPO 直接对”漏看救护车”的那些 Token 施加毁灭性的打击。这将是交通领域首个闭环环境反馈多模态偏好对齐框架。
 
   - **优化方向 4：基于仿真器双路可验证奖励的 LVLM 强化学习 (Simulation-Grounded Dual-Verifiable RLVR for LVLM-TSC)**
   - **目前痛点**：优化方向 1-3 均属离线 DPO 范式——需手工构造偏好对、信号稀疏、感知与决策孤立优化。而 SUMO 仿真器对每一次信号决策都能即时提供两类硬标签可验证信号，却完全未被利用：(1) e2 检测器提供每条 movement 的真实排队车辆数，可直接验证模型 Scene Understanding 的计数准确性；(2) rollout 若干仿真步后的 ATT/AQL 变化量，可直接量化信号决策的交通效率。
@@ -86,6 +76,17 @@
 - **训练/评测基础设施搭建**：完成了基于 YAML 的系统级配置解耦 (`configs/`)，并编写了支持多 GPU 异步调度的批量评测自动化脚本 (`scripts/run_eval_gpu*.sh`)。
 - **SFT (监督微调) 基线**：完成了基础 SFT 数据集的构建与模型微调训练。已跑通完整的端到端评估 Pipeline，SFT 数据集的构建脚本文件夹为（`src/dataset/golden_gener`）
 - **DPO（直接偏好对齐）**：完成了DPO数据集构造和模型直接偏好对齐训练。其中DPO的正样本为SFT数据，负样本为 SFT 模型生产，DPO 数据集的构建脚本和数据储存文件夹为（`src/dataset/DPO_data_construct`），最终用于训练的DPO 数据集为`/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/DPO_data_construct/dpo_dataset_sft_model_gener_cleaned.jsonl`，其正负样本分析结果为`src/dataset/DPO_data_construct/dpo_dataset_analysis_report.txt`.
+- **泛化性验证场景测试基础设施**：
+  - 完成了 4 大泛化场景（SouthKorea_Songdo、France_Massy、Hongkong_YMT、NewYork）的评测基础设施搭建。
+  - 清理了泛化场景路由文件中混入的紧急车辆（France_Massy 5辆、Hongkong_YMT 6辆、SouthKorea_Songdo 8辆），替换为普通 background 车辆类型（`scripts/clean_emergency_vehicles.py`）。
+  - 针对各场景路口拓扑差异（T字路口、左行特例、非对称5/6车道路口、196路口大路网），在 BEV 图像上实现了分场景类别的车道数字水印叠加（`scripts/add_lane_watermarks.py`），并支持文字旋转以对齐停止线方向。
+  - 完成泛化性指标收集脚本（`src/evaluation/generalization_metrics.py`）及结果模板（`results/generalization_result.csv`），覆盖 ATT、AWT、AQL 三项指标，支持 FixedTime、MaxPressure 和 VLM 方法横向对比。
+  - 完成合并版批量评测脚本（`run_batch_generalization.sh`），支持 `--baseline-only`、`--port/--model_name`、`--with-baseline` 三种运行模式，并从路由文件动态计算 `max_steps`（公式：`ceil((max_depart + 300s) / 30s)`，上下限 [10, 200]）。
+- **紧急车辆场景测试基础设施**：
+  - 使用 `scripts/add_emergency_vehicles.py` 为 JiNan、Hangzhou、SouthKorea_Songdo、France_Massy、Hongkong_YMT、NewYork 六个场景生成了带 `_emergy` 后缀的紧急车流路由文件（注入比例 4%，车型包含 ambulance / fire / fire_engine / police）。
+  - 在 `src/evaluation/metrics.py` 中扩展了 `calculate_from_files()` 接口，通过解析 `tripinfo.out.xml` 提取紧急车辆的 Average Emergency Travel Time (EATT) 和 Average Emergency Waiting Time (EAWT) 专项指标。
+  - 完成紧急场景指标收集脚本（`src/evaluation/emergency_metrics.py`）及结果模板（`results/emergency_result.csv`），每场景包含 ATT、AWT、AQL、EATT、EAWT 共 5 项指标。
+  - 完成合并版批量评测脚本（`run_batch_emergency.sh`），设计与泛化脚本保持一致，动态计算各场景 `max_steps`。
 - **已有消融实验结果**：
 见`results/ablation_result.csv`
 - **已有部分对比实验结果**：

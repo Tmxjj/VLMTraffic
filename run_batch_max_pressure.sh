@@ -2,7 +2,8 @@
 ###
  # @Author: yufei Ji
  # @Date: 2026-04-11
- # @Description: 批量运行 MaxPressure 基线评测，自动将结果写入 results/comparsion_result.csv
+ # @Description: [已弃用] 请使用 run_batch_eval.sh --baseline-only 代替（已合并基线与 VLM 评测）
+ #               批量运行 MaxPressure 基线评测，自动将结果写入 results/comparsion_result.csv
  # @FilePath: /VLMTraffic/run_batch_max_pressure.sh
 ###
 

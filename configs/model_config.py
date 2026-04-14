@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-01-26 21:45:40
+LastEditTime: 2026-04-13 22:07:38
 Description: this script is used to 
 FilePath: /VLMTraffic/configs/model_config.py
 '''
@@ -14,7 +14,7 @@ MODEL_CONFIG = {
     "api_type": "requests", 
     
     # Global generation settings
-    "temperature": 0, # inference 0；generate golden data for training 0.7
+    "temperature": 0.7, # inference 0；generate golden data for training 0.7
     "max_new_tokens": 4096, # Max tokens to generate
 
     # Configuration for specific backends
@@ -29,8 +29,8 @@ MODEL_CONFIG = {
     },
     
     "gemini_sdk": {
-        "api_key": "****",  # the api don't need to upload to github
-        "model_name": "gemini-3-pro-preview" 
+        "api_key": "AIzaSyCqU5ahWp3cbidhO9Ys1DT8iTA9Wu97kFY",  # the api don't need to upload to github
+        "model_name": "gemini-3.1-pro-preview" # gemini-2.5-pro  gemini-3-pro-preview
     },
     
     "requests": {

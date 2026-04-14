@@ -19,13 +19,13 @@ import csv
 import os
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(".")
 from src.evaluation.metrics import MetricsCalculator
 
 # ─────────────────────────────────────────────────────────────────
 # 路径配置
 # ─────────────────────────────────────────────────────────────────
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = "."
 GENERALIZATION_CSV_PATH = os.path.join(PROJECT_ROOT, "results", "generalization_result.csv")
 
 # ─────────────────────────────────────────────────────────────────
@@ -40,11 +40,11 @@ GENERALIZATION_CSV_PATH = os.path.join(PROJECT_ROOT, "results", "generalization_
 #   col14-16= NewYork_triple    (ATT, AWT, AQL)
 # ─────────────────────────────────────────────────────────────────
 ROUTE_TO_CSV_COLS = {
-    ("SouthKorea_Songdo", "songdo.rou.xml"):                           (2,  3,  4),
-    ("France_Massy",      "massy.rou.xml"):                            (5,  6,  7),
-    ("Hongkong_YMT",      "YMT.rou.xml"):                              (8,  9,  10),
-    ("NewYork",           "anon_28_7_newyork_real_double.rou.xml"):    (11, 12, 13),
-    ("NewYork",           "anon_28_7_newyork_real_triple.rou.xml"):    (14, 15, 16),
+    ("SouthKorea_Songdo", "songdo.rou"):                           (2,  3,  4),
+    ("France_Massy",      "massy.rou"):                            (5,  6,  7),
+    ("Hongkong_YMT",      "YMT.rou"):                              (8,  9,  10),
+    ("NewYork",           "anon_28_7_newyork_real_double.rou"):    (11, 12, 13),
+    ("NewYork",           "anon_28_7_newyork_real_triple.rou"):    (14, 15, 16),
 }
 
 # 目录名 → CSV Method 列字符串（与 generalization_result.csv 中的行名对应）
@@ -62,23 +62,23 @@ METHOD_TO_CSV_ROW_KEY = {
 # ─────────────────────────────────────────────────────────────────
 EVAL_PLAN = [
     # ── 基线方法 ─────────────────────────────────────────────────
-    ("SouthKorea_Songdo", "songdo.rou.xml",                        "fixed_time",               "FixedTime"),
-    ("SouthKorea_Songdo", "songdo.rou.xml",                        "max_pressure",             "MaxPressure"),
-    ("France_Massy",      "massy.rou.xml",                         "fixed_time",               "FixedTime"),
-    ("France_Massy",      "massy.rou.xml",                         "max_pressure",             "MaxPressure"),
-    ("Hongkong_YMT",      "YMT.rou.xml",                           "fixed_time",               "FixedTime"),
-    ("Hongkong_YMT",      "YMT.rou.xml",                           "max_pressure",             "MaxPressure"),
-    ("NewYork",           "anon_28_7_newyork_real_double.rou.xml", "fixed_time",               "FixedTime"),
-    ("NewYork",           "anon_28_7_newyork_real_double.rou.xml", "max_pressure",             "MaxPressure"),
-    ("NewYork",           "anon_28_7_newyork_real_triple.rou.xml", "fixed_time",               "FixedTime"),
-    ("NewYork",           "anon_28_7_newyork_real_triple.rou.xml", "max_pressure",             "MaxPressure"),
+    ("SouthKorea_Songdo", "songdo.rou",                        "fixed_time",               "FixedTime"),
+    ("SouthKorea_Songdo", "songdo.rou",                        "max_pressure",             "MaxPressure"),
+    ("France_Massy",      "massy.rou",                         "fixed_time",               "FixedTime"),
+    ("France_Massy",      "massy.rou",                         "max_pressure",             "MaxPressure"),
+    ("Hongkong_YMT",      "YMT.rou",                           "fixed_time",               "FixedTime"),
+    ("Hongkong_YMT",      "YMT.rou",                           "max_pressure",             "MaxPressure"),
+    ("NewYork",           "anon_28_7_newyork_real_double.rou", "fixed_time",               "FixedTime"),
+    ("NewYork",           "anon_28_7_newyork_real_double.rou", "max_pressure",             "MaxPressure"),
+    ("NewYork",           "anon_28_7_newyork_real_triple.rou", "fixed_time",               "FixedTime"),
+    ("NewYork",           "anon_28_7_newyork_real_triple.rou", "max_pressure",             "MaxPressure"),
 
     # ── VLM 方法（--model_name 参数决定目录名；按实际目录名修改下方字段）──
     # 格式：(场景, 路由文件, 模型目录名, CSV行名)
     # 示例：
-    # ("SouthKorea_Songdo", "songdo.rou.xml", "qwen3-vl-8b-zero-shot", "qwen3-8b-vl Zero-Shot"),
-    # ("SouthKorea_Songdo", "songdo.rou.xml", "qwen3-vl-8b-sft",       "qwen3-8b-vl SFT"),
-    # ("SouthKorea_Songdo", "songdo.rou.xml", "qwen3-vl-8b-sft-dpo",   "qwen3-8b-vl SFT+DPO"),
+    # ("SouthKorea_Songdo", "songdo.rou", "qwen3-vl-8b-zero-shot", "qwen3-8b-vl Zero-Shot"),
+    # ("SouthKorea_Songdo", "songdo.rou", "qwen3-vl-8b-sft",       "qwen3-8b-vl SFT"),
+    # ("SouthKorea_Songdo", "songdo.rou", "qwen3-vl-8b-sft-dpo",   "qwen3-8b-vl SFT+DPO"),
     # ... 依此类推，补全其余场景/路由的 VLM 行
 ]
 
@@ -90,7 +90,7 @@ def update_generalization_csv(metrics: dict, scenario: str, route_file: str, row
     Args:
         metrics   : 包含 ATT, AWT, AQL 的指标字典
         scenario  : 场景名称（如 "SouthKorea_Songdo"）
-        route_file: 路由文件名（如 "songdo.rou.xml"）
+        route_file: 路由文件名（如 "songdo.rou"）
         row_key   : CSV Method 列的字符串（如 "MaxPressure"）
     """
     col_indices = ROUTE_TO_CSV_COLS.get((scenario, route_file))
@@ -152,7 +152,7 @@ def collect_all():
         queue_path = os.path.join(base_path, "queue_output.xml")
 
         if not os.path.exists(stat_path) or not os.path.exists(queue_path):
-            print(f"⚠️  [Skip] 文件缺失: {base_path}")
+            print(f"⚠️  [Skip] 文件缺失: {stat_path}")
             skipped += 1
             continue
 

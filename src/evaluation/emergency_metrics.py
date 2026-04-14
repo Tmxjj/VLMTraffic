@@ -25,13 +25,13 @@ import csv
 import os
 import sys
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.append(".")
 from src.evaluation.metrics import MetricsCalculator
 
 # ─────────────────────────────────────────────────────────────────
 # 路径配置
 # ─────────────────────────────────────────────────────────────────
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = "."
 EMERGENCY_CSV_PATH = os.path.join(PROJECT_ROOT, "results", "emergency_result.csv")
 
 # ─────────────────────────────────────────────────────────────────
@@ -47,12 +47,12 @@ EMERGENCY_CSV_PATH = os.path.join(PROJECT_ROOT, "results", "emergency_result.csv
 #   col27-31 = NewYork_double_emergy  (ATT, AWT, AQL, EATT, EAWT)
 # ─────────────────────────────────────────────────────────────────
 ROUTE_TO_CSV_COLS = {
-    ("JiNan",             "anon_3_4_jinan_real_emergy.rou.xml"):              (2,  3,  4,  5,  6),
-    ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou.xml"):           (7,  8,  9,  10, 11),
-    ("SouthKorea_Songdo", "songdo_emergy.rou.xml"):                           (12, 13, 14, 15, 16),
-    ("France_Massy",      "massy_emergy.rou.xml"):                            (17, 18, 19, 20, 21),
-    ("Hongkong_YMT",      "YMT_emergy.rou.xml"):                              (22, 23, 24, 25, 26),
-    ("NewYork",           "anon_28_7_newyork_real_double_emergy.rou.xml"):    (27, 28, 29, 30, 31),
+    ("JiNan",             "anon_3_4_jinan_real_emergy.rou"):              (2,  3,  4,  5,  6),
+    ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou"):           (7,  8,  9,  10, 11),
+    ("SouthKorea_Songdo", "songdo_emergy.rou"):                           (12, 13, 14, 15, 16),
+    ("France_Massy",      "massy_emergy.rou"):                            (17, 18, 19, 20, 21),
+    ("Hongkong_YMT",      "YMT_emergy.rou"):                              (22, 23, 24, 25, 26),
+    ("NewYork",           "anon_28_7_newyork_real_double_emergy.rou"):    (27, 28, 29, 30, 31),
 }
 
 # ─────────────────────────────────────────────────────────────────
@@ -63,27 +63,27 @@ ROUTE_TO_CSV_COLS = {
 # ─────────────────────────────────────────────────────────────────
 EVAL_PLAN = [
     # ── 基线方法 ─────────────────────────────────────────────────
-    ("JiNan",             "anon_3_4_jinan_real_emergy.rou.xml",              "fixed_time",   "FixedTime"),
-    ("JiNan",             "anon_3_4_jinan_real_emergy.rou.xml",              "max_pressure", "MaxPressure"),
-    ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou.xml",           "fixed_time",   "FixedTime"),
-    ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou.xml",           "max_pressure", "MaxPressure"),
-    ("SouthKorea_Songdo", "songdo_emergy.rou.xml",                           "fixed_time",   "FixedTime"),
-    ("SouthKorea_Songdo", "songdo_emergy.rou.xml",                           "max_pressure", "MaxPressure"),
-    ("France_Massy",      "massy_emergy.rou.xml",                            "fixed_time",   "FixedTime"),
-    ("France_Massy",      "massy_emergy.rou.xml",                            "max_pressure", "MaxPressure"),
-    ("Hongkong_YMT",      "YMT_emergy.rou.xml",                              "fixed_time",   "FixedTime"),
-    ("Hongkong_YMT",      "YMT_emergy.rou.xml",                              "max_pressure", "MaxPressure"),
-    ("NewYork",           "anon_28_7_newyork_real_double_emergy.rou.xml",    "fixed_time",   "FixedTime"),
-    ("NewYork",           "anon_28_7_newyork_real_double_emergy.rou.xml",    "max_pressure", "MaxPressure"),
+    ("JiNan",             "anon_3_4_jinan_real_emergy.rou",              "fixed_time",   "FixedTime"),
+    ("JiNan",             "anon_3_4_jinan_real_emergy.rou",              "max_pressure", "MaxPressure"),
+    ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou",           "fixed_time",   "FixedTime"),
+    ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou",           "max_pressure", "MaxPressure"),
+    ("SouthKorea_Songdo", "songdo_emergy.rou",                           "fixed_time",   "FixedTime"),
+    ("SouthKorea_Songdo", "songdo_emergy.rou",                           "max_pressure", "MaxPressure"),
+    ("France_Massy",      "massy_emergy.rou",                            "fixed_time",   "FixedTime"),
+    ("France_Massy",      "massy_emergy.rou",                            "max_pressure", "MaxPressure"),
+    ("Hongkong_YMT",      "YMT_emergy.rou",                              "fixed_time",   "FixedTime"),
+    ("Hongkong_YMT",      "YMT_emergy.rou",                              "max_pressure", "MaxPressure"),
+    ("NewYork",           "anon_28_7_newyork_real_double_emergy.rou",    "fixed_time",   "FixedTime"),
+    ("NewYork",           "anon_28_7_newyork_real_double_emergy.rou",    "max_pressure", "MaxPressure"),
 
     # ── VLM 方法（按实际 --model_name 目录名填写）────────────────
     # 示例（取消注释并按需修改）：
-    # ("JiNan",             "anon_3_4_jinan_real_emergy.rou.xml",   "qwen3-vl-8b-zero-shot", "qwen3-8b-vl Zero-Shot"),
-    # ("JiNan",             "anon_3_4_jinan_real_emergy.rou.xml",   "qwen3-vl-8b-sft",       "qwen3-8b-vl SFT"),
-    # ("JiNan",             "anon_3_4_jinan_real_emergy.rou.xml",   "qwen3-vl-8b-sft-dpo",   "qwen3-8b-vl SFT+DPO"),
-    # ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou.xml","qwen3-vl-8b-zero-shot", "qwen3-8b-vl Zero-Shot"),
-    # ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou.xml","qwen3-vl-8b-sft",       "qwen3-8b-vl SFT"),
-    # ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou.xml","qwen3-vl-8b-sft-dpo",   "qwen3-8b-vl SFT+DPO"),
+    # ("JiNan",             "anon_3_4_jinan_real_emergy.rou",   "qwen3-vl-8b-zero-shot", "qwen3-8b-vl Zero-Shot"),
+    # ("JiNan",             "anon_3_4_jinan_real_emergy.rou",   "qwen3-vl-8b-sft",       "qwen3-8b-vl SFT"),
+    # ("JiNan",             "anon_3_4_jinan_real_emergy.rou",   "qwen3-vl-8b-sft-dpo",   "qwen3-8b-vl SFT+DPO"),
+    # ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou","qwen3-vl-8b-zero-shot", "qwen3-8b-vl Zero-Shot"),
+    # ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou","qwen3-vl-8b-sft",       "qwen3-8b-vl SFT"),
+    # ("Hangzhou",          "anon_4_4_hangzhou_real_emergy.rou","qwen3-vl-8b-sft-dpo",   "qwen3-8b-vl SFT+DPO"),
     # ... 以此类推补全其余场景
 ]
 

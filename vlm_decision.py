@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:49:26
-LastEditTime: 2026-04-11 14:47:24
+LastEditTime: 2026-04-13 22:08:28
 Description: 端到端 LVLM 交通信号控制评测主脚本，支持 VLM / FixedTime / MaxPressure 三种模式
 FilePath: /VLMTraffic/vlm_decision.py
 '''
@@ -410,11 +410,11 @@ class Evaluator:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run VLM-based Traffic Signal Control Evaluation.")
-    parser.add_argument("--scenario",    type=str, default="JiNan",
+    parser.add_argument("--scenario",    type=str, default="Hongkong_YMT",
                         help="场景键名 (e.g., JiNan, Hangzhou, Hongkong_YMT)")
     parser.add_argument("--log_dir",     type=str, default="./log/eval_results",
                         help="日志和评测输出目录")
-    parser.add_argument("--route_file",  type=str, default="anon_3_4_jinan_real.rou.xml",
+    parser.add_argument("--route_file",  type=str, default="YMT.rou.xml",
                         help="使用的 .rou.xml 路由文件名")
     parser.add_argument("--max_steps",   type=int, default=120,
                         help="最大决策步数 (1h=120, 24h=2880)")
@@ -433,7 +433,7 @@ if __name__ == "__main__":
                         help="覆盖 model_config 中的 model_name")
 
     args = parser.parse_args()
-    args.fixed_time = True
+    # args.fixed_time = True
 
     evaluator = Evaluator(
         scenario_key=args.scenario,

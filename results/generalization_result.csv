@@ -1,7 +1,7 @@
 Category,Method,SouthKorea_Songdo,,,France_Massy,,,Hongkong_YMT,,,NewYork_double,,,NewYork_triple,,
 ,,ATT↓,AWT↓,AQL↓,ATT↓,AWT↓,AQL↓,ATT↓,AWT↓,AQL↓,ATT↓,AWT↓,AQL↓,ATT↓,AWT↓,AQL↓
-Traditional,FixedTime,,,,,,,,,,,,,,,
-,MaxPressure,,,,,,,,,,,,,,,
+Traditional,FixedTime,200.61,172.36,1108.541027,106.96,60.44,109.480507,42.60,16.50,42.022600,324.95,184.90,17.603330,335.35,196.89,29.918666
+,MaxPressure,64.10,29.31,177.695293,56.21,7.79,18.894320,42.99,16.84,42.367560,306.98,94.02,10.099738,322.52,112.08,19.797385
 VLM,qwen3-8b-vl Zero-Shot,,,,,,,,,,,,,,,
 ,qwen3-8b-vl SFT,,,,,,,,,,,,,,,
-,qwen3-8b-vl SFT+DPO,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT+DPO,235.05,207.34,1284.432520,107.71,61.19,110.546440,50.66,24.07,62.821773,0.00,0.00,0.000000,,,
