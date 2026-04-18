@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-04-13 15:42:31
+LastEditTime: 2026-04-18 19:48:55
 Description: this script is used to generate BEV images from 3D TSC env
 FilePath: /VLMTraffic/src/bev_generation/online_bev_render.py
 '''
@@ -29,7 +29,7 @@ def convert_rgb_to_bgr(image):
 path_convert = get_abs_path(__file__)
 
 # 全局变量
-scenario_key = "JiNan" # Hongkong_YMT, SouthKorea_Songdo, France_Massy，Hangzhou，NewYork，JiNan
+scenario_key = "France_Massy" # Hongkong_YMT, SouthKorea_Songdo, France_Massy，Hangzhou，NewYork，JiNan
 set_logger(path_convert(f'../../log/{scenario_key}/'))
 
 config = SCENARIO_CONFIGS.get(scenario_key) # 获取特定场景的配置
@@ -137,23 +137,33 @@ if __name__ == '__main__':
             
             for jid in sensor_data_imgs:
                 # aircraft_all
-                bev_junction_path = os.path.join(_save_folder, f"{jid}.png")
-                junction_img = sensor_data_imgs[jid].get('aircraft_all')
-                if junction_img is not None:
-                    cv2.imwrite(bev_junction_path, convert_rgb_to_bgr(junction_img))
+                # bev_junction_path = os.path.join(_save_folder, f"{jid}.png")
+                # junction_img = sensor_data_imgs[jid].get('aircraft_all')
+                # if junction_img is not None:
+                #     cv2.imwrite(bev_junction_path, convert_rgb_to_bgr(junction_img))
                 # junction_front_all
                 front_junction_path = os.path.join(_save_folder, f"{jid}_front.png")
                 front_img = sensor_data_imgs[jid].get('junction_front_all')
                 if front_img is not None:
                     cv2.imwrite(front_junction_path, convert_rgb_to_bgr(front_img))
-        
+
+                # # junction_front_vehicle
+                # vehicle_junction_path = os.path.join(_save_folder, f"{jid}_vehicle.png")
+                # vehicle_img = sensor_data_imgs[jid].get('junction_front_vehicle')
+                # if vehicle_img is not None:
+                #     cv2.imwrite(vehicle_junction_path, convert_rgb_to_bgr(vehicle_img))
+                # # junction_back_all
+                # back_junction_path = os.path.join(_save_folder, f"{jid}_back.png")
+                # back_img = sensor_data_imgs[jid].get('junction_back_all')
+                # if back_img is not None:
+                #     cv2.imwrite(back_junction_path, convert_rgb_to_bgr(back_img))
         prof_img_save += time.perf_counter() - t2
         prof_loop_total += time.perf_counter() - loop_start
 
         # 结束条件：任意环境完成
         if dones or truncated:
             break
-        if time_step >= 10: # 安全上限，避免死循环
+        if time_step >= 5: # 安全上限，避免死循环
             break # 
 
     # === 性能分析输出 (不写入 set_logger) ===
