@@ -84,7 +84,6 @@
 
 - 3 事件场景验证数据集
 
-> ⚠️ **注**：本研究规划的事件场景共六类——紧急车辆、校车与公交车、交通事故、占道（施工、抛洒物）、行人过街。当前仅"紧急车辆"场景已完成数据注入与基础设施搭建，其余 5 类事件的场景生成与评测脚本待后续基于 SUMO/TransSimHub 渲染能力同步实现。
 
 | 数据集/场景名称 | 简介与特点 | 交叉口数量 | 相位描述 (Action Space for Prompt) | 适用性与用途 | 车流特征摘要 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -108,14 +107,19 @@
   - `scripts/event_scene_generation/visualize_event_network.py` 为每个数据集生成标注各类事件位置的路网可视化图（暗色主题，彩色标记）。
   - `src/bev_generation/online_bev_render.py` 通过 `RENDER_EVENT_TYPES` 列表支持 6 种事件类型（含 normal）的顺序渲染，输出到 `data/test/{SCENARIO}/{event_type}/{step}/`。
   - TransSimHub `vehicle.py` MODEL_MAPPING 修复 `pedestrian` 键重复 bug，新增 `HIGH_POLY_ONLY` 集合（bus / school_bus / crash_vehicle / pedestrian_* 等仅存在于 high_poly 资产中的车型）。
+- **评测主脚本（`src/evaluation/run_eval.py`）**：从根目录 `vlm_decision.py` 重构迁入 `src/evaluation/`，保留 `--fixed_time`、`--max_pressure`、VLM 三种模式接口。**输出路径统一为 `data/eval/{dataset}/{route_file_name}/{method}/`**。                                                                                                                         
+  - **批量评测脚本**：                                                                                                                                                    
+  - `scripts/run_batch_event_eval.sh`：事件场景批量评测，覆盖全部 5 类事件 × 6 个数据集；支持 `--event {type}` 单类过滤；调用 `src/evaluation/run_eval.py`。            
+  - `run_batch_eval.sh`、`run_batch_generalization.sh`：已更新为调用 `src/evaluation/run_eval.py` 并传入对应 `--scene_type`（JiNan/Hangzhou 为 `normal`，NewYork triple +变体为 `normal_triple`）。                                                                                                                                                
   - **指标设计（各场景 5 项核心指标）**：
-    - 紧急车辆：ATT / AWT / AQL / **EATT** / **EAWT**（Emergency ATT/AWT）
+    - 紧急车辆：ATT / AWT / AQL / **EATT** / **EAWT**（Emergency ATT/AWT，按 vType=emergency/police/fire_engine 过滤）
     - 校车与公交车：ATT / AWT / AQL / **BATT** / **BAWT**（Bus ATT/AWT，按 vType=bus/school_bus 过滤）
     - 交通事故：ATT / AWT / AQL / **MaxQL** / **TPT**（峰值排队长度 / 普通车辆通行数，过滤 accident_* 事件车辆）
     - 路面碎片：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 debris_* 事件车辆）
-    - 行人过街：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 pedestrian_* 事件车辆）
-  - `src/evaluation/metrics.py` 扩展 `calculate_from_files()` 接口：新增 `event_id_prefixes` 参数（启用后从 `tripinfo.out.xml` 过滤事件车辆重算 ATT/AWT）、`MaxQL`（全程队列峰值）、`TPT`（到达普通车辆计数）、`special_vtypes` 可覆盖（支持 bus 场景）。
-  - 完成四类新事件指标收集脚本：`src/evaluation/bus_metrics.py`、`accident_metrics.py`、`debris_metrics.py`、`pedestrian_metrics.py`；结果模板：`results/bus_result.csv`、`accident_result.csv`、`debris_result.csv`、`pedestrian_result.csv`。
+    - 行人过街：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 ped_* 事件车辆）                                                                                                      
+  - `src/evaluation/metrics.py` 扩展 `calculate_from_files()` 接口：新增 `event_id_prefixes` 参数、`MaxQL`（全程队列峰值）、`TPT`（到达普通车辆计数）、`special_vtypes` 可覆盖。         
+  - **统一指标收集脚本（`src/evaluation/collect_metrics.py`）**：替代 6 个独立 `*_metrics.py` 脚本，通过 `--type {generalization|emergency|bus|accident|debris|pedestrian|all}` 统一入口 ；`scene_to_cols` 以 `(scenario, route_file_name)` 为键映射 CSV 列；路径格式与 `run_eval.py` 输出一致（`data/eval/{dataset}/{route_file_name}/{method}/`）。                                       
+   - 结果模板：`results/bus_result.csv`、`accident_result.csv`、`debris_result.csv`、`pedestrian_result.csv`、`emergency_result.csv`、`generalization_result.csv`。     
 
 ## 六. 3D 仿真渲染架构说明
 

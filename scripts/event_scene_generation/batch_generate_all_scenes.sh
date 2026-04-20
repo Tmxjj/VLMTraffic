@@ -64,18 +64,23 @@ echo "=========================================="
 
 # ── 通用参数 ─────────────────────────────────────────────────────────────────
 SEED=42
-EMERGENCY_RATIO=0.04  # 紧急车辆注入比例（4%）
-BUS_RATIO=0.05        # 公交/校车注入比例（5%）
-ACCIDENT_RATE=30    # 每小时每交叉口事故发生数
+EMERGENCY_RATIO=0.02  # 紧急车辆注入比例（4%）
+
+BUS_RATIO=0.03        # 公交/校车注入比例（5%）
+
+ACCIDENT_RATE=0.8    # 每小时每交叉口事故发生数
 ACCIDENT_PED_RATIO=0.5 # 到地行人生成概率
-DEBRIS_RATE=100      # 每小时每交叉口路障生成组数
+
+DEBRIS_RATE=0.8     # 每小时每交叉口路障生成组数
 DEBRIS_MIN_GAP=5.0    # 最小前后路障间距（m）
 DEBRIS_MAX_GAP=50.0    # 最大前后路障间距（m）
 DEBRIS_MIN_DUR=200.0  # 最小持续时间（s）
 DEBRIS_MAX_DUR=600.0  # 最大持续时间（s）
+
 PEDESTRIAN_RATE=1.0   # 每小时每交叉口行人过街组数
 PEDESTRIAN_PER_GROUP=4 # 每组行人数
-MAX_RANGE=200.0       # 距路口最大距离（m）
+
+MAX_RANGE=200.0       # 距路口最大距离（m）针对路障、事故的范围限制
 
 # ── 各数据集配置（路口 ID 由各 Python 脚本自动从 configs/scenairo_config.py 读取）───
 declare -A NET_FILES
@@ -106,8 +111,8 @@ NET_FILES[NewYork]="data/raw/NewYork/env/NewYork.net.xml"
 BASE_ROUX[NewYork]="data/raw/NewYork/env/anon_28_7_newyork_real_double.rou.xml"
 BASE_NAMES[NewYork]="anon_28_7_newyork_real_double"
 
-SCENARIOS=("Hongkong_YMT")
-#  "Hangzhou" "SouthKorea_Songdo" "France_Massy" "Hongkong_YMT" "NewYork")
+SCENARIOS=("JiNan" "Hangzhou" "SouthKorea_Songdo" "France_Massy" "Hongkong_YMT" "NewYork")
+# （“JiNan” "Hangzhou" "SouthKorea_Songdo" "France_Massy" "Hongkong_YMT" "NewYork")
 
 # ── 主循环 ────────────────────────────────────────────────────────────────────
 for SCENE in "${SCENARIOS[@]}"; do
@@ -137,25 +142,28 @@ for SCENE in "${SCENARIOS[@]}"; do
     OUT_DEBRIS="${ENV_DIR}/${BASE}_debris.rou.xml"
     OUT_PEDESTRIAN="${ENV_DIR}/${BASE}_pedestrian.rou.xml"
     OUT_VIZ="${ENV_DIR}/${SCENE}_event_network.png"
+    OUT_SUMMARY="${ENV_DIR}/${SCENE}_generation_summary.txt"
+
+    echo "=== Generation Summary for ${SCENE} ===" > "${OUT_SUMMARY}"
 
     # ── 1. Emergency Vehicles ─────────────────────────────────────────────────
-    echo "[1/6] Generating Emergency Vehicle scene..."
+    echo "[1/6] Generating Emergency Vehicle scene..." | tee -a "${OUT_SUMMARY}"
     python scripts/event_scene_generation/add_emergency_vehicles.py \
         --input  "${BASE_ROU}" \
         --output "${OUT_EMERGY}" \
         --ratio  "${EMERGENCY_RATIO}" \
-        --seed   "${SEED}"
+        --seed   "${SEED}" 2>&1 | tee -a "${OUT_SUMMARY}"
 
     # ── 2. School/City Bus ────────────────────────────────────────────────────
-    echo "[2/6] Generating School/City Bus scene..."
+    echo "[2/6] Generating School/City Bus scene..." | tee -a "${OUT_SUMMARY}"
     python scripts/event_scene_generation/add_bus_vehicles.py \
         --input  "${BASE_ROU}" \
         --output "${OUT_BUS}" \
         --ratio  "${BUS_RATIO}" \
-        --seed   "${SEED}"
+        --seed   "${SEED}" 2>&1 | tee -a "${OUT_SUMMARY}"
 
     # ── 3. Traffic Accident ───────────────────────────────────────────────────
-    echo "[3/6] Generating Traffic Accident scene..."
+    echo "[3/6] Generating Traffic Accident scene..." | tee -a "${OUT_SUMMARY}"
     python scripts/event_scene_generation/generate_traffic_accident.py \
         --scenario "${SCENE}" \
         --net      "${NET}" \
@@ -164,10 +172,10 @@ for SCENE in "${SCENARIOS[@]}"; do
         --rate     "${ACCIDENT_RATE}" \
         --ped_ratio "${ACCIDENT_PED_RATIO}" \
         --range    "${MAX_RANGE}" \
-        --seed     "${SEED}"
+        --seed     "${SEED}" 2>&1 | tee -a "${OUT_SUMMARY}"
 
     # ── 4. Road Debris ────────────────────────────────────────────────────────
-    echo "[4/6] Generating Road Debris scene..."
+    echo "[4/6] Generating Road Debris scene..." | tee -a "${OUT_SUMMARY}"
     python scripts/event_scene_generation/generate_road_debris.py \
         --scenario "${SCENE}" \
         --net      "${NET}" \
@@ -179,10 +187,10 @@ for SCENE in "${SCENARIOS[@]}"; do
         --min_duration "${DEBRIS_MIN_DUR}" \
         --max_duration "${DEBRIS_MAX_DUR}" \
         --range    "${MAX_RANGE}" \
-        --seed     "${SEED}"
+        --seed     "${SEED}" 2>&1 | tee -a "${OUT_SUMMARY}"
 
     # ── 5. Pedestrian Crossing ────────────────────────────────────────────────
-    echo "[5/6] Generating Pedestrian Crossing scene..."
+    echo "[5/6] Generating Pedestrian Crossing scene..." | tee -a "${OUT_SUMMARY}"
     python scripts/event_scene_generation/generate_pedestrian_crossing.py \
         --scenario "${SCENE}" \
         --net      "${NET}" \
@@ -190,10 +198,10 @@ for SCENE in "${SCENARIOS[@]}"; do
         --output   "${OUT_PEDESTRIAN}" \
         --rate     "${PEDESTRIAN_RATE}" \
         --per_group "${PEDESTRIAN_PER_GROUP}" \
-        --seed     "${SEED}"
+        --seed     "${SEED}" 2>&1 | tee -a "${OUT_SUMMARY}"
 
     # ── 6. 路网可视化 ──────────────────────────────────────────────────────────
-    echo "[6/6] Generating event network visualization..."
+    echo "[6/6] Generating event network visualization..." | tee -a "${OUT_SUMMARY}"
     python scripts/event_scene_generation/visualize_event_network.py \
         --net        "${NET}" \
         --output     "${OUT_VIZ}" \
@@ -203,15 +211,16 @@ for SCENE in "${SCENARIOS[@]}"; do
         --accident   "${OUT_ACCIDENT}" \
         --debris     "${OUT_DEBRIS}" \
         --pedestrian "${OUT_PEDESTRIAN}" \
-        --dpi 150
+        --dpi 150 2>&1 | tee -a "${OUT_SUMMARY}"
 
-    echo "[Done] ${SCENE} 完成。输出文件:"
-    echo "  Emergency:  ${OUT_EMERGY}"
-    echo "  Bus:        ${OUT_BUS}"
-    echo "  Accident:   ${OUT_ACCIDENT}"
-    echo "  Debris:     ${OUT_DEBRIS}"
-    echo "  Pedestrian: ${OUT_PEDESTRIAN}"
-    echo "  Map:        ${OUT_VIZ}"
+    echo "[Done] ${SCENE} 完成。输出文件:" | tee -a "${OUT_SUMMARY}"
+    echo "  Emergency:  ${OUT_EMERGY}" | tee -a "${OUT_SUMMARY}"
+    echo "  Bus:        ${OUT_BUS}" | tee -a "${OUT_SUMMARY}"
+    echo "  Accident:   ${OUT_ACCIDENT}" | tee -a "${OUT_SUMMARY}"
+    echo "  Debris:     ${OUT_DEBRIS}" | tee -a "${OUT_SUMMARY}"
+    echo "  Pedestrian: ${OUT_PEDESTRIAN}" | tee -a "${OUT_SUMMARY}"
+    echo "  Map:        ${OUT_VIZ}" | tee -a "${OUT_SUMMARY}"
+    echo "  Summary:    ${OUT_SUMMARY}" | tee -a "${OUT_SUMMARY}"
 done
 
 echo ""
