@@ -1,0 +1,7 @@
+Category,Method,JiNan_debris,,,,, Hangzhou_debris,,,,,SouthKorea_Songdo_debris,,,,,France_Massy_debris,,,,,Hongkong_YMT_debris,,,,,NewYork_double_debris,,,,
+,,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑
+Traditional,FixedTime,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,MaxPressure,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+VLM,qwen3-8b-vl Zero-Shot,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT+DPO,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

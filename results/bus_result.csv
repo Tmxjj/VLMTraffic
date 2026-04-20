@@ -1,0 +1,7 @@
+Category,Method,JiNan_bus,,,,, Hangzhou_bus,,,,,SouthKorea_Songdo_bus,,,,,France_Massy_bus,,,,,Hongkong_YMT_bus,,,,,NewYork_double_bus,,,,
+,,ATT↓,AWT↓,AQL↓,BATT↓,BAWT↓,ATT↓,AWT↓,AQL↓,BATT↓,BAWT↓,ATT↓,AWT↓,AQL↓,BATT↓,BAWT↓,ATT↓,AWT↓,AQL↓,BATT↓,BAWT↓,ATT↓,AWT↓,AQL↓,BATT↓,BAWT↓,ATT↓,AWT↓,AQL↓,BATT↓,BAWT↓
+Traditional,FixedTime,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,MaxPressure,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+VLM,qwen3-8b-vl Zero-Shot,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT+DPO,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

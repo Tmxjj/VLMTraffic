@@ -1,0 +1,7 @@
+Category,Method,JiNan_accident,,,,, Hangzhou_accident,,,,,SouthKorea_Songdo_accident,,,,,France_Massy_accident,,,,,Hongkong_YMT_accident,,,,,NewYork_double_accident,,,,
+,,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑
+Traditional,FixedTime,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,MaxPressure,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+VLM,qwen3-8b-vl Zero-Shot,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,qwen3-8b-vl SFT+DPO,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

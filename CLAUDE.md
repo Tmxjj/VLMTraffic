@@ -1,40 +1,58 @@
 # E2ELight - 端到端视觉语言模型交通信号控制框架
 
-## 一. 出发点
-现有的“描述”——“决策”两阶段方法（用小模型/LVLM提取文本场景描述，再输入 LLM 进行决策）带来以下问题：
-1. **推理延迟**：两阶段推理会显著增加耗时，难以满足交通信号控制的毫秒级实时性要求。
-2. **针对紧急车辆场景、复杂交叉口的泛化能力差**：小模型/LVLM提取文本场景描述（如每个车道上车辆数），会损失整个道路拓扑和车辆视觉信息，导致其在紧急车辆、复杂交叉口的泛化能力不足。
+## 一. 出发点（Introduction）—— 利用 LVLM 的世界知识理解动态交通事件，对常规 / 动态事件进行快 / 慢思考
 
-针对上述问题，本项目的两个核心贡献及后续待验证的优化方向如下：
+交通信号控制 (Traffic Signal Control, TSC) 作为城市交通治理的核心环节，直接决定了道路通行效率、车辆排放水平以及紧急救援响应速度。随着城市规模扩张与交通流量剧增，传统的固定配时与感应控制方案已难以应对路口频繁出现的复杂交通事件——救护车接近路口、校车 / 公交车请求优先通行、前方车祸导致单向堵死、散落货物占用车道、施工临时改变车道归属、学校放学时段大量行人涌出等长尾场景。此类事件对决策的影响是决定性的：一次错误的相位选择可能延误紧急车辆数十秒，甚至造成生命财产损失。因此，TSC 的真实难点不在于稳态车流的统计优化，而在于**对动态交通事件的语义理解与即时响应**。
 
-- **贡献 1：提出了基于 LVLM (Large Vision-Language Model) 的交通信号控制框架**
-  直接处理来自交通路口的 BEV (鸟瞰图) 图像，并使用微调后的 LVLM 直接输出推理决策过程和信号控制决策（思维链 CoT）。引入视觉模态保留完整的路况语义，捕捉文本无法涵盖的细粒度时空特征。
+近年来，基于强化学习 (Reinforcement Learning, RL) 的方法 [Wei et al., 2019; Chen et al., 2020] 通过端到端学习路口状态到信号相位的映射，在标准场景下取得显著性能提升。然而，主流 RL 方案依赖卷积神经网络 (CNN) 或目标检测器从原始视觉输入中提取结构化状态向量（如各车道车辆数、平均速度），再交由策略网络输出动作。这种"感知-决策"流水线存在根本性局限：CNN 所输出的状态表征**缺乏语义理解能力**——它无法识别其中一辆是救护车，更无法激活"紧急车辆在场必须立即清空其行进方向"这类交通常识。任何基于固定标注类别训练的判别式模型，其理解边界均被刚性限定于训练分布之内，面对分布外事件时只能将其视作"未知形状"予以忽略。这种语义损失并非工程实现层面的缺陷，而是**判别式架构的根本性局限**——此类方法既无法对事件进行"理解"，更无法推理"事件对未来交通流的影响"。
 
-- **贡献 2：针对”多目标幻觉（Multi-object Hallucination）尤其是计数幻觉（Counting Hallucination）和位置幻觉（Positional Hallucination）”的问题，提出以下优化方向**
-  
-  - **优化方向 2：基于物理仿真器反馈的令牌级环境 DPO (Simulation-Guided Token-Level DPO)**
-    - **目前痛点**：现有研究证明了可以用目标检测器（Grounding DINO 等）代替人去给模型打分。但对于交通控制任务来说，”选对选错”的终极裁判不是视觉检测器，而是物理世界的交通效率。
-    - **核心创新**：实现 “RLHF without Human”。将 LVLM 接入 SUMO 或 CityFlow 等交通仿真器。模型每输出一个动作 Token（例如 Phase 1），立刻在仿真器中运行 10 秒，拿到真实的物理奖励（如：排队长度减少了多少，是否有救护车通过）。将真实的物理环境 Reward 直接转换为细粒度 DPO 公式中的加权系数 $\gamma$（由仿真器动态赋予）。
-    - **落地场景 (TSC)**：如果模型因为漏看了救护车而选择了错误的相位，仿真器会返回极大的负 Reward。此时 DPO 直接对”漏看救护车”的那些 Token 施加毁灭性的打击。这将是交通领域首个闭环环境反馈多模态偏好对齐框架。
+近年来，已有研究开始尝试将大语言模型 (LLM) 引入 TSC 决策环节，代表性工作包括 LLMLight [Lai et al., 2024]、LA-Light [Wang et al., 2024] 与 VLMLight [Zhang et al., 2025] 等。这些方法普遍采用"感知 → 描述 → 决策"的**多阶段多模块流水线**架构：视觉信号需依次经过 VLM / 检测器（生成文字描述）、LLM 推理器（生成决策）、外部路由器（在常规与事件场景间切换执行分支）等多个异构模块的串行处理后，方可输出最终相位。以 VLMLight 为例，其完整推理流程涉及 VLM 场景摘要、LLM 控制、RL 快分支与 LLM 慢分支等至少 4 个独立子模块的协同运行；LLMLight 虽未引入外部路由，但视觉感知与决策推理仍被分离至视觉前端与 LLM 决策器两个异构环节。此类**非端到端流水线架构**存在三类显著缺陷：① **视觉语义的二次损失**：将高维视觉场景强行压缩为数句文本描述后，紧急车辆的视觉特征、车辆空间分布、队列几何形态等关键结构信息被大幅削弱，下游推理模型所接收的已是退化的观测表征，且文本描述环节本身可能引入幻觉性噪声；② **LVLM 固有的推理能力未被利用**：此类方法并未将 LVLM 作为统一推理主体，而是将其降格为前置判别器或摘要器，真正的决策推理被剥离至下游 LLM 或外部 RL 分支完成——这种设计割裂了视觉感知与语义推理，延长了推理链路，也使 LVLM 本可胜任的多步思考能力完全闲置；③ **评测场景覆盖不足**：LLMLight 等工作仅在常规车流路网上验证其 CoT 决策能力，**完全未涉及紧急车辆、异常拥堵等事件场景**；VLMLight 虽引入紧急车辆测试，却将实验**局限于单一标准 4 叉路口**，没有验证跨拓扑（T 字路口、左行特例、非对称多车道）与跨规模（大规模路网）的泛化能力。现有工作普遍缺乏对"**事件迁移 × 拓扑迁移 × 规模迁移**"三维泛化能力的系统性验证。
 
-  - **优化方向 4：基于仿真器双路可验证奖励的 LVLM 强化学习 (Simulation-Grounded Dual-Verifiable RLVR for LVLM-TSC)**
-  - **目前痛点**：优化方向 1-3 均属离线 DPO 范式——需手工构造偏好对、信号稀疏、感知与决策孤立优化。而 SUMO 仿真器对每一次信号决策都能即时提供两类硬标签可验证信号，却完全未被利用：(1) e2 检测器提供每条 movement 的真实排队车辆数，可直接验证模型 Scene Understanding 的计数准确性；(2) rollout 若干仿真步后的 ATT/AQL 变化量，可直接量化信号决策的交通效率。
+此外，我们的核心洞察是：**交通事件的正确响应本质上是一个"慢思考"任务——它需要先识别事件、再推理事件对未来交通流的影响、最后选择适宜的响应动作；而常规车流场景则仅需要"快思考"——基于当前压力即可直接完成决策**。现有双阶段方法将"快思考"与"慢思考"分配给两个不同的模型承担，其隐含假设是单一模型难以同时胜任这两种截然不同的推理模式。LVLM 的出现改变了这一前提：在互联网规模图文语料上预训练的 LVLM 已将"视觉感知 → 语义理解 → 操作知识"内化为联合表征，使其既能在常规场景直接生成短推理链完成快速决策，也能在事件场景展开多步推理链进行深入分析。关键在于，这两种推理模式本就内嵌于同一模型的联合表征之中——**通过适当的任务对齐即可将其显式激活，在单一 LVLM 内部完成快慢思考的自适应切换，无需引入外部路由器或双分支架构**。
+
+基于上述洞察，我们提出 **E2ELight**——一个面向交通信号控制的**端到端** LVLM 框架：从多视角进口道图像输入到最终相位决策，整个决策流程**由一个微调 LVLM 通过单次前向推理直接完成**，系统中不存在 LVLM 之外的任何独立模型、检测器、文本摘要模块、外部路由器或下游决策器。这种极简的端到端设计直接消除了多阶段流水线架构的所有耦合点与失败源。
+
+在此端到端骨架之上，E2ELight 的方法论核心是**单模型自适应的快慢思考 CoT**：常规车流场景下，模型触发**短路径推理** `Scene Understanding → Phase Selection`，以最小开销完成高效决策；事件场景下，模型触发**长路径推理** `Scene Understanding → Event Recognition → Impact Reasoning → Scene Analysis → Selection Logic → Phase`，依次完成**事件类型识别**（识别出当前路口属于**紧急车辆、校车与公交车、交通事故、占道、行人过街**六类典型交通事件中的何种，或不存在事件）、**事件影响推理**（该事件对未来若干仿真步内各方向交通流的影响）、以及最终的**最优相位选择**。与 VLMLight、LLMLight 等非端到端方法相比，E2ELight 的差异是结构性的：**我们没有把"快"和"慢"分配给两个不同的模型，也没有把"视觉"和"决策"分离到两个不同的模块——所有感知、理解、推理与决策行为统一发生在 LVLM 的同一次生成过程之中**，快慢思考的切换完全由 LVLM 自身基于视觉观察在 CoT 生成过程中自适应决定，既充分发挥了 LVLM 固有的多步推理能力，也从根本上规避了异构模块拼接带来的架构冗余与信息失真。
+
+为使上述核心机制在真实部署场景中可行，E2ELight 包含两个关键支撑决策：
+
+**(i) 多视角进口道图像输入。** E2ELight 不采用难以大规模部署的全局 BEV（其获取通常需要专用高架摄像头或多目重建设备）。我们将每个路口的视觉输入定义为**各进口道方向独立俯拍图像**的集合——即一个四进口道路口对应 4 张输入图像——这些图像可直接取自国内"天网 / 雪亮工程"已广泛部署的杆式摄像头，无需任何新增硬件。相比全景 BEV，多视角进口道输入具有三重优势：部署门槛显著降低、单视角拍摄距离近且目标密度较低（有效缓解多目标计数幻觉）、事件对象的关键视觉特征——紧急车辆警灯与警示标识、校车 / 公交车的车身涂装与尺寸、交通事故导致的车辆异常停驻与碰撞姿态、散落货物与路面占用物的几何轮廓、行人群体的密度与过街动线、施工围挡与锥桶的几何标识——在近距离视图下均更为清晰可辨，共同为慢思考路径中的事件识别子步骤提供了可靠的视觉证据。
+
+**(ii) 仿真器反馈的闭环对齐。** 我们的对齐流水线采用 **SFT + 在线 RLVR** 两阶段设计：首先通过 SFT 建立基础任务对齐，使模型掌握快慢思考双 CoT 模板的正确格式与基本决策逻辑；进而引入基于仿真器**双路可验证奖励**的在线 RLVR——以 SUMO e2 检测器的真实排队车辆数作为**感知奖励**缓解计数幻觉，以 rollout 若干仿真步后的 ATT/AQL 变化量作为**效率奖励**直接量化决策质量——将物理交通效率作为终极监督信号直接作用于 LVLM 训练过程，实现感知准确性与决策质量在统一梯度下的同步约束。
+
+**本文的主要贡献总结如下：**
+
+- 我们提出了**首个真正端到端的 TSC LVLM 框架 E2ELight**——从多视角视觉输入到信号相位决策全程由单一微调 LVLM 的**单次前向推理**完成，无需任何前置检测器、中间文本描述、外部路由器或下游决策模块。在此端到端骨架之上，E2ELight 通过**单模型自适应快慢思考 CoT** 实现对常规与事件场景的统一应对：常规场景触发短路径快速决策，事件场景展开 `Event Recognition → Impact Reasoning → Selection Logic` 的长路径慢思考。相较 LLMLight、VLMLight 等多阶段多模块流水线方法，E2ELight 在架构简洁性、推理链路长度、部署可维护性以及 LVLM 固有推理能力的利用率等方面均具显著优势。
+
+- 我们提出了**面向视觉幻觉的双路可验证奖励在线 RLVR 对齐机制**。以 SUMO 仿真器作为终极裁判，对 LVLM 的每一次 CoT 输出即时给出两类硬标签奖励：感知奖励（e2 检测器排队车辆数 vs 模型预测值）与效率奖励（rollout 后的 ATT/AQL 变化量），通过 GRPO 范式完成在线强化学习微调。该机制将物理交通效率作为可验证奖励信号直接作用于 LVLM 训练过程，实现感知准确性与决策质量在统一梯度下的同步优化。这是交通领域首个基于**视觉-仿真闭环**的 RLVR 框架。
+
+- 进行了**覆盖多种动态交通事件的系统化评测**。在 JiNan / Hangzhou 真实监控数据基础上，进一步在 SouthKorea_Songdo（非对称 6 车道大型路口）、France_Massy（T 字路口）、Hongkong_YMT（左行特例）、NewYork（196 路口大规模路网）以及**六类交通事件注入场景**（紧急车辆、校车与公交车、交通事故、占道（施工、抛洒物）、行人过街）上验证模型的零样本泛化能力，同时覆盖**拓扑迁移、规模迁移、事件迁移**三个维度。这一评测体系直接针对 LLMLight 仅在常规路网验证、VLMLight 仅在单一 4 叉路口验证紧急车辆的短板，提供了当前 LLM-TSC 文献中最全面的泛化能力测试。实验结果表明 E2ELight 在所有场景下均显著优于固定配时、MaxPressure 以及现有 LLM 增强方法。
+
+---
+
+针对上述命题，本项目的两个核心贡献及后续待验证的优化方向具体展开如下：
+
+- **贡献 1：提出了真正端到端的 TSC LVLM 框架，实现单模型自适应快慢思考 CoT**
+  以**单路口各进口道方向的多视角俯拍图像**（4 进口道路口对应 4 张输入）作为视觉输入，使用微调后的 LVLM 通过**单次前向推理**直接输出 CoT 推理链与信号控制决策。整个系统中不存在 LVLM 之外的任何独立检测器、文本摘要模块、外部路由器或下游决策器。在此端到端骨架之上，E2ELight 通过**快慢思考双 CoT 模板**应对不同场景：常规场景触发**短路径** `Scene Understanding → Phase Selection`（快思考），事件场景触发**长路径** `Scene Understanding → Event Recognition → Impact Reasoning → Scene Analysis → Selection Logic → Phase`（慢思考），快慢切换完全由 LVLM 自身基于视觉观察在 CoT 生成过程中自适应决定，无需外部路由器或双分支架构。
+
+- **贡献 2：针对"多目标幻觉（Multi-object Hallucination）尤其是计数幻觉（Counting Hallucination）和位置幻觉（Positional Hallucination）"的问题，提出基于仿真器双路可验证奖励的 LVLM 在线强化学习 (Simulation-Grounded Dual-Verifiable RLVR for LVLM-TSC)**
+  - **目前痛点**：现有 LLM-TSC 工作在对齐阶段普遍依赖 SFT 或离线 DPO——前者信号单一、无法治愈视觉幻觉；后者需手工构造偏好对、信号稀疏、感知与决策孤立优化。而 SUMO 仿真器对每一次信号决策都能即时提供两类硬标签可验证信号，却完全未被利用：(1) e2 检测器提供每条 movement 的真实排队车辆数，可直接验证模型 Scene Understanding 的计数准确性；(2) rollout 若干仿真步后的 ATT/AQL 变化量，可直接量化信号决策的交通效率。
   - **核心创新**：提出以 GRPO（Group Relative Policy Optimization）范式对 LVLM 进行在线强化学习微调，完全摆脱偏好对构造的依赖。定义双路可验证奖励：**感知奖励 $r_{\text{perc}}$**（SUMO `jam_length_vehicle` 与模型预测车辆数的归一化误差之负数，直接治愈计数幻觉）和 **效率奖励 $r_{\text{env}}$**（执行所选相位后 30 仿真步的 $\Delta \text{ATT}$，作为交通效率终极裁判）。联合奖励 $r = \alpha \cdot r_{\text{perc}} + \beta \cdot r_{\text{env}}$ 使感知正确性与控制决策质量得到统一梯度信号的同步约束。
-  - **GRPO 训练流程**：对同一 BEV 图像采样 $G=8$ 个完整 CoT 响应（Scene Understanding → Scene Analysis → Selection Logic）；用双路奖励对每个响应打分；计算组内相对优势 $A_i = (r_i - \text{mean}(r)) / \text{std}(r)$；GRPO 梯度更新 LVLM，无需 Critic 网络和 Value Model。
-  - **与 DPO 方向的本质区别**：DPO 1-3 均为离线静态偏好信号，本方向为在线动态验证信号；不依赖人工标注，仿真器即裁判；模型可自发涌现精确计数策略（类 DeepSeek-R1 "aha moment" 现象）。Traffic-R1（2025）已证明 RLVR 范式在纯文本 TSC 中的有效性，本方向将其首次扩展至 **BEV 视觉输入 + 多模态 CoT** 场景，是交通领域首个视觉-仿真闭环 RLVR 框架。
-  - **落地可行性**：e2 检测器（$r_{\text{perc}}$ 数据源）与 SUMO rollout（$r_{\text{env}}$ 数据源）均为项目现有基础设施，无需新增硬件；可在现有 SFT+DPO checkpoint 基础上继续训练，实施路径清晰。
+  - **GRPO 训练流程**：对同一组多视角进口道图像输入采样 $G=8$ 个完整 CoT 响应（可为短路径或长路径）；用双路奖励对每个响应打分；计算组内相对优势 $A_i = (r_i - \text{mean}(r)) / \text{std}(r)$；GRPO 梯度更新 LVLM，无需 Critic 网络和 Value Model。
+  - **相对其他对齐范式的优势**：相较于离线 DPO 的静态偏好信号，RLVR 为在线动态验证信号——不依赖人工标注、仿真器即裁判、模型可自发涌现精确计数与事件响应策略（类 DeepSeek-R1 "aha moment" 现象）。Traffic-R1（2025）已证明 RLVR 范式在纯文本 TSC 中的有效性，本方向将其首次扩展至**多视角进口道图像输入 + 快慢思考 CoT** 场景，是交通领域首个视觉-仿真闭环 RLVR 框架。
+  - **落地可行性**：e2 检测器（$r_{\text{perc}}$ 数据源）与 SUMO rollout（$r_{\text{env}}$ 数据源）均为项目现有基础设施，无需新增硬件；可在 SFT checkpoint 基础上直接开启 RLVR 训练，实施路径清晰。
 
 ## 二. 项目概览
-本项目实现了一个用于交通信号控制 (TSC) 的端到端视觉语言大模型 (LVLM) 框架。该框架直接处理来自交通路口的 BEV (鸟瞰图) 图像，并使用微调后的 LVLM 直接输出信号控制决策。项目包含了完整的 Pipeline，涵盖基于 SUMO/TransSimHub 的仿真、数据生成 (SFT & DPO)、模型训练以及评估。
+本项目实现了一个用于交通信号控制 (TSC) 的**真正端到端**视觉语言大模型 (LVLM) 框架。该框架以**单路口各进口道方向的多视角俯拍图像**（一个四进口道路口对应 4 张输入图像）为视觉输入，由单一微调 LVLM 通过**单次前向推理**直接输出相位决策，系统中不存在 LVLM 之外的任何独立检测器、文本摘要模块、外部路由器或下游决策器。方法论核心为**单模型自适应快慢思考 CoT**：常规场景触发短路径 (`Scene Understanding → Phase Selection`)，事件场景触发长路径 (`Scene Understanding → Event Recognition → Impact Reasoning → Scene Analysis → Selection Logic → Phase`)。项目包含完整 Pipeline，涵盖基于 SUMO/TransSimHub 的仿真与多视角进口道图像生成、SFT 数据构建、SFT 训练、基于仿真器双路可验证奖励的在线 RLVR 微调，以及覆盖常规、拓扑迁移、规模迁移与事件迁移的端到端评估。
 
 ## 三. 核心目录与模块
-- `data/`：存放原始仿真数据、生成的 BEV 图像以及处理后的 SFT（监督微调）/ DPO（偏好优化）数据集。
+- `data/`：存放原始仿真数据、生成的多视角进口道图像以及处理后的 SFT 数据集与 RLVR rollout 缓存。
 - `models/`：用于存储从 ModelScope 等下载的基础 LVLM 模型和训练后生成的 Checkpoints。
 - `src/`：框架核心代码库。
-  - `bev_generation/`：负责与仿真环境交互并生成路口 BEV 图像。
-  - `dataset/`：负责 SFT 和 DPO 训练数据集的构建与处理。
+  - `bev_generation/`：负责与仿真环境交互并生成单路口多视角进口道图像。
+  - `dataset/`：负责 SFT 训练数据集的构建与处理。
   - `inference/`：LVLM 模型推理与 Prompt 构建逻辑。
-  - `training/`：SFT 和 DPO 的训练核心模块。
+  - `training/`：SFT 与基于 GRPO 的在线 RLVR 训练核心模块。
   - `evaluation/`：端到端指标评估 (ATT, AQL, AWT 等)。
 - `configs/`：基于 YAML 的统一配置目录，管理仿真环境 (`env_config.yaml`)、模型与 Prompt (`model_config.yaml` / `prompt_builder*.py`) 以及训练参数 (`train_config.yaml`)。
 - `scripts/`：大量实用的辅助脚本，包括模型下载、仿真运行、评测任务投递 (`run_eval_gpu*.sh`) 等。
@@ -64,35 +82,63 @@
 | **Massy (France)** | 郊区 T字路口 (T-junction)。车道配置特殊，流量较小。 | 1 | **2相位：** 南北进口道放行，西进口道放行（右转无限制）。 | **泛化性（拓扑迁移验证）：** 验证模型能否适应异构路口拓扑。 | Total Vehicles: 207<br>Effective Duration: 6.98 min |
 | **New York (USA)** | 曼哈顿上东区，基于出租车轨迹数据。属于超大规模复杂路网。基于真实采集数据，模拟高峰流量数据。 | 196 | 同 Jinan 数据 (4相位) | **泛化性（规模迁移验证）：** 用于验证模型由单路口/小路网向大规模路网扩展时的协同控制与泛化能力。 | - |
 
-- 3 紧急事件验证数据集
+- 3 事件场景验证数据集
+
+> ⚠️ **注**：本研究规划的事件场景共六类——紧急车辆、校车与公交车、交通事故、占道（施工、抛洒物）、行人过街。当前仅"紧急车辆"场景已完成数据注入与基础设施搭建，其余 5 类事件的场景生成与评测脚本待后续基于 SUMO/TransSimHub 渲染能力同步实现。
 
 | 数据集/场景名称 | 简介与特点 | 交叉口数量 | 相位描述 (Action Space for Prompt) | 适用性与用途 | 车流特征摘要 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **Emergency** | 基于 Jinan、Hangzhou 场景注入了消防车、救护车和警车等紧急车辆。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（紧急车辆迁移验证）：** 验证模型能否自适应紧急车辆场景，实现优先放行。 | - |
+| **School/City Bus** | 注入校车与城市公交车，触发优先通行响应。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（校车与公交车迁移验证）** | - |
+| **Traffic Accident** | 注入车辆碰撞与异常停驻，导致单向堵死。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（事故场景迁移验证）** | - |
+| **Road Debris** | 注入散落货物、道路施工和路面占用物。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（占道（施工、抛洒物）占用迁移验证）** | - |
+| **Pedestrian Crossing** | 注入大规模行人过街（如学校放学时段）。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（行人过街迁移验证）** | - |
 
 ## 五. 目前已经完成的工作
-- **仿真环境打通与数据生成**：已成功集成底层 3D 交通仿真环境基座（TransSimHub / SUMO），实现了交通路口 BEV 图像与路网状态数据的自动化闭环生成。
-- **思维链 (CoT) 设计与构建**：确立了基于 `Scene Understanding -> Scene Analysis -> Selection Logic` 的多模态视觉-语言推理决策范式。
+- **仿真环境打通与数据生成**：已成功集成底层 3D 交通仿真环境基座（TransSimHub / SUMO），实现了交通路口 BEV 图像与路网状态数据的自动化闭环生成。**⚠️ 待重构**：当前仿真渲染输出为全局 BEV，需升级为**单路口各进口道方向独立俯拍图像**（4 进口道路口对应 4 张），以匹配新的多视角输入设计。
 - **训练/评测基础设施搭建**：完成了基于 YAML 的系统级配置解耦 (`configs/`)，并编写了支持多 GPU 异步调度的批量评测自动化脚本 (`scripts/run_eval_gpu*.sh`)。
-- **SFT (监督微调) 基线**：完成了基础 SFT 数据集的构建与模型微调训练。已跑通完整的端到端评估 Pipeline，SFT 数据集的构建脚本文件夹为（`src/dataset/golden_gener`）
-- **DPO（直接偏好对齐）**：完成了DPO数据集构造和模型直接偏好对齐训练。其中DPO的正样本为SFT数据，负样本为 SFT 模型生产，DPO 数据集的构建脚本和数据储存文件夹为（`src/dataset/DPO_data_construct`），最终用于训练的DPO 数据集为`/home/jyf/code/trafficVLM/code/VLMTraffic/src/dataset/DPO_data_construct/dpo_dataset_sft_model_gener_cleaned.jsonl`，其正负样本分析结果为`src/dataset/DPO_data_construct/dpo_dataset_analysis_report.txt`.
 - **泛化性验证场景测试基础设施**：
   - 完成了 4 大泛化场景（SouthKorea_Songdo、France_Massy、Hongkong_YMT、NewYork）的评测基础设施搭建。
   - 清理了泛化场景路由文件中混入的紧急车辆（France_Massy 5辆、Hongkong_YMT 6辆、SouthKorea_Songdo 8辆），替换为普通 background 车辆类型（`scripts/clean_emergency_vehicles.py`）。
   - 针对各场景路口拓扑差异（T字路口、左行特例、非对称5/6车道路口、196路口大路网），在 BEV 图像上实现了分场景类别的车道数字水印叠加（`scripts/add_lane_watermarks.py`），并支持文字旋转以对齐停止线方向。
   - 完成泛化性指标收集脚本（`src/evaluation/generalization_metrics.py`）及结果模板（`results/generalization_result.csv`），覆盖 ATT、AWT、AQL 三项指标，支持 FixedTime、MaxPressure 和 VLM 方法横向对比。
   - 完成合并版批量评测脚本（`run_batch_generalization.sh`），支持 `--baseline-only`、`--port/--model_name`、`--with-baseline` 三种运行模式，并从路由文件动态计算 `max_steps`（公式：`ceil((max_depart + 300s) / 30s)`，上下限 [10, 200]）。
-- **紧急车辆场景测试基础设施**：
-  - 使用 `scripts/add_emergency_vehicles.py` 为 JiNan、Hangzhou、SouthKorea_Songdo、France_Massy、Hongkong_YMT、NewYork 六个场景生成了带 `_emergy` 后缀的紧急车流路由文件（注入比例 4%，车型包含 ambulance / fire / fire_engine / police）。
-  - 在 `src/evaluation/metrics.py` 中扩展了 `calculate_from_files()` 接口，通过解析 `tripinfo.out.xml` 提取紧急车辆的 Average Emergency Travel Time (EATT) 和 Average Emergency Waiting Time (EAWT) 专项指标。
-  - 完成紧急场景指标收集脚本（`src/evaluation/emergency_metrics.py`）及结果模板（`results/emergency_result.csv`），每场景包含 ATT、AWT、AQL、EATT、EAWT 共 5 项指标。
-  - 完成合并版批量评测脚本（`run_batch_emergency.sh`），设计与泛化脚本保持一致，动态计算各场景 `max_steps`。
-- **已有消融实验结果**：
-见`results/ablation_result.csv`
-- **已有部分对比实验结果**：
-见`results/comparsion_result.csv`
+- **事件场景测试基础设施（全部 5 类）**：所有五类事件场景（紧急车辆、校车与公交车、交通事故、占道/路面碎片、行人过街）的路由文件生成脚本与评测脚本均已完成。
+  - 使用 `scripts/event_scene_generation/` 下的脚本为全部 6 个数据集生成各类事件路由文件（`_emergy` / `_bus` / `_accident` / `_debris` / `_pedestrian` 后缀）；`batch_generate_all_scenes.sh` 一键批量生成。 **⚠️ 行人渲染效果较差，暂不考虑**
+  - `scripts/event_scene_generation/visualize_event_network.py` 为每个数据集生成标注各类事件位置的路网可视化图（暗色主题，彩色标记）。
+  - `src/bev_generation/online_bev_render.py` 通过 `RENDER_EVENT_TYPES` 列表支持 6 种事件类型（含 normal）的顺序渲染，输出到 `data/test/{SCENARIO}/{event_type}/{step}/`。
+  - TransSimHub `vehicle.py` MODEL_MAPPING 修复 `pedestrian` 键重复 bug，新增 `HIGH_POLY_ONLY` 集合（bus / school_bus / crash_vehicle / pedestrian_* 等仅存在于 high_poly 资产中的车型）。
+  - **指标设计（各场景 5 项核心指标）**：
+    - 紧急车辆：ATT / AWT / AQL / **EATT** / **EAWT**（Emergency ATT/AWT）
+    - 校车与公交车：ATT / AWT / AQL / **BATT** / **BAWT**（Bus ATT/AWT，按 vType=bus/school_bus 过滤）
+    - 交通事故：ATT / AWT / AQL / **MaxQL** / **TPT**（峰值排队长度 / 普通车辆通行数，过滤 accident_* 事件车辆）
+    - 路面碎片：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 debris_* 事件车辆）
+    - 行人过街：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 pedestrian_* 事件车辆）
+  - `src/evaluation/metrics.py` 扩展 `calculate_from_files()` 接口：新增 `event_id_prefixes` 参数（启用后从 `tripinfo.out.xml` 过滤事件车辆重算 ATT/AWT）、`MaxQL`（全程队列峰值）、`TPT`（到达普通车辆计数）、`special_vtypes` 可覆盖（支持 bus 场景）。
+  - 完成四类新事件指标收集脚本：`src/evaluation/bus_metrics.py`、`accident_metrics.py`、`debris_metrics.py`、`pedestrian_metrics.py`；结果模板：`results/bus_result.csv`、`accident_result.csv`、`debris_result.csv`、`pedestrian_result.csv`。
 
-## 六. 常用指令与开发规范
+## 六. 3D 仿真渲染架构说明
+
+### 事件场景双线渲染机制
+
+TransSimHub 的 3D 渲染存在**两条完全独立的渲染通路**，不同事件类型走不同通路，不可混淆：
+
+| 事件类型 | SUMO 中的 vType | 渲染通路 | 负责模块 |
+| :--- | :--- | :--- | :--- |
+| 紧急车辆（ambulance / police / fire_truck） | 真实运动车辆 | `scene_sync` → `Vehicle3DElement` | `SceneSync._manage_vehicle_element()` |
+| Bus / School Bus | 真实运动车辆 | `scene_sync` → `Vehicle3DElement` | `SceneSync._manage_vehicle_element()` |
+| 路障（barrier_A~E） | trip+stop 占位假车 | `EventManager` → `EmergencyManager3D` → `Emergency3DElement` | `tshub_env3d.emergency_renderer` |
+| 碰撞残骸（crash_vehicle） | trip+stop 占位假车 | `EventManager` → `EmergencyManager3D` → `Emergency3DElement` | `tshub_env3d.emergency_renderer` |
+| 倒地/过街行人（pedestrian_lying/crossing） | trip+stop 占位假车 | `EventManager` → `EmergencyManager3D` → `Emergency3DElement` | `tshub_env3d.emergency_renderer` |
+| 路障封闭区矩形（ClosureZone）归路障占道 | 无 SUMO 实体 | `EventManager` → `EmergencyManager3D` → `ClosureZone3DElement` | `tshub_env3d.emergency_renderer` |
+
+**通路一（动态车辆）**：SUMO 每步返回实时位置/朝向 → `scene_sync` 创建/更新 `Vehicle3DElement`。
+**通路二（静态障碍物）**：`__init__` 时一次性解析路由文件 `<param>` 标签获取固定坐标 → 每步按时间窗口过滤活跃事件 → `EmergencyManager3D.update()` 增删 3D 节点。
+
+**关键过滤器**：`scene_sync._is_event_vehicle()` 识别 trip+stop 假车并跳过，防止在 SUMO stop 位置产生幽灵背景车辆。匹配规则：精确匹配 `_EVENT_VTYPE_EXACT` 集合（`crash_vehicle`、`pedestrian_*`、`barrier_A~E`、`tree_branch_*`）或前缀匹配 `barrier_`、`tree_branch_`（兼容带长度后缀的变体如 `barrier_A_5.00`）。
+
+
+## 七. 常用指令与开发规范
 **⚠️ 注意：执行所有命令前，请务必确保已激活名为 `VLMTraffic` 的虚拟环境！**
 - 
 - 代码风格：严格遵循 PEP-8，添加详细的中文注释。

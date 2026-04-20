@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-04-18 19:29:32
+LastEditTime: 2026-04-20 17:45:29
 Description: this script is used to store the configuration of different TSC scenarios
 FilePath: /VLMTraffic/configs/scenairo_config.py
 '''
@@ -14,7 +14,7 @@ SCENARIO_CONFIGS = {
         "CENTER_COORDINATES": (172, 201, 100), # 这个参数不影响
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:0, 3:1}, # 路口传感器索引到信号灯相位的映射，对于BEV视角下不需要处理
         "RENDERER_CFG": {
-            "preset": "SQUARE_720",
+            "preset": "SQUARE_2048",
             #BUG: 变焦作用，胶片（传感器）越小：不仅拍摄到的范围变小了，为了填满同样的屏幕（1920x1080），画面会被放大（Zoom In）。 但实测下来没什么作用（暂不影响）
             "resolution": 0.8,
             "vehicle_model": "high",
@@ -28,7 +28,7 @@ SCENARIO_CONFIGS = {
         },
         "SENSOR_CFG": {
             "tls": {
-                "sensor_types": ["junction_front_all", "junction_front_vehicle","junction_back_all"],
+                "sensor_types": ["junction_front_all"],
                 "tls_camera_height": 15
             },
             "aircraft": {

@@ -1,9 +1,9 @@
 '''
 Author: yufei Ji
 Date: 2026-03-08 16:40:58
-LastEditTime: 2026-03-08 16:47:27
+LastEditTime: 2026-04-19 21:19:24
 Description: this script is used to 
-FilePath: /VLMTraffic/scripts/add_emergency_vehicles.py
+FilePath: /VLMTraffic/scripts/event_scene_generation/add_emergency_vehicles.py
 '''
 import os
 import random
@@ -30,9 +30,9 @@ def add_emergency_vehicles(input_file, output_file, ratio=0.02):
 
     # 定义紧急车辆的 vType
     emergency_types = [
-        {"id": "emergency", "length": "6.50", "color": "255,165,0", "tau": "1.0"},
-        {"id": "police", "length": "5.00", "color": "blue", "tau": "1.0"},
-        {"id": "fire_engine", "length": "8.00", "color": "red", "vClass": "emergency"}
+        {"id": "emergency", "length": "6.50", "color": "255,165,0", "tau": "1.0", "vClass": "emergency", "guiShape": "emergency"},
+        {"id": "police", "length": "5.00", "color": "blue", "tau": "1.0", "vClass": "authority", "guiShape": "police"},
+        {"id": "fire_engine", "length": "8.00", "color": "red", "vClass": "emergency", "guiShape": "firebrigade"}
     ]
     
     # 检查是否已经有了对应的 vType，如果没有则添加到根节点开头
@@ -61,10 +61,28 @@ def add_emergency_vehicles(input_file, output_file, ratio=0.02):
     modified_count = 0
     emergency_type_ids = [vt['id'] for vt in emergency_types]
     
+    # 转换为 list 以便可控分配
+    indices_to_modify_list = list(indices_to_modify_set)
+    
+    # 保证每种紧急车型至少出现一次（如果总修改数量大于车型种类数）
+    assigned_types = []
+    if len(indices_to_modify_list) >= len(emergency_type_ids):
+        assigned_types = emergency_type_ids.copy()
+        # 剩下的随机分配
+        assigned_types.extend([random.choice(emergency_type_ids) for _ in range(len(indices_to_modify_list) - len(emergency_type_ids))])
+    else:
+        assigned_types = [random.choice(emergency_type_ids) for _ in range(len(indices_to_modify_list))]
+        
+    # 打乱分配顺序
+    random.shuffle(assigned_types)
+    
+    # 创建指代字典
+    modification_map = dict(zip(indices_to_modify_list, assigned_types))
+    
     for i, vehicle in enumerate(vehicles):
-        if i in indices_to_modify_set:
-            # 随机选择一种特殊的紧急车型
-            chosen_type = random.choice(emergency_type_ids)
+        if i in modification_map:
+            # 应用分配好的紧急车型
+            chosen_type = modification_map[i]
             vehicle.set('type', chosen_type)
             modified_count += 1
             
