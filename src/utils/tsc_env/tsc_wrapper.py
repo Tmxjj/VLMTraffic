@@ -4,7 +4,7 @@
 @Description: 处理 TSCHub ENV 中的 state, reward (处理后的 state 作为 RL 的输入)
 + state: 5 个时刻的每一个 movement 的 queue length
 + reward: 路口总的 waiting time
-LastEditTime: 2026-04-21 15:58:33
+LastEditTime: 2026-04-21 20:11:40
 '''
 import numpy as np
 import gymnasium as gym
@@ -134,25 +134,23 @@ class TSCEnvWrapper(gym.Wrapper):
     
     # Wrapper
     def state_wrapper(self, state):
-        """返回当前每个 movement 的 occupancy
+        """返回当前每个 movement 的 occupancy。
+
+        多路口异步模式：任意一个路口 can_perform_action=True 即返回 True，
+        由上层（run_eval.py）根据各路口的 can_perform_action 字段决定哪些路口需要决策。
         """
         if self.is_multi_agent:
             occupancy = {}
-            # 只有当所有路口都可以执行动作时，才返回 True (同步决策)
-            # 或者，通常只要有一个能执行就行，但这取决于具体逻辑。
-            # 这里沿用原逻辑：取第一个路口的标志，或者做且运算。
-            # 假设所有路口步调一致（delta_time 相同）
-            can_perform_action = True 
-            
+            # 异步决策：任一路口可执行动作即退出仿真内循环，交由上层按路口过滤
+            can_perform_action = False
             for tid in self.tls_id:
                 tls_state = state['tls'][tid]
                 occupancy[tid] = tls_state['last_step_occupancy']
-                if not tls_state['can_perform_action']:
-                    can_perform_action = False
-            
+                if tls_state['can_perform_action']:
+                    can_perform_action = True
             return occupancy, can_perform_action
         else:
-            occupancy = state['tls'][self.tls_id]['last_step_occupancy'] # 返回一个长度为 12 的列表
+            occupancy = state['tls'][self.tls_id]['last_step_occupancy']
             can_perform_action = state['tls'][self.tls_id]['can_perform_action']
             return occupancy, can_perform_action
     

@@ -102,7 +102,7 @@
   - 清理了泛化场景路由文件中混入的紧急车辆（France_Massy 5辆、Hongkong_YMT 6辆、SouthKorea_Songdo 8辆），替换为普通 background 车辆类型（`scripts/clean_emergency_vehicles.py`）。
   - 针对各场景路口拓扑差异（T字路口、左行特例、非对称5/6车道路口、196路口大路网），在 BEV 图像上实现了分场景类别的车道数字水印叠加（`scripts/add_lane_watermarks.py`），并支持文字旋转以对齐停止线方向。
   - 完成泛化性指标收集脚本（`src/evaluation/generalization_metrics.py`）及结果模板（`results/generalization_result.csv`），覆盖 ATT、AWT、AQL 三项指标，支持 FixedTime、MaxPressure 和 VLM 方法横向对比。
-  - 完成合并版批量评测脚本（`run_batch_generalization.sh`），支持 `--baseline-only`、`--port/--model_name`、`--with-baseline` 三种运行模式，并从路由文件动态计算 `max_steps`（公式：`ceil((max_depart + 300s) / 30s)`，上下限 [10, 200]）。
+  - 完成合并版批量评测脚本（`run_batch_generalization.sh`），支持 `--baseline-only`、`--port/--model_name`、`--with-baseline` 三种运行模式，并从路由文件动态计算 `max_sumo_seconds`（公式：`max_depart + 300s`，上下限 [300, 6000]），替代原有的 `max_steps` 参数，即直接以具体的 SUMO 仿真时间（秒）作为终止条件，因此 `max_sumo_seconds` 不再除以 30，而是直接传给环境以避免因为跳步而引起提前终止。
 - **事件场景测试基础设施（全部 5 类）**：所有五类事件场景（紧急车辆、校车与公交车、交通事故、占道/路面碎片、行人过街）的路由文件生成脚本与评测脚本均已完成。
   - 使用 `scripts/event_scene_generation/` 下的脚本为全部 6 个数据集生成各类事件路由文件（`_emergy` / `_bus` / `_accident` / `_debris` / `_pedestrian` 后缀）；`batch_generate_all_scenes.sh` 一键批量生成。 **⚠️ 行人渲染效果较差，暂不考虑**
   - `scripts/event_scene_generation/visualize_event_network.py` 为每个数据集生成标注各类事件位置的路网可视化图（暗色主题，彩色标记）。
@@ -116,7 +116,7 @@
     - 紧急车辆：ATT / AWT / AQL / **EATT** / **EAWT**（Emergency ATT/AWT，按 vType=emergency/police/fire_engine 过滤）
     - 校车与公交车：ATT / AWT / AQL / **BATT** / **BAWT**（Bus ATT/AWT，按 vType=bus/school_bus 过滤）
     - 交通事故：ATT / AWT / AQL / **MaxQL** / **TPT**（峰值排队长度 / 普通车辆通行数，过滤 accident_* 事件车辆）
-    - 路面碎片：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 debris_* 事件车辆）
+    - 占道行为：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 debris_* 事件车辆）
     - 行人过街：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 ped_* 事件车辆）                                                                                                      
   - `src/evaluation/metrics.py` 扩展 `calculate_from_files()` 接口：新增 `event_id_prefixes` 参数、`MaxQL`（全程队列峰值）、`TPT`（到达普通车辆计数）、`special_vtypes` 可覆盖。 
   - **统一指标收集脚本（`src/evaluation/collect_metrics.py`）**：替代 6 个独立 `*_metrics.py` 脚本，通过 `--type {generalization|emergency|bus|accident|debris|pedestrian|all}` 统一入口 ；`scene_to_cols` 以 `(scenario, route_file_name)` 为键映射 CSV 列；路径格式与 `run_eval.py` 输出一致（`data/eval/{dataset}/{route_file_name}/{method}/`）。                                       
@@ -153,9 +153,36 @@ TransSimHub 的 3D 渲染存在**两条完全独立的渲染通路**，不同事
 
 ## 八. 模型输入输出与动作空间定义（已实现）
 
+### 8.0 异步决策框架（已实现）
+
+**核心机制**：每次 `env.step()` 返回时（`tsc_wrapper` 保证至少一个路口 `can_perform_action=True`），仅对 `can_perform_action=True` 的路口进行 VLM 推理和图像渲染；其余路口沿用上一次动作，由 TransSimHub `choose_next_phase_with_duration` 内部处理相位计时。
+
+**`tsc_wrapper.state_wrapper` 变更**：多路口模式由原 AND 逻辑（所有路口均就绪才返回）改为 **OR 逻辑**（任一路口就绪即返回），使上层 `run_eval.py` 能精确识别哪些路口需要决策。
+
+```
+while not (dones or truncated) and sumo_t < max_sumo_seconds:
+    deciding_jids = [jid for jid in all_junctions
+                     if render_json['tls'][jid]['can_perform_action']]
+    # 仅对 deciding_jids 渲染图像 + 构建 Prompt + 执行 VLM 推理
+    # 非 deciding_jids 维持 last_action 不变
+    env.step(last_action)   # 传入全量字典，非决策路口由底层忽略
+```
+
+**图像输出路径**（异步后，以路口 ID + SUMO 时间戳为目录层级）：
+```
+data/eval/{scenario_key}/{route_stem}/{model_name}/{intersection_id}/{sumo_step}/
+  ├── {jid}_N.png / {jid}_E.png / {jid}_S.png / {jid}_W.png   # 进口道视图
+  ├── upstream_{jid}_N.png / ...                                # 上游视图
+  └── response.txt                                              # VLM 推理响应
+```
+
+**终止条件**：`sumo_sim_step >= max_sumo_seconds`（SUMO 仿真秒数），CLI 参数 `--max_sumo_seconds` 单位为秒，默认 3600s（1 小时）。
+
+---
+
 ### 8.1 视觉输入：8张多视角图像
 
-每个路口在每个决策步提供 **8张图像**，顺序固定：
+每个路口在需要决策的仿真时刻提供 **8张图像**（仅 `can_perform_action=True` 时渲染），顺序固定：
 
 | 序号 | 类型 | 内容描述 | 传感器命名（element_id） |
 | :--- | :--- | :--- | :--- |
@@ -196,7 +223,7 @@ action = {
 
 **绿灯时长常量定义**（`src/utils/tsc_env/tsc_wrapper.py`，所有模块统一引用）：
 ```python
-GREEN_DURATION_CANDIDATES = [10, 15, 20, 25, 30, 35]  # VLM 可选绿灯时长（秒）
+GREEN_DURATION_CANDIDATES = [15, 20, 25, 30, 35，40]  # VLM 可选绿灯时长（秒）
 FIXED_TIME_GREEN_DURATION = 27  # FixedTime / MaxPressure 专用：27s + 3s 黄灯 = 30s 整步
 ```
 
@@ -260,52 +287,48 @@ Action: phase=<phase_id>, duration=<seconds>
 
 ### 8.4 上下游协同机制：EventBulletin（已实现）
 
-路口间异步事件广播板，使检测到交通事件的路口能将影响告知下游路口，从而在 Prompt 层面实现协同决策。
+路口间异步事件广播板，使检测到交通事件的路口能将影响告知邻居路口，从而在 Prompt 层面实现协同决策。
 
 #### 设计原则
 
 | 维度 | 设计决策 |
 | :--- | :--- |
 | **架构层次** | 纯 Prompt 层协同，不修改仿真底层（TransSimHub/SUMO）和任何 RL/VLM 权重 |
-| **通信时序** | 异步——路口 A 决策完才广播，路口 B 在下一步才读到，符合现实无线通信延迟 |
-| **拓扑推断** | 从 `infos['vehicle_next_tls']`（SUMO subscription 112）自动统计投票，无需手动配置邻居表 |
-| **过期机制** | TTL = `ceil(green_duration / 30)`步，与选定绿灯时长动态绑定，避免陈旧事件误导决策 |
+| **通信时序** | 异步——路口 A 决策完才广播，路口 B 在其下一次决策时读到，符合现实通信延迟 |
+| **拓扑来源** | 静态配置，由 `configs/scenairo_config.py` 的 `TOPOLOGY` 字段注入（规则路网用 `_generate_grid_topology` 自动生成） |
+| **过期机制** | TTL = `green_duration` 秒（SUMO 仿真时间），`expires_at_sumo = current_sumo_step + green_duration+3s' |
 | **触发条件** | VLM CoT 输出中 `Final Condition: Special`，且 `Emergency Check` 行非 None |
 
 #### 数据流
 
 ```
-[路口 A VLM 推理]
+[路口 A VLM 推理，sumo_t=100s，green_duration=25s]
     ↓ CoT 输出 "Final Condition: Special"
-EventBulletin.broadcast(from_jid=A, green_duration=25, ...)
+EventBulletin.broadcast(from_jid=A, green_duration=25, current_sumo_step=100)
     ↓ 解析事件类型 + 描述
-    ↓ get_downstream(A) → [B, C]（票数 ≥ 2 的下游路口）
-    ↓ 写入 _board[B], _board[C]，expires_at = step + ceil(25/30) = step+1
-    ↓ logger.info 记录广播日志（含来源、目标、事件类型、TTL）
+    ↓ get_neighbors(A) → [B, C]（来自 TOPOLOGY 静态配置）
+    ↓ 写入 _board[B], _board[C]，expires_at_sumo = 100 + 25 = 125s
+    ↓ logger.info 记录广播日志（来源、目标、事件类型、TTL）
 
-[下一决策步，路口 B 构建 Prompt]
-EventBulletin.get_context(jid=B, current_step)
-    ↓ 返回未过期通知的文本摘要
+[路口 B 下一次决策，sumo_t=115s]
+EventBulletin.get_context(jid=B, current_sumo_step=115)
+    ↓ 115 < 125，通知仍有效，返回文本摘要
 PromptBuilder.build_decision_prompt(..., coordination_context=ctx)
     ↓ 若 ctx 非空，在 Prompt 第 6 节插入 "Upstream Coordination Context [ACTIVE]"
-    ↓ VLM 看到上游事件描述，在 Duration Selection 和 Selection Logic 中主动调整
 ```
 
 #### 日志体系
 
-所有协同相关操作均写入 loguru logger，分级如下：
-
 | 日志级别 | 触发场景 | 示例内容 |
 | :--- | :--- | :--- |
-| `INFO` | 广播成功 | `[Bulletin][广播] J1 → J3 \| 事件类型: emergency_vehicle \| TTL: 1步 \| 描述: Ambulance detected...` |
-| `INFO` | Prompt 注入 | `[Bulletin][注入] J3 收到上游协同通知，已注入 Prompt: ...` |
-| `INFO` | 过期清理（批量） | `[Bulletin][过期清理] 本步共清除 2 条过期通知` |
-| `INFO` | 拓扑汇总（每20步） | `[Bulletin][拓扑] J1 → J3 (票数=15)` |
-| `INFO` | 评测结束拓扑汇总 | 全局路口有向图快照 |
-| `DEBUG` | 无下游路口时跳过 | `[Bulletin] J1 检测到事件但尚无已知下游路口` |
+| `INFO` | 广播成功 | `[Bulletin][广播] J1 → J3 \| 事件类型: emergency_vehicle \| TTL: 25s (expires @ sumo_t=125s)` |
+| `INFO` | Prompt 注入 | `[Bulletin][注入] J3 \| sumo_t=115s \| 注入上游协同通知` |
+| `INFO` | 过期清理（批量） | `[Bulletin][过期清理] 本步共清除 2 条过期通知 (sumo_t=130s)` |
+| `INFO` | 评测结束拓扑汇总 | 全局静态路口拓扑快照 |
+| `DEBUG` | 无邻居路口时跳过 | `[Bulletin] J1 检测到事件但无已知邻居路口` |
 | `DEBUG` | 单条过期清理 | `[Bulletin][过期清理] J3 清除 1 条过期通知` |
 
-#### 核心文件修改清单（含协同机制）
+#### 核心文件修改清单
 
 | 文件 | 修改内容 |
 | :--- | :--- |
@@ -314,14 +337,14 @@ PromptBuilder.build_decision_prompt(..., coordination_context=ctx)
 | `TransSimHub/.../traffic_light.py` | 注册新动作类型；新增 `in_road_upstream_point`；`control_traffic_light()` 支持元组动作 |
 | `TransSimHub/.../tls_type/base_tls.py` | 新增 `in_road_upstream_point` 计算（lane shape[0]） |
 | `TransSimHub/.../scene_sync.py` | 方向映射；element_id 改为 `{jid}_{dir_short}`；新增 upstream 摄像机 |
-| `configs/scenairo_config.py` | sensor_cfg 改为 `{tls_id: cfg}` 格式，新增 `upstream` 配置 |
-| `configs/env_config.py` | `tls_action_type` → `choose_next_phase_with_duration`；新增候选集 |
+| `configs/scenairo_config.py` | 新增 `TOPOLOGY` 字段（静态拓扑配置）；`_generate_grid_topology()` 函数 |
+| `configs/env_config.py` | `tls_action_type` → `choose_next_phase_with_duration` |
 | `configs/prompt_builder.py` | 8图描述；Duration Selection CoT 块；`coordination_context` 参数；协同章节动态注入 |
-| `src/utils/tsc_env/tsc_wrapper.py` | `GREEN_DURATION_CANDIDATES`；联合 action_space；`_decode_action()`；`vehicle_next_tls` 透传 |
-| `src/utils/tsc_env/tsc_env.py` | sensor_cfg upstream 透传 |
+| `src/utils/tsc_env/tsc_wrapper.py` | `GREEN_DURATION_CANDIDATES`；`FIXED_TIME_GREEN_DURATION`；`state_wrapper` 改为 OR 逻辑；`_decode_action()` 支持 `duration` 直接秒数 |
+| `src/utils/event_bulletin.py` | **独立模块**：EventNotice + EventBulletin，TTL 以 SUMO 秒为单位，静态拓扑 |
 | `src/inference/vlm_agent.py` | 多图输入；`_parse_action()` 返回 `(phase_id, duration)` 元组 |
-| `src/evaluation/run_eval.py` | **新增** `EventBulletin` + `EventNotice` 类；协同广播/读取/过期清理/拓扑推断全流程；增强步骤日志 |
-| `tests/test_upgrade.py` | 升级验证测试（PromptBuilder / _parse_action / _decode_action / 批量接口 / 候选集一致性） |
+| `src/evaluation/run_eval.py` | 异步决策主循环；图片路径 `{jid}/{sumo_step}/`；`max_sumo_seconds` 终止条件 |
+| `tests/test_upgrade.py` | 升级验证测试（PromptBuilder / _parse_action / _decode_action / 候选集一致性） |
 
 ---
 

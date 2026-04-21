@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-04-21 16:19:02
+LastEditTime: 2026-04-21 19:29:35
 Description: 各场景配置。
     SENSOR_CFG 格式说明：
       - tls: {tls_id: {sensor_types, tls_camera_height}}   进口道摄像头（停止线处俯拍）
@@ -54,7 +54,7 @@ SCENARIO_CONFIGS = {
         "CENTER_COORDINATES": (172, 201, 100),
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:0, 3:1},
         "RENDERER_CFG": {
-            "preset": "SQUARE_2048",
+            "preset": "SQUARE_720",
             "resolution": 0.8,
             "vehicle_model": "high",
             "render_mode": "offscreen",

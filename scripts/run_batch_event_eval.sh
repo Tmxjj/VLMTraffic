@@ -19,8 +19,9 @@
  #                 data/eval/{dataset}/{route_file_name}/{method}/
  #               例：data/eval/JiNan/anon_3_4_jinan_real_emergy/fixed_time/
  #
- #               max_steps 自动从对应路由文件的最大 depart 时间动态计算：
- #                 max_steps = ceil((max_depart + BUFFER_S) / STEP_DUR)，上下限 [10, 200]
+ #               参数已由最大决策步(max_steps)彻底换为总仿真时间秒数(max_sumo_seconds)。
+ #               max_sumo_seconds 自动从对应路由文件的最大 depart 时间动态计算：
+ #                 max_sumo_seconds = max_depart + BUFFER_S，上下限 [300, 6000]
  #
  #               使用说明：
  #                 # 仅跑基线（本地，无需 GPU）：
@@ -43,10 +44,9 @@
 ###
 
 # ─── 默认配置 ──────────────────────────────────────────────────
-STEP_DUR=30      # 每个决策步时长（秒）
 BUFFER_S=180     # 最后一辆车出发后的额外仿真缓冲
-MIN_STEPS=10
-MAX_STEPS_CAP=200
+MIN_SUMO_SECONDS=300
+MAX_SUMO_SECONDS_CAP=3600
 LOG_DIR="./log/eval_results"
 
 API_PORT=""
@@ -132,10 +132,10 @@ EVENT_TYPES=("emergency" "bus" "accident" "debris" "pedestrian")
 
 # ─── 辅助函数 ──────────────────────────────────────────────────
 
-get_max_steps() {
+get_max_sumo_seconds() {
     local rou_path="$1"
     python3 -c "
-import xml.etree.ElementTree as ET, math, sys
+import xml.etree.ElementTree as ET, sys
 try:
     root = ET.parse('${rou_path}').getroot()
     vals = []
@@ -145,13 +145,14 @@ try:
             try: vals.append(float(d))
             except: pass
     if not vals:
-        print(${MIN_STEPS}); sys.exit()
-    steps = int(math.ceil((max(vals) + ${BUFFER_S}) / ${STEP_DUR}))
-    steps = max(steps, ${MIN_STEPS})
-    steps = min(steps, ${MAX_STEPS_CAP})
-    print(steps)
+        print(${MIN_SUMO_SECONDS}); sys.exit()
+    # 直接计算总的 SUMO 秒数
+    seconds = int(max(vals) + ${BUFFER_S})
+    seconds = max(seconds, ${MIN_SUMO_SECONDS})
+    seconds = min(seconds, ${MAX_SUMO_SECONDS_CAP})
+    print(seconds)
 except Exception as e:
-    print(120)
+    print(3600)
 " 2>/dev/null
 }
 
@@ -164,16 +165,16 @@ run_baseline() {
     local SCENE_TYPE="$3"
     local METHOD_FLAG="$4"
     local METHOD_NAME="$5"
-    local MAX_STEPS="$6"
+    local MAX_SUMO_SECONDS="$6"
 
     cleanup_sumo
-    echo "  [${METHOD_NAME}] ${SCENARIO}/${SCENE_TYPE}  route=${ROUTE_FILE}  steps=${MAX_STEPS}"
+    echo "  [${METHOD_NAME}] ${SCENARIO}/${SCENE_TYPE}  route=${ROUTE_FILE}  sumo_seconds=${MAX_SUMO_SECONDS}"
     python src/evaluation/run_eval.py \
         --scenario   "$SCENARIO" \
         --log_dir    "$LOG_DIR" \
         --route_file "$ROUTE_FILE" \
         --scene_type "$SCENE_TYPE" \
-        --max_steps  "$MAX_STEPS" \
+        --max_sumo_seconds  "$MAX_SUMO_SECONDS" \
         "$METHOD_FLAG"
     [ $? -ne 0 ] && echo "  [WARNING] ${METHOD_NAME} failed: ${SCENARIO}/${SCENE_TYPE}"
 }
@@ -183,17 +184,17 @@ run_vlm() {
     local SCENARIO="$1"
     local ROUTE_FILE="$2"
     local SCENE_TYPE="$3"
-    local MAX_STEPS="$4"
+    local MAX_SUMO_SECONDS="$4"
     local EXTRA="$5"
 
     cleanup_sumo
-    echo "  [VLM] ${SCENARIO}/${SCENE_TYPE}  route=${ROUTE_FILE}  steps=${MAX_STEPS}"
+    echo "  [VLM] ${SCENARIO}/${SCENE_TYPE}  route=${ROUTE_FILE}  sumo_seconds=${MAX_SUMO_SECONDS}"
     ./vgl_python.sh src/evaluation/run_eval.py \
         --scenario   "$SCENARIO" \
         --log_dir    "$LOG_DIR" \
         --route_file "$ROUTE_FILE" \
         --scene_type "$SCENE_TYPE" \
-        --max_steps  "$MAX_STEPS" \
+        --max_sumo_seconds  "$MAX_SUMO_SECONDS" \
         $EXTRA
     [ $? -ne 0 ] && echo "  [WARNING] VLM failed: ${SCENARIO}/${SCENE_TYPE}"
 }
@@ -241,9 +242,9 @@ run_all_baselines() {
                 echo "  [SKIP] 路由文件不存在: ${FULL_ROUTE}"
                 continue
             fi
-            MAX_STEPS=$(get_max_steps "$FULL_ROUTE")
-            run_baseline "$DS" "$ROUTE_FILE" "$EVENT" "--max_pressure" "MaxPressure" "$MAX_STEPS"
-            run_baseline "$DS" "$ROUTE_FILE" "$EVENT" "--fixed_time"   "FixedTime"   "$MAX_STEPS"
+            MAX_SUMO_SECONDS=$(get_max_sumo_seconds "$FULL_ROUTE")
+            run_baseline "$DS" "$ROUTE_FILE" "$EVENT" "--max_pressure" "MaxPressure" "$MAX_SUMO_SECONDS"
+            run_baseline "$DS" "$ROUTE_FILE" "$EVENT" "--fixed_time"   "FixedTime"   "$MAX_SUMO_SECONDS"
         done
     done
 }
@@ -270,8 +271,8 @@ run_all_vlm() {
                 echo "  [SKIP] 路由文件不存在: ${FULL_ROUTE}"
                 continue
             fi
-            MAX_STEPS=$(get_max_steps "$FULL_ROUTE")
-            run_vlm "$DS" "$ROUTE_FILE" "$EVENT" "$MAX_STEPS" "$EXTRA_VLM_ARGS"
+            MAX_SUMO_SECONDS=$(get_max_sumo_seconds "$FULL_ROUTE")
+            run_vlm "$DS" "$ROUTE_FILE" "$EVENT" "$MAX_SUMO_SECONDS" "$EXTRA_VLM_ARGS"
         done
     done
 }
