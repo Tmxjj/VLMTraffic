@@ -43,8 +43,9 @@
   - **落地可行性**：e2 检测器（$r_{\text{perc}}$ 数据源）与 SUMO rollout（$r_{\text{env}}$ 数据源）均为项目现有基础设施，无需新增硬件；可在 SFT checkpoint 基础上直接开启 RLVR 训练，实施路径清晰。
 
 ## 二. 项目概览
-本项目实现了一个用于交通信号控制 (TSC) 的**真正端到端**视觉语言大模型 (LVLM) 框架。该框架以**单路口各进口道方向的多视角俯拍图像**（一个四进口道路口对应 4 张输入图像）为视觉输入，由单一微调 LVLM 通过**单次前向推理**直接输出相位决策，系统中不存在 LVLM 之外的任何独立检测器、文本摘要模块、外部路由器或下游决策器。方法论核心为**单模型自适应快慢思考 CoT**：常规场景触发短路径 (`Scene Understanding → Phase Selection`)，事件场景触发长路径 (`Scene Understanding → Event Recognition → Impact Reasoning → Scene Analysis → Selection Logic → Phase`)。项目包含完整 Pipeline，涵盖基于 SUMO/TransSimHub 的仿真与多视角进口道图像生成、SFT 数据构建、SFT 训练、基于仿真器双路可验证奖励的在线 RLVR 微调，以及覆盖常规、拓扑迁移、规模迁移与事件迁移的端到端评估。
+本项目实现了一个用于交通信号控制 (TSC) 的**真正端到端**视觉语言大模型 (LVLM) 框架。该框架以**单路口各进口道方向的多视角俯拍图像**（一个四进口道路口对应 4 张输入图像）+进口道上游道路的俯拍图像（一个进口道有一张）为视觉输入，由单一微调 LVLM 通过**单次前向推理**直接输出相位决策，系统中不存在 LVLM 之外的任何独立检测器、文本摘要模块、外部路由器或下游决策器。方法论核心为**单模型自适应快慢思考 CoT**：常规场景触发短路径 (`Scene Understanding → Phase Selection`)，事件场景触发长路径 (`Scene Understanding → Event Recognition → Impact Reasoning → Scene Analysis → Selection Logic → Phase`)。项目包含完整 Pipeline，涵盖基于 SUMO/TransSimHub 的仿真与多视角进口道图像生成、SFT 数据构建、SFT 训练、基于仿真器双路可验证奖励的在线 RLVR 微调，以及覆盖常规、拓扑迁移、规模迁移与事件迁移的端到端评估。
 
+相位空间选择：相位选择和相位时间的动态生成：考虑上游道路在绿灯期间预期到达车辆数，决定下一个相位以及该相位绿灯时间（绿灯时间为一个候选合集：10、15、20、25、30、35）（候选空间大小 n*m）
 ## 三. 核心目录与模块
 - `data/`：存放原始仿真数据、生成的多视角进口道图像以及处理后的 SFT 数据集与 RLVR rollout 缓存。
 - `models/`：用于存储从 ModelScope 等下载的基础 LVLM 模型和训练后生成的 Checkpoints。
@@ -94,7 +95,7 @@
 | **Pedestrian Crossing** | 注入大规模行人过街（如学校放学时段）。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（行人过街迁移验证）** | - |
 
 ## 五. 目前已经完成的工作
-- **仿真环境打通与数据生成**：已成功集成底层 3D 交通仿真环境基座（TransSimHub / SUMO），实现了交通路口 BEV 图像与路网状态数据的自动化闭环生成。**⚠️ 待重构**：当前仿真渲染输出为全局 BEV，需升级为**单路口各进口道方向独立俯拍图像**（4 进口道路口对应 4 张），以匹配新的多视角输入设计。
+- **仿真环境打通与数据生成**：已成功集成底层 3D 交通仿真环境基座（TransSimHub / SUMO）。渲染输出已从全局 BEV 升级为**8张多视角图像**（4张进口道停止线视图 + 4张上游道路视图），具体架构见第八节。
 - **训练/评测基础设施搭建**：完成了基于 YAML 的系统级配置解耦 (`configs/`)，并编写了支持多 GPU 异步调度的批量评测自动化脚本 (`scripts/run_eval_gpu*.sh`)。
 - **泛化性验证场景测试基础设施**：
   - 完成了 4 大泛化场景（SouthKorea_Songdo、France_Massy、Hongkong_YMT、NewYork）的评测基础设施搭建。
@@ -108,16 +109,16 @@
   - `src/bev_generation/online_bev_render.py` 通过 `RENDER_EVENT_TYPES` 列表支持 6 种事件类型（含 normal）的顺序渲染，输出到 `data/test/{SCENARIO}/{event_type}/{step}/`。
   - TransSimHub `vehicle.py` MODEL_MAPPING 修复 `pedestrian` 键重复 bug，新增 `HIGH_POLY_ONLY` 集合（bus / school_bus / crash_vehicle / pedestrian_* 等仅存在于 high_poly 资产中的车型）。
 - **评测主脚本（`src/evaluation/run_eval.py`）**：从根目录 `vlm_decision.py` 重构迁入 `src/evaluation/`，保留 `--fixed_time`、`--max_pressure`、VLM 三种模式接口。**输出路径统一为 `data/eval/{dataset}/{route_file_name}/{method}/`**。                                                                                                                         
-  - **批量评测脚本**：                                                                                                                                                    
+  - **批量评测脚本**：         
   - `scripts/run_batch_event_eval.sh`：事件场景批量评测，覆盖全部 5 类事件 × 6 个数据集；支持 `--event {type}` 单类过滤；调用 `src/evaluation/run_eval.py`。            
-  - `run_batch_eval.sh`、`run_batch_generalization.sh`：已更新为调用 `src/evaluation/run_eval.py` 并传入对应 `--scene_type`（JiNan/Hangzhou 为 `normal`，NewYork triple +变体为 `normal_triple`）。                                                                                                                                                
+  - `run_batch_eval.sh`、`run_batch_generalization.sh`：已更新为调用 `src/evaluation/run_eval.py` 并传入对应 `--scene_type`（JiNan/Hangzhou 为 `normal`，NewYork triple +变体为 `normal_triple`）。 
   - **指标设计（各场景 5 项核心指标）**：
     - 紧急车辆：ATT / AWT / AQL / **EATT** / **EAWT**（Emergency ATT/AWT，按 vType=emergency/police/fire_engine 过滤）
     - 校车与公交车：ATT / AWT / AQL / **BATT** / **BAWT**（Bus ATT/AWT，按 vType=bus/school_bus 过滤）
     - 交通事故：ATT / AWT / AQL / **MaxQL** / **TPT**（峰值排队长度 / 普通车辆通行数，过滤 accident_* 事件车辆）
     - 路面碎片：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 debris_* 事件车辆）
     - 行人过街：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 ped_* 事件车辆）                                                                                                      
-  - `src/evaluation/metrics.py` 扩展 `calculate_from_files()` 接口：新增 `event_id_prefixes` 参数、`MaxQL`（全程队列峰值）、`TPT`（到达普通车辆计数）、`special_vtypes` 可覆盖。         
+  - `src/evaluation/metrics.py` 扩展 `calculate_from_files()` 接口：新增 `event_id_prefixes` 参数、`MaxQL`（全程队列峰值）、`TPT`（到达普通车辆计数）、`special_vtypes` 可覆盖。 
   - **统一指标收集脚本（`src/evaluation/collect_metrics.py`）**：替代 6 个独立 `*_metrics.py` 脚本，通过 `--type {generalization|emergency|bus|accident|debris|pedestrian|all}` 统一入口 ；`scene_to_cols` 以 `(scenario, route_file_name)` 为键映射 CSV 列；路径格式与 `run_eval.py` 输出一致（`data/eval/{dataset}/{route_file_name}/{method}/`）。                                       
    - 结果模板：`results/bus_result.csv`、`accident_result.csv`、`debris_result.csv`、`pedestrian_result.csv`、`emergency_result.csv`、`generalization_result.csv`。     
 
@@ -148,8 +149,183 @@ TransSimHub 的 3D 渲染存在**两条完全独立的渲染通路**，不同事
 - 代码风格：严格遵循 PEP-8，添加详细的中文注释。
 - 模型训练和场景验证部分在远程服务器上进行，因此涉及到模型训练和场景验证的模块不需要运行代码，只需要提供运行代码即可
 
+---
 
-## 七、关于相关研究文献汇总
+## 八. 模型输入输出与动作空间定义（已实现）
+
+### 8.1 视觉输入：8张多视角图像
+
+每个路口在每个决策步提供 **8张图像**，顺序固定：
+
+| 序号 | 类型 | 内容描述 | 传感器命名（element_id） |
+| :--- | :--- | :--- | :--- |
+| Image 1 | 进口道停止线视图 | North 进口，车辆朝南排队 | `{jid}_N` |
+| Image 2 | 进口道停止线视图 | East 进口，车辆朝西排队 | `{jid}_E` |
+| Image 3 | 进口道停止线视图 | South 进口，车辆朝北排队 | `{jid}_S` |
+| Image 4 | 进口道停止线视图 | West 进口，车辆朝东排队 | `{jid}_W` |
+| Image 5 | 上游道路视图 | North 上游来车（预计绿灯期间到达） | `upstream_{jid}_N` |
+| Image 6 | 上游道路视图 | East 上游来车 | `upstream_{jid}_E` |
+| Image 7 | 上游道路视图 | South 上游来车 | `upstream_{jid}_S` |
+| Image 8 | 上游道路视图 | West 上游来车 | `upstream_{jid}_W` |
+
+**进口道摄像头**：安装在停止线处，俯拍进口道排队车辆（对应现有 `junction_front_all` 传感器，已有基础设施）。  
+**上游摄像头**：安装在进口道来车方向的上游路段（即上游路口的出口车道处），拍摄正在驶来的车辆。摄像机位置取自 `BaseTLS.in_road_upstream_point`（车道形状的起始点 `shape[0]`），方向与车辆行驶方向一致。
+
+**方向索引约定**：N=0，E=1，S=2，W=3（顺时针）。方向由 SUMO 车头朝向推算：`approach_bearing = (heading + 180°) % 360°`，再映射到最近的 N/E/S/W 象限。
+
+**传感器图像 key 格式**（`sensor_imgs` 字典）：
+```
+进口道：sensor_imgs["{jid}_{dir}"]["junction_front_all"]
+上游：  sensor_imgs["upstream_{jid}_{dir}"]["junction_front_all"]
+```
+
+**图像采集函数**：`Evaluator._collect_8_images(jid, sensor_imgs, step_dir)` → `List[str | None]`（有序8条路径，缺失为None）。
+
+---
+
+### 8.2 动作空间：联合（相位 × 绿灯时长）
+
+动作空间从"单相位选择"升级为**联合动作空间**：
+
+```
+action = {
+    'phase_id': int   ∈ [0, num_phases)    # 下一个绿灯相位编号
+    'duration': int                         # 实际绿灯时长（秒），VLM 模式取自候选集
+}
+```
+
+**绿灯时长常量定义**（`src/utils/tsc_env/tsc_wrapper.py`，所有模块统一引用）：
+```python
+GREEN_DURATION_CANDIDATES = [10, 15, 20, 25, 30, 35]  # VLM 可选绿灯时长（秒）
+FIXED_TIME_GREEN_DURATION = 27  # FixedTime / MaxPressure 专用：27s + 3s 黄灯 = 30s 整步
+```
+
+**时长选择依据**（VLM 模式）：
+- Images 1-4（停止线排队）→ 当前相位的实际压力
+- Images 5-8（上游来车）→ 绿灯期间的预期到达量
+- 排队长 / 上游车多 → 选择较长时长；轻流量 → 选择较短时长
+
+**VLM 输出校验流程**（`run_eval.py`）：
+1. 解析 `Action: phase=X, duration=Y` 得到 `raw_dur`
+2. 吸附：`actual_dur = min(GREEN_DURATION_CANDIDATES, key=λ x: |x - raw_dur|)`
+3. 若 `raw_dur ∉ GREEN_DURATION_CANDIDATES`，记录 WARNING 日志
+4. 防御性 `assert actual_dur in GREEN_DURATION_CANDIDATES`（保证最终合法）
+5. 传入 `{'phase_id': p_id, 'duration': actual_dur}` 给环境
+
+**底层执行格式**（TransSimHub / SUMO 层）：`(phase_id: int, green_duration: int)`，即实际秒数元组。
+
+**格式兼容性**（`TSCEnvWrapper._decode_action`）：
+| 传入格式 | 说明 |
+| :--- | :--- |
+| `{'phase_id': X, 'duration': Y}` | **推荐格式**，直接使用实际绿灯秒数 |
+| `{'phase_id': X, 'duration_idx': Y}` | 索引格式，向后兼容旧代码 |
+| `(phase_id, green_duration_seconds)` | 元组格式（TransSimHub 内部） |
+| `int` | 旧格式兼容（duration 取 FIXED_TIME_GREEN_DURATION=27s） |
+
+---
+
+### 8.3 Prompt 输出格式
+
+```
+Action: phase=<phase_id>, duration=<seconds>
+```
+
+示例：`Action: phase=1, duration=25`
+
+**CoT 模板结构（标准输出）**：
+```
+Thought: [
+Scene Understanding:
+- Lane Analysis (Mandatory): <各进口道各车道排队数>
+- Phase Mapping: Phase ID (<方向>): <拥堵等级> | <原因>
+Scene Analysis:
+- Emergency Check: <None 或 事件描述>
+- Final Condition: <Normal / Special>
+Selection Logic:
+- Rule Identification: <规则名>
+- Reasoning: <一句话原因>
+- Conclusion: Phase <ID>
+Duration Selection:
+- Stop-line queue pressure (Images 1-4): <简要评估>
+- Upstream arrival estimate (Images 5-8): <简要评估>
+- Selected Duration: <X> seconds | Reasoning: <一句话>
+]
+
+Action: phase=<phase_id>, duration=<seconds>
+```
+
+**VLMAgent 解析逻辑**（`_parse_action`）：优先匹配新格式 `phase=X, duration=Y`；duration 若不在候选集则吸附到最近合法值；兼容旧格式 `Action: X`（duration 默认 25s）。
+
+---
+
+### 8.4 上下游协同机制：EventBulletin（已实现）
+
+路口间异步事件广播板，使检测到交通事件的路口能将影响告知下游路口，从而在 Prompt 层面实现协同决策。
+
+#### 设计原则
+
+| 维度 | 设计决策 |
+| :--- | :--- |
+| **架构层次** | 纯 Prompt 层协同，不修改仿真底层（TransSimHub/SUMO）和任何 RL/VLM 权重 |
+| **通信时序** | 异步——路口 A 决策完才广播，路口 B 在下一步才读到，符合现实无线通信延迟 |
+| **拓扑推断** | 从 `infos['vehicle_next_tls']`（SUMO subscription 112）自动统计投票，无需手动配置邻居表 |
+| **过期机制** | TTL = `ceil(green_duration / 30)`步，与选定绿灯时长动态绑定，避免陈旧事件误导决策 |
+| **触发条件** | VLM CoT 输出中 `Final Condition: Special`，且 `Emergency Check` 行非 None |
+
+#### 数据流
+
+```
+[路口 A VLM 推理]
+    ↓ CoT 输出 "Final Condition: Special"
+EventBulletin.broadcast(from_jid=A, green_duration=25, ...)
+    ↓ 解析事件类型 + 描述
+    ↓ get_downstream(A) → [B, C]（票数 ≥ 2 的下游路口）
+    ↓ 写入 _board[B], _board[C]，expires_at = step + ceil(25/30) = step+1
+    ↓ logger.info 记录广播日志（含来源、目标、事件类型、TTL）
+
+[下一决策步，路口 B 构建 Prompt]
+EventBulletin.get_context(jid=B, current_step)
+    ↓ 返回未过期通知的文本摘要
+PromptBuilder.build_decision_prompt(..., coordination_context=ctx)
+    ↓ 若 ctx 非空，在 Prompt 第 6 节插入 "Upstream Coordination Context [ACTIVE]"
+    ↓ VLM 看到上游事件描述，在 Duration Selection 和 Selection Logic 中主动调整
+```
+
+#### 日志体系
+
+所有协同相关操作均写入 loguru logger，分级如下：
+
+| 日志级别 | 触发场景 | 示例内容 |
+| :--- | :--- | :--- |
+| `INFO` | 广播成功 | `[Bulletin][广播] J1 → J3 \| 事件类型: emergency_vehicle \| TTL: 1步 \| 描述: Ambulance detected...` |
+| `INFO` | Prompt 注入 | `[Bulletin][注入] J3 收到上游协同通知，已注入 Prompt: ...` |
+| `INFO` | 过期清理（批量） | `[Bulletin][过期清理] 本步共清除 2 条过期通知` |
+| `INFO` | 拓扑汇总（每20步） | `[Bulletin][拓扑] J1 → J3 (票数=15)` |
+| `INFO` | 评测结束拓扑汇总 | 全局路口有向图快照 |
+| `DEBUG` | 无下游路口时跳过 | `[Bulletin] J1 检测到事件但尚无已知下游路口` |
+| `DEBUG` | 单条过期清理 | `[Bulletin][过期清理] J3 清除 1 条过期通知` |
+
+#### 核心文件修改清单（含协同机制）
+
+| 文件 | 修改内容 |
+| :--- | :--- |
+| `TransSimHub/.../tls_type/choose_next_phase_with_duration.py` | **新增** TLS 动作类型，支持联合相位+时长决策，实现异步决策 |
+| `TransSimHub/.../traffic_light_action_type.py` | 新增枚举值 `ChooseNextPhaseWithDuration` |
+| `TransSimHub/.../traffic_light.py` | 注册新动作类型；新增 `in_road_upstream_point`；`control_traffic_light()` 支持元组动作 |
+| `TransSimHub/.../tls_type/base_tls.py` | 新增 `in_road_upstream_point` 计算（lane shape[0]） |
+| `TransSimHub/.../scene_sync.py` | 方向映射；element_id 改为 `{jid}_{dir_short}`；新增 upstream 摄像机 |
+| `configs/scenairo_config.py` | sensor_cfg 改为 `{tls_id: cfg}` 格式，新增 `upstream` 配置 |
+| `configs/env_config.py` | `tls_action_type` → `choose_next_phase_with_duration`；新增候选集 |
+| `configs/prompt_builder.py` | 8图描述；Duration Selection CoT 块；`coordination_context` 参数；协同章节动态注入 |
+| `src/utils/tsc_env/tsc_wrapper.py` | `GREEN_DURATION_CANDIDATES`；联合 action_space；`_decode_action()`；`vehicle_next_tls` 透传 |
+| `src/utils/tsc_env/tsc_env.py` | sensor_cfg upstream 透传 |
+| `src/inference/vlm_agent.py` | 多图输入；`_parse_action()` 返回 `(phase_id, duration)` 元组 |
+| `src/evaluation/run_eval.py` | **新增** `EventBulletin` + `EventNotice` 类；协同广播/读取/过期清理/拓扑推断全流程；增强步骤日志 |
+| `tests/test_upgrade.py` | 升级验证测试（PromptBuilder / _parse_action / _decode_action / 批量接口 / 候选集一致性） |
+
+---
+
+## 九、关于相关研究文献汇总
 
 ### 1.VLLM幻觉
 

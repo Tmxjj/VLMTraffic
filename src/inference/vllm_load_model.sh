@@ -1,12 +1,19 @@
-# python -m vllm.entrypoints.openai.api_server \
-#     --model /root/autodl-tmp/model/base_model/qwen3-vl-8b \
-#     --trust-remote-code \
-#     --dtype bfloat16 \
-#     --gpu-memory-utilization 0.8 \
-#     --max-model-len 16192 \
-#     --max-num-seqs 16 \
-#     --served-model-name qwen3-vl-8b \
-#     --port 8000
+python -m vllm.entrypoints.openai.api_server \
+###
+ # @Author: yufei Ji
+ # @Date: 2026-03-30 21:39:46
+ # @LastEditTime: 2026-04-21 15:55:04
+ # @Description: this script is used to 
+ # @FilePath: /VLMTraffic/src/inference/vllm_load_model.sh
+### 
+    --model models/base_models/Qwen3-VL-4B-Instruct \
+    --trust-remote-code \
+    --dtype bfloat16 \
+    --gpu-memory-utilization 0.65 \
+    --max-model-len 16192 \
+    --max-num-seqs 2 \
+    --served-model-name qwen3-vl-4b \
+    --port 8000
 
     # --speculative-model [DRAFT_MODEL_PATH_OR_KEYWORD] \
     # --num-speculative-tokens 5 \

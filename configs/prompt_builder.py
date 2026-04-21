@@ -174,28 +174,71 @@ South Approach (5 lanes): Lane 1(Left-Turn):<int>, Lane 2(Straight):<int>, Lane 
         return PromptBuilder.SCENARIO_DESCRIPTIONS.get(config_key, PromptBuilder.SCENARIO_DESCRIPTIONS["4_JUNCTION"]).strip()
 
     @staticmethod
-    def build_decision_prompt(current_phase_id: int, scenario_name: str = "JiNan") -> str:
+    def build_decision_prompt(current_phase_id: int, scenario_name: str = "JiNan",
+                              coordination_context: str = "") -> str:
+        """构建 VLM 决策 Prompt。
+
+        Args:
+            current_phase_id: 当前激活相位编号
+            scenario_name: 场景名称，用于查找相位/场景描述
+            coordination_context: 来自上游路口的事件广播文本（非空时插入协同章节）
+        """
         phase_explanation = PromptBuilder.get_phase_description(scenario_name)
         scenario_description = PromptBuilder.get_scenario_description(scenario_name)
         cot_lane_template = PromptBuilder.get_cot_lane_template(scenario_name)
 
+        # 协同章节：仅当上游有有效广播时注入
+        if coordination_context and coordination_context.strip():
+            coordination_section = f"""
+6. Upstream Coordination Context [ACTIVE]
+A neighboring upstream intersection has detected a traffic event that may affect YOUR intersection:
+{coordination_context.strip()}
+  ⚠️ You MUST account for this incoming event in your phase selection AND duration choice.
+     If an emergency vehicle is en route, prioritize the phase that clears its path.
+     If heavy spillback is expected, extend the green duration to absorb the incoming flow.
+"""
+        else:
+            coordination_section = ""
+
+        # 若有协同章节，后续 Task Definition 编号顺延
+        task_section_num = 7 if coordination_section else 6
+
         prompt = f"""
 1. Role Description
-You are an expert in traffic management and computer vision. You use your knowledge of traffic engineering to solve traffic signal control tasks. Your goal is to maximize intersection efficiency and ensure emergency vehicle priority by analyzing visual data.
+You are an expert in traffic management and computer vision.
+You use your knowledge of traffic engineering to solve traffic signal control tasks.
+Your goal is to maximize intersection efficiency and ensure emergency vehicle priority by analyzing visual data.
 
-2. Scenario Information
+2. Input Images
+You are provided with 8 images of the intersection (in order):
+  [Image 1] North approach — stop-line view (vehicles queued behind stop line, driving southward)
+  [Image 2] East approach  — stop-line view (vehicles queued behind stop line, driving westward)
+  [Image 3] South approach — stop-line view (vehicles queued behind stop line, driving northward)
+  [Image 4] West approach  — stop-line view (vehicles queued behind stop line, driving eastward)
+  [Image 5] North upstream — road view upstream of the North approach (vehicles approaching from the north)
+  [Image 6] East upstream  — road view upstream of the East approach  (vehicles approaching from the east)
+  [Image 7] South upstream — road view upstream of the South approach (vehicles approaching from the south)
+  [Image 8] West upstream  — road view upstream of the West approach  (vehicles approaching from the west)
+Images 1-4 show current queue length at stop lines. Images 5-8 show vehicles en route and expected to arrive during the next green phase.
+
+3. Scenario Information
 {scenario_description}
 *Reference: Top=North (N), Bottom=South (S), Left=West (W), Right=East (E).*
 
-3. Action Space 
-The intersection operates on the following discrete signal phases. You must choose one index:
+4. Action Space
+The intersection operates on the following discrete signal phases.
+You must select ONE phase index AND ONE green duration from the candidates below:
+  Phase candidates:
 {phase_explanation}
+  Green duration candidates (seconds): [10, 15, 20, 25, 30, 35]
+  Selection basis: balance current stop-line queue (Images 1-4) with expected upstream arrivals (Images 5-8).
+  Longer queues or heavy upstream flow → select longer duration. Light traffic → select shorter duration.
 
-4. Current State
+5. Current State
 Currently Active Phase: **[ Phase {current_phase_id} ]**
-
-5. Task Definition
-Base on the **Bird's-Eye-View (BEV) image**, current **Scenario Information**, and **Action Space**, execute:
+{coordination_section}
+{task_section_num}. Task Definition
+Based on the **multi-view approach images and upstream road images**, current **Scenario Information**, and **Action Space**, execute:
 
 A. Scene Understanding:
 - **Lane Scanning**: For each approach, report the integer queue length for ALL lanes identified in the Scenario Information.
@@ -233,7 +276,7 @@ C. Selection Logic :
     
     Note: Always prioritize safety and emergency response over regular traffic flow.
     
-6. Chain-of-Thought Reasoning
+{task_section_num + 1}. Chain-of-Thought Reasoning
 You must think step-by-step follow Task Definition. The output format must be strictly as follows (without indentation and other extra text):
 
 Thought: [
@@ -245,13 +288,17 @@ Phase ID (<Direction, e.g., NTST>): <Congestion Level> | <Reasoning>
 Scene Analysis: 
 - Emergency Check: <"None" OR "[Type] detected at [Location], affects Phase [ID]">
 - Final Condition: <Normal / Special>
-Selection Logic: 
+Selection Logic:
 - Rule Identification: <Exact Rule Name from Section 5C>
 - Reasoning: <State the direct cause for the selection in a sentence. Focus purely on facts, without conversational filler or self-correction.>
 - Conclusion: Phase <ID>
+Duration Selection:
+- Stop-line queue pressure (Images 1-4): <brief assessment>
+- Upstream arrival estimate (Images 5-8): <brief assessment>
+- Selected Duration: <X> seconds | Reasoning: <one sentence>
 ]
 
-Action: The Selected Phase Index, e.g., 0
+Action: phase=<phase_id>, duration=<seconds>, e.g., Action: phase=1, duration=25
         """
         return inspect.cleandoc(prompt).strip()
 

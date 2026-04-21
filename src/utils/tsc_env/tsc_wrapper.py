@@ -4,7 +4,7 @@
 @Description: 处理 TSCHub ENV 中的 state, reward (处理后的 state 作为 RL 的输入)
 + state: 5 个时刻的每一个 movement 的 queue length
 + reward: 路口总的 waiting time
-LastEditTime: 2026-01-28 11:26:52
+LastEditTime: 2026-04-21 15:58:33
 '''
 import numpy as np
 import gymnasium as gym
@@ -12,6 +12,12 @@ from gymnasium.core import Env
 from collections import deque
 import copy
 from typing import Any, SupportsFloat, Tuple, Dict, List, Union
+
+# 与 choose_next_phase_with_duration 一致的绿灯候选集（VLM 可选时长，单位：秒）
+GREEN_DURATION_CANDIDATES = [10, 15, 20, 25, 30, 35]
+
+# 固定配时/MaxPressure 基线的绿灯时长：27s 绿灯 + 3s 黄灯 = 30s 整步，与决策步间隔对齐
+FIXED_TIME_GREEN_DURATION = 27
 
 class OccupancyList:
     def __init__(self) -> None:
@@ -101,12 +107,16 @@ class TSCEnvWrapper(gym.Wrapper):
     
     @property
     def action_space(self):
+        # 联合动作空间：phase_id × duration_idx
+        # phase_id    ∈ [0, number_phases)
+        # duration_idx ∈ [0, len(GREEN_DURATION_CANDIDATES))，映射到实际秒数
+        single_space = gym.spaces.Dict({
+            'phase_id':    gym.spaces.Discrete(self.number_phases),
+            'duration_idx': gym.spaces.Discrete(len(GREEN_DURATION_CANDIDATES))
+        })
         if self.is_multi_agent:
-            # 多智能体 Action Space 通常是 Dict 或 Tuple
-            return gym.spaces.Dict({
-                tid: gym.spaces.Discrete(self.number_phases) for tid in self.tls_id
-            })
-        return gym.spaces.Discrete(self.number_phases)
+            return gym.spaces.Dict({tid: single_space for tid in self.tls_id})
+        return single_space
     
     @property
     def observation_space(self):
@@ -231,21 +241,54 @@ class TSCEnvWrapper(gym.Wrapper):
                     rollout_q_value += discount * r_t
             return rollout_q_value
 
-    def step(self, action: Union[int, Dict[str, int]]) -> Tuple[Any, SupportsFloat, bool, bool, Dict[str, Any]]:
+    @staticmethod
+    def _decode_action(action_input) -> tuple:
+        """将上层传入的动作解码为 (phase_id, green_duration) 元组。
+
+        支持四种输入格式（兼容新旧代码）：
+          1. Dict {'phase_id': int, 'duration': int}     → 推荐格式，直接使用实际绿灯秒数
+          2. Dict {'phase_id': int, 'duration_idx': int} → 索引格式，转换后使用（向后兼容）
+          3. Tuple/List (phase_id, green_duration)        → 直接使用
+          4. int                                          → 旧格式，duration 取 FIXED_TIME_GREEN_DURATION
+        """
+        if isinstance(action_input, dict):
+            phase_id = int(action_input['phase_id'])
+            if 'duration' in action_input:
+                # 推荐格式：直接传入实际绿灯秒数，无需索引转换
+                duration = int(action_input['duration'])
+            elif 'duration_idx' in action_input:
+                # 向后兼容：索引 → 实际秒数
+                duration = GREEN_DURATION_CANDIDATES[int(action_input['duration_idx'])]
+            else:
+                duration = FIXED_TIME_GREEN_DURATION
+        elif isinstance(action_input, (tuple, list)) and len(action_input) == 2:
+            phase_id, duration = int(action_input[0]), int(action_input[1])
+        else:
+            phase_id = int(action_input)
+            duration = FIXED_TIME_GREEN_DURATION  # 旧格式兼容：27s+3s黄灯=30s整步
+        return phase_id, duration
+
+    def step(self, action: Union[int, Dict, Tuple]) -> Tuple[Any, SupportsFloat, bool, bool, Dict[str, Any]]:
         can_perform_action = False
         if self.is_multi_agent:
             rewards_list = {tid: [] for tid in self.tls_id}
         else:
             rewards_list = []
-        
+
+        # 将上层动作统一解码为底层可用格式
+        # 多路口：{jid: action_input} → {jid: (phase_id, duration)}
+        # 单路口：action_input → (phase_id, duration)
+        if self.is_multi_agent:
+            decoded_action = {tid: self._decode_action(action[tid]) for tid in self.tls_id}
+        else:
+            decoded_action = self._decode_action(action)
+
         # NOTE: can_perform_action 当前仿真时间 (sim_step) 等于 预定的下一次动作时间 (sim_step+delta_time) 时，该标志位变为 True。
         while not can_perform_action:
             if self.is_multi_agent:
-                # 如果已经是 dict 形式的 action {J1: 0, J2: 1}，直接传给 super().step
-                # super().step 期望的是 {tls_id: action, ...}
-                step_action = action 
+                step_action = decoded_action
             else:
-                step_action = {self.tls_id: action} # 构建单路口 action 的动作
+                step_action = {self.tls_id: decoded_action}
             
             states, rewards, truncated, dones, infos, sensor_data = super().step(step_action) # 与环境交互
             
@@ -264,21 +307,24 @@ class TSCEnvWrapper(gym.Wrapper):
         
         # 处理好的时序的 state
         render_json = states.copy()
+        # 在删除 next_tls 之前，先把每辆车的下一个信号灯信息存入 infos，
+        # 供上层做路口拓扑推断（上下游协同广播板使用）
+        vehicle_next_tls: dict = {}
         if 'vehicle' in render_json and isinstance(render_json['vehicle'], dict):
             render_json['vehicle'] = {k: v.copy() for k, v in render_json['vehicle'].items()}
-            for vehicle_info in render_json['vehicle'].values():
+            for veh_id, vehicle_info in render_json['vehicle'].items():
                 if 'next_tls' in vehicle_info:
-                    del vehicle_info['next_tls']
+                    vehicle_next_tls[veh_id] = vehicle_info.pop('next_tls')
 
         avg_occupancy = self.occupancy.calculate_average()
-        # reward 1、车辆端，累计车辆的waiting time，无法表示单个路口车辆的waiting time  2、路口端 通过检测器计算排队和速度
-        rewards = self.compute_rollout_q_value(rewards_list=rewards_list) # 路口端 计算一段时间的 reward（基于排队和速度）
-        # rewards = self.reward_wrapper(states=states) # 车辆端 计算 vehicle waiting time
-        infos = self.info_wrapper(infos, occupancy=avg_occupancy) # info 里面包含每个 phase 的排队
-        infos['3d_data'] = sensor_data # info 包含传感器数据 (摄像机数据, 车辆位置)
+        rewards = self.compute_rollout_q_value(rewards_list=rewards_list)
+        infos = self.info_wrapper(infos, occupancy=avg_occupancy)
+        infos['3d_data'] = sensor_data
+        # 将 next_tls 拓扑信息透传给上层（用于上下游协同）
+        infos['vehicle_next_tls'] = vehicle_next_tls
         self.states.append(avg_occupancy)
-        state = self.get_state() # 得到 state
+        state = self.get_state()
 
-        return state, rewards, truncated, dones, infos, render_json    
+        return state, rewards, truncated, dones, infos, render_json
     def close(self) -> None:
         return super().close()

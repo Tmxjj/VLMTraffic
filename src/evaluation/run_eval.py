@@ -4,8 +4,14 @@ Date: 2026-04-20
 Description: 端到端 LVLM 交通信号控制评测主脚本，支持 VLM / FixedTime / MaxPressure 三种模式。
              从项目根目录的 vlm_decision.py 重构迁入 src/evaluation/。
              新增 --scene_type 参数，输出路径统一为：
-               data/eval/{dataset}/{scene_type}/{method}/
+               data/eval/{dataset}/{route_file_name}/{method}/
              scene_type 可选: normal | emergency | bus | accident | debris | pedestrian | normal_triple
+
+             上下游协同机制（EventBulletin）：
+               - 每个路口 VLM 决策后，若检测到 Special 事件，将事件描述广播至下游路口
+               - 拓扑关系从 infos['vehicle_next_tls'] 自动推断（基于车辆 next_tls 字段）
+               - 事件通知的过期时间 = 广播时选定的绿灯时长（秒）/ 30（决策步间隔），向上取整
+               - 下游路口在构建 Prompt 时，若有活跃通知则注入"6. Upstream Coordination Context"章节
 FilePath: /VLMTraffic/src/evaluation/run_eval.py
 '''
 import os
@@ -18,10 +24,14 @@ if _PROJECT_ROOT not in sys.path:
 
 import re
 import copy
+import math
 import cv2
 import json
 import time
 import argparse
+from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional
 
 from loguru import logger
 from tshub.utils.init_log import set_logger
@@ -29,16 +39,8 @@ from utils.make_tsc_env import make_env
 from utils.tools import save_to_json, create_folder, write_response_to_file, convert_rgb_to_bgr
 from configs.scenairo_config import SCENARIO_CONFIGS
 from configs.env_config import TSHUB_ENV_CONFIG
-from configs.model_config import MODEL_CONFIG
-from src.inference.vlm_agent import VLMAgent
 from configs.prompt_builder import PromptBuilder
-from src.evaluation.metrics import MetricsCalculator
-from scripts.add_lane_watermarks import add_lane_watermarks
-
-# 合法 scene_type 列表（normal_triple 用于 NewYork 高密度流量变体）
-VALID_SCENE_TYPES = [
-    "normal", "emergency", "bus", "accident", "debris", "pedestrian", "normal_triple"
-]
+from src.utils.event_bulletin import EventBulletin
 
 
 class Evaluator:
@@ -215,7 +217,9 @@ class Evaluator:
                 logger.critical(f"[EVAL] Failed to initialize VLM Agent: {e}")
                 raise e
 
-        self.metrics_calc = MetricsCalculator()
+        # 上下游协同广播板（仅 VLM 多路口模式下有意义），并注入静态拓扑数据
+        topology = self.scenario_config.get("TOPOLOGY", {})
+        self.bulletin = EventBulletin(topology=topology)
 
     def __del__(self):
         if hasattr(self, 'env') and self.env is not None:
@@ -233,10 +237,73 @@ class Evaluator:
         logger.info(f"[CFG] {json.dumps(MODEL_CONFIG, indent=2, sort_keys=True, default=str)}")
         logger.info("[CFG] ===========================================")
 
+    # 进口道方向顺序（与 scene_sync 中 _DIRECTION_SHORT 一致：北=0，顺时针）
+    _APPROACH_DIRS = ['N', 'E', 'S', 'W']
+
+    def _collect_8_images(self, jid: str, sensor_imgs: dict, step_dir: str):
+        """采集该路口的8张图像：4张进口道（停止线处）+ 4张上游道路。
+
+        命名约定（来自 scene_sync.py）：
+          进口道：sensor_key = junction_front_all_{jid}_{dir}，e.g. junction_front_all_J1_N
+          上游道：sensor_key = junction_front_all_upstream_{jid}_{dir}，e.g. junction_front_all_upstream_J1_N
+
+        返回有序图像路径列表（N/E/S/W 进口道 → N/E/S/W 上游），缺失位置用 None 填充。
+        若全部缺失返回空列表。
+        """
+        image_paths = []
+        any_found = False
+
+        for category, prefix in [('approach', jid), ('upstream', f'upstream_{jid}')]:
+            for d in self._APPROACH_DIRS:
+                element_id = f'{prefix}_{d}'
+                sensor_key = f'junction_front_all_{element_id}'
+                img_data = None
+                # sensor_imgs 结构：{element_id: {sensor_type: ndarray}}
+                if element_id in sensor_imgs:
+                    img_data = sensor_imgs[element_id].get('junction_front_all')
+
+                if img_data is not None:
+                    img_path = os.path.join(step_dir, f"{element_id}.png")
+                    try:
+                        cv2.imwrite(img_path, convert_rgb_to_bgr(img_data))
+                        image_paths.append(img_path)
+                        any_found = True
+                    except Exception as e:
+                        logger.warning(f"[EVAL] 保存图像失败 {element_id}: {e}")
+                        image_paths.append(None)
+                else:
+                    logger.debug(f"[EVAL] 无图像数据: {element_id}")
+                    image_paths.append(None)
+
+        return image_paths if any_found else []
+
+    @staticmethod
+    def _parse_phase_duration(vlm_resp: str):
+        """从 VLM 响应中解析 (phase_id, green_duration) 二元组。
+
+        支持格式：
+          Action: phase=1, duration=25
+          Action: phase=1,duration=25
+          Action: phase=1 duration=25
+        返回 (int, int) 或 None（解析失败时）。
+        """
+        if not vlm_resp or vlm_resp == "ERROR":
+            return None
+        match = re.search(
+            r"Action:?\s*phase\s*=\s*(\d+)[,\s]+duration\s*=\s*(\d+)",
+            vlm_resp, re.IGNORECASE
+        )
+        if match:
+            return int(match.group(1)), int(match.group(2))
+        # 兼容旧格式：Action: 1（只有相位，duration 取默认值 25s）
+        match_legacy = re.search(r"Action:?\s*\[?(\d+)\]?", vlm_resp, re.IGNORECASE)
+        if match_legacy:
+            return int(match_legacy.group(1)), 25
+        return None
+
     def run_eval(self, max_decision_step=10):
         logger.info(f"[EVAL] Start Evaluation Loop. Output folder: {self.output_folder}")
 
-        self.metrics_calc.reset()
         obs, _info = self.env.reset()
 
         dones, truncated = False, False
@@ -257,6 +324,8 @@ class Evaluator:
             logger.critical(f"[EVAL] Warm-up step failed: {e}")
             return
 
+        from src.utils.tsc_env.tsc_wrapper import GREEN_DURATION_CANDIDATES, FIXED_TIME_GREEN_DURATION
+
         while True:
             if dones or truncated:
                 logger.info(f"[EVAL] Episode finished. Dones: {dones}, Truncated: {truncated}")
@@ -264,6 +333,11 @@ class Evaluator:
             if decision_step >= max_decision_step:
                 logger.info(f"[EVAL] Reached maximum decision steps: {max_decision_step}. Ending evaluation.")
                 break
+
+            # ── 步骤日志头 ──
+            logger.info(
+                f"[EVAL] ══════ Decision Step {decision_step} | SUMO time={sumo_sim_step}s ══════"
+            )
 
             try:
                 _step_dir = os.path.join(self.output_folder, f"step_{decision_step}")
@@ -275,19 +349,29 @@ class Evaluator:
 
             save_to_json(render_json, _render_json_file)
 
+            # ── 广播板：清理过期通知 ──
+            self.bulletin.tick(decision_step)
+            
             action_dict = {}
             inference_tasks = []
+            # 记录本步每个路口最终选定的绿灯时长，用于广播 TTL 计算
+            step_green_durations: Dict[str, int] = {}
 
             sensor_datas = infos.get('3d_data', {})
             sensor_imgs  = sensor_datas.get('image', {})
 
             num_phases = self.scenario_config.get("PHASE_NUMBER", 4)
-            fallback_action = decision_step % num_phases
+            fallback_phase = decision_step % num_phases
+            # 固定配时/MaxPressure：27s 绿灯 + 3s 黄灯 = 30s 整步
+            # VLM 回退（解析失败）：候选集中位值 25s
+            fallback_duration = FIXED_TIME_GREEN_DURATION if (self.use_fixed_time or self.use_max_pressure) else 25
+            fallback_action = {'phase_id': fallback_phase, 'duration': fallback_duration}
 
             for jid in junctions:
                 action_dict[jid] = fallback_action
+                step_green_durations[jid] = fallback_duration
 
-                # ── MaxPressure：基于 jam_length_vehicle 计算相位压力 ──
+                # ── MaxPressure ──
                 if self.use_max_pressure:
                     tls_state = render_json.get('tls', {}).get(jid, {})
                     movement_ids    = tls_state.get('movement_ids', [])
@@ -300,45 +384,43 @@ class Evaluator:
                             phase_idx: sum(movement_queue.get(mid, 0) for mid in movements)
                             for phase_idx, movements in phase2movements.items()
                         }
-                        mp_action = max(phase_pressure, key=phase_pressure.get)
-                        action_dict[jid] = mp_action
+                        mp_phase = max(phase_pressure, key=phase_pressure.get)
+                        # MaxPressure 固定使用 FIXED_TIME_GREEN_DURATION（27s+3s黄灯=30s整步）
+                        action_dict[jid] = {'phase_id': mp_phase, 'duration': FIXED_TIME_GREEN_DURATION}
+                        step_green_durations[jid] = FIXED_TIME_GREEN_DURATION
                         logger.info(
-                            f"[MaxPressure] Step {decision_step} | {jid} | "
-                            f"pressure={phase_pressure} | selected phase={mp_action}"
+                            f"[MaxPressure] {jid} | pressure={phase_pressure} | "
+                            f"selected phase={mp_phase} | duration={FIXED_TIME_GREEN_DURATION}s"
                         )
                     else:
                         logger.warning(
-                            f"[MaxPressure] jam_length_vehicle 数据缺失 ({jid} step {decision_step})，使用 fallback。"
+                            f"[MaxPressure] jam_length_vehicle 数据缺失 ({jid})，使用 fallback"
                         )
                     continue
 
-                # ── VLM / FixedTime：准备图像并入推理队列 ──
+                # ── VLM / FixedTime：读取协同 Context，采集图像，构建 Prompt ──
                 current_phase_id = 0
                 if 'tls' in render_json and jid in render_json['tls']:
                     current_phase_id = render_json['tls'][jid]['this_phase_index']
 
-                bev_image_path = None
-                aircraft_jid = f'aircraft_{jid}'
-                if sensor_imgs and aircraft_jid in sensor_imgs:
-                    try:
-                        junction_img_data = sensor_imgs[aircraft_jid].get('aircraft_all')
-                        if junction_img_data is not None:
-                            raw_bev_path = os.path.join(_step_dir, f"{aircraft_jid}_bev_raw.png")
-                            cv2.imwrite(raw_bev_path, convert_rgb_to_bgr(junction_img_data))
-                            bev_image_path = os.path.join(_step_dir, f"{aircraft_jid}_bev_watermarked.png")
-                            add_lane_watermarks(raw_bev_path, bev_image_path,
-                                                scenario_name=self.scenario_key)
-                    except Exception as e:
-                        logger.warning(f"[EVAL] Failed to save/watermark image for {aircraft_jid}: {e}")
+                # 读取来自上游路口的协同事件通知
+                coord_ctx = self.bulletin.get_context(jid, decision_step)
+                if coord_ctx:
+                    logger.info(
+                        f"[Bulletin][注入] {jid} 收到上游协同通知，已注入 Prompt:\n{coord_ctx}"
+                    )
 
-                if bev_image_path:
+                image_paths = self._collect_8_images(jid, sensor_imgs, _step_dir)
+
+                if image_paths:
                     prompt = PromptBuilder.build_decision_prompt(
                         current_phase_id=current_phase_id,
-                        scenario_name=self.scenario_key
+                        scenario_name=self.scenario_key,
+                        coordination_context=coord_ctx,
                     )
-                    inference_tasks.append((jid, bev_image_path, prompt, current_phase_id))
+                    inference_tasks.append((jid, image_paths, prompt, current_phase_id))
                 else:
-                    logger.warning(f"[EVAL] No BEV image available for {jid}, using fallback.")
+                    logger.warning(f"[EVAL] {jid}: 无可用图像，使用 fallback 动作")
 
             # ── Batch 推理 ──
             if inference_tasks:
@@ -350,7 +432,7 @@ class Evaluator:
                     b_phases  = [t[3] for t in batch_tasks]
 
                     if self.use_fixed_time:
-                        results = [("ERROR", 0.0, 0, None)] * len(b_imgs)
+                        results = [("ERROR", 0.0, None, None)] * len(b_imgs)
                     else:
                         results = self.agent.get_batch_decision(b_imgs, b_prompts)
 
@@ -365,17 +447,44 @@ class Evaluator:
                         content_to_save += f"\n\n[GT Vehicle Counts]\n{json.dumps(gt_vehicle_counts, ensure_ascii=False, indent=4)}"
                         write_response_to_file(file_path=_resp_file, content=content_to_save)
 
-                        match = re.search(r"Action:?\s*\[?(\d+)\]?", vlm_resp, re.IGNORECASE)
-                        if vlm_resp != "ERROR" and match:
+                        # 解析动作：phase=X, duration=Y
+                        parsed = self._parse_phase_duration(vlm_resp)
+                        if vlm_resp != "ERROR" and parsed is not None:
+                            p_id, raw_dur = parsed
+                            # 吸附到候选集中最近的合法时长
+                            actual_dur = min(GREEN_DURATION_CANDIDATES, key=lambda x: abs(x - raw_dur))
+                            # 校验：若 VLM 输出值不在候选集，记录警告（吸附后仍保证合法）
+                            if raw_dur not in GREEN_DURATION_CANDIDATES:
+                                logger.warning(
+                                    f"[VLM] {jid} | VLM 输出绿灯时长 {raw_dur}s 不在候选集 "
+                                    f"{GREEN_DURATION_CANDIDATES}，已吸附至最近合法值 {actual_dur}s"
+                                )
+                            # 二次校验：确保吸附结果合法（防御性断言）
+                            assert actual_dur in GREEN_DURATION_CANDIDATES, \
+                                f"吸附后时长 {actual_dur}s 仍不在候选集 {GREEN_DURATION_CANDIDATES}"
+                            # 使用实际秒数（不再传 duration_idx）
+                            action_dict[jid] = {'phase_id': p_id, 'duration': actual_dur}
+                            step_green_durations[jid] = actual_dur
+
                             logger.info(
-                                f"[EVAL] Step: {decision_step} | Sumo_time {sumo_sim_step} | "
-                                f"JID: {jid} | Phase: {phase_id} | Action: {decided_action} | Latency: {latency:.2f}s"
+                                f"[VLM] {jid} | phase={p_id} | duration={actual_dur}s | "
+                                f"latency={latency:.2f}s | sumo_t={sumo_sim_step}s"
                             )
-                            action_dict[jid] = decided_action
+
+                            # ── 广播：若为 Special 事件则向邻近路口发送通知 ──
+                            # 传入拓扑在初始化时已指定，因此只做简单的参数传递
+                            if is_multi_agent and not self.use_fixed_time:
+                                self.bulletin.broadcast(
+                                    from_jid=jid,
+                                    vlm_response=vlm_resp,
+                                    green_duration=actual_dur,
+                                    current_step=decision_step
+                                )
                         else:
-                            log_prefix = "Fixed Time Enforced" if self.use_fixed_time else "VLM Invalid"
+                            log_prefix = "FixedTime" if self.use_fixed_time else "VLM解析失败"
                             logger.warning(
-                                f"[EVAL] {log_prefix} for {jid} (Resp: {vlm_resp[:30]}...). Fallback: Action {fallback_action}"
+                                f"[EVAL] {log_prefix} | {jid} | resp={vlm_resp[:60]}... | "
+                                f"使用 fallback: {fallback_action}"
                             )
 
             # ── 环境推进 ──
@@ -384,10 +493,15 @@ class Evaluator:
                 obs, rewards, truncated, dones, infos, render_json = self.env.step(final_action)
                 sumo_sim_step = infos.get('step_time', -1)
             except Exception as e:
-                logger.error(f"[EVAL] Environment step failed at {decision_step}: {e}")
+                logger.error(f"[EVAL] Environment step failed at decision_step={decision_step}: {e}")
                 break
 
             decision_step += 1
+
+        # 评测结束后打印最终拓扑汇总
+        if is_multi_agent:
+            logger.info("[Bulletin][最终拓扑汇总]")
+
 
         total_time = time.time() - current_time
         logger.info(f"[EVAL] Evaluation completed in {total_time:.2f} seconds.")

@@ -2,7 +2,7 @@
 @Author: WANG Maonan
 @Date: 2023-09-08 17:45:54
 @Description: 创建 TSC Env + Wrapper
-LastEditTime: 2026-01-15 16:51:43
+LastEditTime: 2026-04-21 15:42:30
 '''
 import gymnasium as gym
 from typing import List, Optional, Union
@@ -10,7 +10,7 @@ from utils.tsc_env.tsc_env import TSC3DEnvironment
 from utils.tsc_env.tsc_wrapper import TSCEnvWrapper
 
 def make_env(
-        tls_id: Union[str, List[str]], number_phases:int, 
+        tls_id: Union[str, List[str]], number_phases:int,
         sumo_cfg:str, scenario_glb_dir:str, 
         trip_info:str=None, statistic_output:str=None, 
         summary:str=None, queue_output:str=None,
@@ -34,7 +34,6 @@ def make_env(
             queue_output=queue_output,
             tls_state_add=tls_state_add,
             tls_ids=tls_ids, 
-            tls_action_type='choose_next_phase',
             renderer_cfg=renderer_cfg,
             sensor_cfg=sensor_cfg,
             tshub_env_cfg=tshub_env_cfg,

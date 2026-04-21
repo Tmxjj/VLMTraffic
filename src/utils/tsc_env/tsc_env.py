@@ -2,7 +2,7 @@
 @Author: WANG Maonan
 @Date: 2023-09-04 20:43:53
 @Description: 信号灯控制环境 (3D)
-LastEditTime: 2026-01-25 19:49:00
+LastEditTime: 2026-04-21 15:41:46
 '''
 import gymnasium as gym
 
@@ -12,7 +12,6 @@ from tshub.tshub_env3d.tshub_env3d import Tshub3DEnvironment
 class TSC3DEnvironment(gym.Env):
     def __init__(self, 
                  sumo_cfg:str, scenario_glb_dir:str, tls_ids:List[str], 
-                 tls_action_type:str,
                  trip_info:str=None, statistic_output:str=None, 
                  summary:str=None, queue_output:str=None,
                  tls_state_add:List=None,
@@ -50,19 +49,34 @@ class TSC3DEnvironment(gym.Env):
                 'height': 50.0,
             }
         }
-        sensor_config={}
+        sensor_config = {}
         if sensor_cfg:
+            # tls 进口道摄像头
             if 'tls' in sensor_cfg:
-                tls_sensor_types = sensor_cfg['tls'].get('sensor_types', tls_sensor_types)
-                tls_camera_height = sensor_cfg['tls'].get('tls_camera_height', tls_camera_height)
-                tls_sensors_map = {tid: {
-                    'sensor_types': tls_sensor_types,
-                    'tls_camera_height': tls_camera_height,
-                } for tid in tls_ids}
-                sensor_config['tls'] = tls_sensors_map
+                tls_val = sensor_cfg['tls']
+                # 新格式：{tls_id: {sensor_types, tls_camera_height}}，直接透传
+                # 旧格式（扁平）：{sensor_types: [...], tls_camera_height: 15}，自动转换
+                if tls_val and isinstance(next(iter(tls_val.values())), dict):
+                    sensor_config['tls'] = tls_val
+                else:
+                    _types  = tls_val.get('sensor_types', tls_sensor_types)
+                    _height = tls_val.get('tls_camera_height', tls_camera_height)
+                    sensor_config['tls'] = {tid: {'sensor_types': _types, 'tls_camera_height': _height} for tid in tls_ids}
+
+            # upstream 上游摄像头（新增）
+            if 'upstream' in sensor_cfg:
+                up_val = sensor_cfg['upstream']
+                if up_val and isinstance(next(iter(up_val.values())), dict):
+                    sensor_config['upstream'] = up_val
+                else:
+                    _types  = up_val.get('sensor_types', tls_sensor_types)
+                    _height = up_val.get('tls_camera_height', tls_camera_height)
+                    sensor_config['upstream'] = {tid: {'sensor_types': _types, 'tls_camera_height': _height} for tid in tls_ids}
+
+            # aircraft 全局 BEV
             if 'aircraft' in sensor_cfg and isinstance(sensor_cfg['aircraft'], dict):
                 aircraft_cfg = sensor_cfg['aircraft']
-                aircraft_sensors_map = {f'aircraft_{tid}':aircraft_cfg for tid in tls_ids}
+                aircraft_sensors_map = {f'aircraft_{tid}': aircraft_cfg for tid in tls_ids}
                 sensor_config['aircraft'] = aircraft_sensors_map
                 
         # Load default TSHub config if provided, else empty dict (will use method defaults if not passed)
@@ -76,7 +90,6 @@ class TSC3DEnvironment(gym.Env):
             sumo_cfg=sumo_cfg,
             tls_ids=tls_ids, 
             trip_info=trip_info, # Passed from args 
-            tls_action_type=tls_action_type, # Passed from args
             tls_state_add=tls_state_add, # Passed from args
             statistic_output= statistic_output,
             summary=summary,
@@ -108,6 +121,7 @@ class TSC3DEnvironment(gym.Env):
             num_clients=tshub_env_cfg.get('num_clients', 1),
             use_gui=tshub_env_cfg.get('use_gui', False),
             is_libsumo=tshub_env_cfg.get('is_libsumo',(not tshub_env_cfg.get('use_gui', False))), # Derived
+            tls_action_type=tshub_env_cfg.get('tls_action_type', 'choose_next_phase_with_duration'),
             
             # 用于 TSHubRenderer 渲染的参数 （TransSimHub/tshub/tshub_env3d/vis3d_renderer/tshub_render.py）
             preset = _preset, 

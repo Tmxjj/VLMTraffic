@@ -84,9 +84,14 @@ class VLMAgent:
             self.url = self.config.get("url")
             self.headers = self.config.get("headers", {"Content-Type": "application/json"})
 
-    def get_batch_decision(self, image_paths: list, prompts: list):
-        """支持多图多Prompt的Batch并发推理"""
-        if not image_paths or not prompts:
+    def get_batch_decision(self, image_paths_list: list, prompts: list):
+        """支持多图多Prompt的Batch并发推理。
+
+        Args:
+            image_paths_list: List[List[str]] — 每个元素是一个路口的多张图像路径列表（8张：4进口道+4上游）
+            prompts: List[str] — 每个路口对应的 prompt
+        """
+        if not image_paths_list or not prompts:
             return []
 
         # ==========================================
@@ -94,30 +99,26 @@ class VLMAgent:
         # ==========================================
         if self.api_type == "requests":
             start_time = time.perf_counter()
-            results = [None] * len(image_paths) # 预占位，保证返回顺序与输入一致
-            
-            # 使用 batch_size 限制最大并发连接数（保护服务端不被压垮）
-            max_workers = min(self.batch_size, len(image_paths)) if self.batch_size > 0 else len(image_paths)
+            results = [None] * len(image_paths_list)
+
+            max_workers = min(self.batch_size, len(image_paths_list)) if self.batch_size > 0 else len(image_paths_list)
             logger.info(f"[EVAL] Starting ThreadPoolExecutor with {max_workers} workers for vLLM API batching.")
-            
+
             with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-                # 提交所有任务
                 future_to_idx = {
-                    executor.submit(self.get_decision, img, p): idx 
-                    for idx, (img, p) in enumerate(zip(image_paths, prompts))
+                    executor.submit(self.get_decision, imgs, p): idx
+                    for idx, (imgs, p) in enumerate(zip(image_paths_list, prompts))
                 }
-                
-                # 收集结果
                 for future in concurrent.futures.as_completed(future_to_idx):
                     idx = future_to_idx[future]
                     try:
                         results[idx] = future.result()
                     except Exception as e:
                         logger.error(f"[EVAL] Batch API item {idx} failed: {e}")
-                        results[idx] = ("ERROR", 0.0, 0, None)
+                        results[idx] = ("ERROR", 0.0, (0, 25), None)
 
             total_latency = time.perf_counter() - start_time
-            logger.info(f"[EVAL] API Batch Inference (Size: {len(image_paths)}) completed in {total_latency:.2f}s total.")
+            logger.info(f"[EVAL] API Batch Inference (Size: {len(image_paths_list)}) completed in {total_latency:.2f}s total.")
             return results
 
         # ==========================================
@@ -127,52 +128,53 @@ class VLMAgent:
             start_time = time.perf_counter()
             try:
                 messages_batch = []
-                for img_path, p in zip(image_paths, prompts):
-                    messages_batch.append([
-                        {"role": "user", "content": [
-                            {"type": "image", "image": img_path}, 
-                            {"type": "text", "text": p}
-                        ]}
-                    ])
+                for img_paths, p in zip(image_paths_list, prompts):
+                    # 每个路口有多张图像
+                    if isinstance(img_paths, (list, tuple)):
+                        content = [{"type": "image", "image": ip} for ip in img_paths]
+                    else:
+                        content = [{"type": "image", "image": img_paths}]
+                    content.append({"type": "text", "text": p})
+                    messages_batch.append([{"role": "user", "content": content}])
 
                 if self.processor.tokenizer.pad_token_id is None:
                     self.processor.tokenizer.pad_token_id = self.processor.tokenizer.eos_token_id
-                    
+
                 inputs = self.processor.apply_chat_template(
-                    messages_batch, 
-                    tokenize=True, 
-                    add_generation_prompt=True, 
-                    return_dict=True, 
+                    messages_batch,
+                    tokenize=True,
+                    add_generation_prompt=True,
+                    return_dict=True,
                     return_tensors="pt",
                     padding=True
                 ).to(self.model.device)
 
                 gen_kwargs = {
-                    "max_new_tokens": self.max_tokens, 
-                    "temperature": self.temperature, 
+                    "max_new_tokens": self.max_tokens,
+                    "temperature": self.temperature,
                     "do_sample": self.temperature > 0
                 }
                 generated_ids = self.model.generate(**inputs, **gen_kwargs)
 
                 trimmed_ids = [
-                    out_ids[len(in_ids):] 
+                    out_ids[len(in_ids):]
                     for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
                 ]
                 responses = self.processor.batch_decode(trimmed_ids, skip_special_tokens=True)
 
-                latency = (time.perf_counter() - start_time) / len(image_paths)
+                latency = (time.perf_counter() - start_time) / len(image_paths_list)
                 batch_results = []
                 for resp in responses:
                     resp = resp.strip()
                     action = self._parse_action(resp)
                     batch_results.append((resp, latency, action, None))
-                
-                logger.info(f"[EVAL] Tensor Batch Inference (Size: {len(image_paths)}) completed in {latency * len(image_paths):.2f}s total.")
+
+                logger.info(f"[EVAL] Tensor Batch Inference (Size: {len(image_paths_list)}) completed in {latency * len(image_paths_list):.2f}s total.")
                 return batch_results
 
             except Exception as e:
                 logger.error(f"[EVAL] Tensor Batch Inference Failed: {e}")
-                return [("ERROR", 0.0, 0, None)] * len(image_paths)
+                return [("ERROR", 0.0, (0, 25), None)] * len(image_paths_list)
 
         # ==========================================
         # 3. 其他情况 (OpenAI/Gemini 且未要求并发时)，降级为串行循环
@@ -180,8 +182,8 @@ class VLMAgent:
         else:
             logger.info("[EVAL] Falling back to sequential processing.")
             results = []
-            for img, p in zip(image_paths, prompts):
-                results.append(self.get_decision(img, p))
+            for imgs, p in zip(image_paths_list, prompts):
+                results.append(self.get_decision(imgs, p))
             return results
         
 
@@ -195,50 +197,60 @@ class VLMAgent:
         ),
         reraise=True
     )
-    def _execute_inference(self, image_path, prompt):
-        """仅包含网络/模型请求的核心逻辑"""
+    def _execute_inference(self, image_paths, prompt):
+        """仅包含网络/模型请求的核心逻辑。
+
+        Args:
+            image_paths: str 或 List[str]，支持单图或多图（8张）输入
+        """
+        # 统一为列表
+        if isinstance(image_paths, str):
+            image_paths = [image_paths]
+
         if self.api_type == "local_model":
             if hasattr(self, 'processor') and self.processor is not None:
-                messages = [{"role": "user", "content": [{"type": "image", "image": image_path}, {"type": "text", "text": prompt}]}]
+                content = [{"type": "image", "image": ip} for ip in image_paths]
+                content.append({"type": "text", "text": prompt})
+                messages = [{"role": "user", "content": content}]
                 inputs = self.processor.apply_chat_template(messages, tokenize=True, add_generation_prompt=True, return_dict=True, return_tensors="pt")
                 inputs = inputs.to(self.model.device)
                 gen_kwargs = {"max_new_tokens": self.max_tokens, "temperature": self.temperature, "do_sample": self.temperature > 0}
                 return self.model.generate(**inputs, **gen_kwargs), inputs
             else:
-                query = self.tokenizer.from_list_format([{'image': image_path}, {'text': prompt}])
+                fmt = [{'image': ip} for ip in image_paths] + [{'text': prompt}]
+                query = self.tokenizer.from_list_format(fmt)
                 inputs = self.tokenizer(query, return_tensors='pt').to(self.model.device)
                 return self.model.generate(**inputs, max_new_tokens=self.max_tokens, temperature=self.temperature), inputs
 
         elif self.api_type == "openai_sdk":
-            base64_image = self._encode_image(image_path)
+            content = [{"type": "text", "text": prompt}]
+            for ip in image_paths:
+                b64 = self._encode_image(ip)
+                content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
             return self.client.chat.completions.create(
                 model=self.config.get("model_name", "gpt-4-vision-preview"),
-                messages=[{"role": "user", "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}]}],
+                messages=[{"role": "user", "content": content}],
                 max_tokens=self.max_tokens, temperature=self.temperature
             )
 
         elif self.api_type == "gemini_sdk":
             from google.genai import types
-            img = Image.open(image_path)
+            imgs = [Image.open(ip) for ip in image_paths]
             config = types.GenerateContentConfig(
                 temperature=self.temperature, max_output_tokens=self.max_tokens,
                 thinking_config=types.ThinkingConfig(include_thoughts=True)
             )
-            return self.model.models.generate_content(model=self.config.get("model_name", "gemini-3-pro-preview"), contents=[prompt, img], config=config)
+            contents = [prompt] + imgs
+            return self.model.models.generate_content(model=self.config.get("model_name", "gemini-3-pro-preview"), contents=contents, config=config)
 
         elif self.api_type == "requests":
-            base64_image = self._encode_image(image_path)
+            content = [{"type": "text", "text": prompt}]
+            for ip in image_paths:
+                b64 = self._encode_image(ip)
+                content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
             payload = {
                 "model": self.config.get("model_name", "qwen3-vl-4b"),
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-                        ]
-                    }
-                ],
+                "messages": [{"role": "user", "content": content}],
                 "temperature": self.temperature,
                 "max_tokens": self.max_tokens
             }
@@ -246,14 +258,18 @@ class VLMAgent:
             resp.raise_for_status()
             return resp.json()
 
-    def get_decision(self, image_path: str, prompt: str):
-        """单图推理主入口"""
+    def get_decision(self, image_paths, prompt: str):
+        """多图推理主入口。
+
+        Args:
+            image_paths: str 或 List[str]，支持单图或8张多视角图像
+        """
         response, thought = "ERROR", None
         input_tokens, output_tokens = 0, 0
         start_time = time.perf_counter()
 
         try:
-            raw_result = self._execute_inference(image_path, prompt)
+            raw_result = self._execute_inference(image_paths, prompt)
 
             if self.api_type == "local_model":
                 gen_ids, inputs = raw_result
@@ -296,13 +312,34 @@ class VLMAgent:
 
         latency = time.perf_counter() - start_time
         logger.info(f"[EVAL] Latency: {latency:.2f}s | Tokens: {input_tokens} -> {output_tokens}")
-        
+
         return response, latency, self._parse_action(response), thought
 
     def _encode_image(self, image_path):
         with open(image_path, "rb") as f:
             return base64.b64encode(f.read()).decode('utf-8')
 
-    def _parse_action(self, response: str) -> int:
-        match = re.search(r"Action:?\s*\[?(\d+)\]?", response, re.IGNORECASE)
-        return int(match.group(1)) if match else 0
+    def _parse_action(self, response: str) -> tuple:
+        """解析 VLM 输出的动作，返回 (phase_id, green_duration) 元组。
+
+        支持新格式: Action: phase=X, duration=Y
+        兼容旧格式: Action: X
+        duration 必须在候选集 [10, 15, 20, 25, 30, 35] 内，否则取最近合法值。
+        """
+        from src.utils.tsc_env.tsc_wrapper import GREEN_DURATION_CANDIDATES
+
+        # 新格式：phase=X, duration=Y
+        new_fmt = re.search(r"Action:.*?phase\s*=\s*(\d+).*?duration\s*=\s*(\d+)", response, re.IGNORECASE | re.DOTALL)
+        if new_fmt:
+            phase_id = int(new_fmt.group(1))
+            duration = int(new_fmt.group(2))
+            # 取最近候选值
+            duration = min(GREEN_DURATION_CANDIDATES, key=lambda x: abs(x - duration))
+            return phase_id, duration
+
+        # 兼容旧格式：Action: X
+        old_fmt = re.search(r"Action:?\s*\[?(\d+)\]?", response, re.IGNORECASE)
+        if old_fmt:
+            return int(old_fmt.group(1)), GREEN_DURATION_CANDIDATES[len(GREEN_DURATION_CANDIDATES) // 2]
+
+        return 0, GREEN_DURATION_CANDIDATES[len(GREEN_DURATION_CANDIDATES) // 2]

@@ -36,10 +36,15 @@ TSHUB_ENV_CONFIG = {
     "hightlight": False,
     
     # TLS (Traffic Light System)
-    # 信号灯动作类型：'next_or_not' (切换/保持), 'choose_next_phase' (指定相位) 等
-    "tls_action_type": 'next_or_not', 
-    # 动作决策的时间间隔（秒），即每隔多少秒执行一次控制动作，实际为delta_time + yellow_time
+    # 信号灯动作类型：
+    #   'next_or_not'                   : 切换/保持（固定 delta_time）
+    #   'choose_next_phase'             : 选相位（固定 delta_time）
+    #   'choose_next_phase_with_duration': 选相位 + 动态绿灯时长（异步决策，推荐）
+    "tls_action_type": 'choose_next_phase_with_duration',
+    # 默认绿灯持续时间（秒），仅在 choose_next_phase_with_duration 模式下作为初始/fallback 时长
     "delta_time": 27,
+    # 绿灯时长候选集（秒），供 LVLM 从中选择；与 choose_next_phase_with_duration 配合使用
+    "green_duration_candidates": [10, 15, 20, 25, 30, 35],
     
     # Files
     # 额外的 NET 文件路径（在 sumo.cfg 之外指定），默认为 None
