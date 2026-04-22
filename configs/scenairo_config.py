@@ -51,6 +51,7 @@ SCENARIO_CONFIGS = {
         "NETFILE": "ymt_eval",
         "JUNCTION_NAME": "J1",
         "PHASE_NUMBER": 3,
+        "APPROACH_DIRS": ["N", "E", "S", "W"],
         "CENTER_COORDINATES": (172, 201, 100),
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:0, 3:1},
         "RENDERER_CFG": {
@@ -77,6 +78,7 @@ SCENARIO_CONFIGS = {
         "NETFILE": "songdo_eval",
         "JUNCTION_NAME": "J2",
         "PHASE_NUMBER": 4,
+        "APPROACH_DIRS": ["N", "E", "S", "W"],
         "CENTER_COORDINATES": (900, 1641, 100),
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:1, 3:0},
         "RENDERER_CFG": {
@@ -109,6 +111,8 @@ SCENARIO_CONFIGS = {
         "NETFILE": "massy_eval",
         "JUNCTION_NAME": "INT1",
         "PHASE_NUMBER": 2,
+        # T字路口：仅 North / South / West 三个进口道，无 East 进口道
+        "APPROACH_DIRS": ["N", "S", "W"],
         "CENTER_COORDINATES": (173, 244, 100),
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:1, 2:0},
         "RENDERER_CFG": {
@@ -135,6 +139,7 @@ SCENARIO_CONFIGS = {
         "NETFILE": "jinan",
         "JUNCTION_NAME": _JINAN_JUNCTIONS,
         "PHASE_NUMBER": 4,
+        "APPROACH_DIRS": ["N", "E", "S", "W"],
         "CENTER_COORDINATES": (173, 244, 100),
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:1, 3:0},
         "RENDERER_CFG": {
@@ -161,6 +166,7 @@ SCENARIO_CONFIGS = {
         "NETFILE": "NewYork",
         "JUNCTION_NAME": _NEWYORK_JUNCTIONS,
         "PHASE_NUMBER": 4,
+        "APPROACH_DIRS": ["N", "E", "S", "W"],
         "CENTER_COORDINATES": (172, 201, 100),
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:0, 3:1},
         "RENDERER_CFG": {
@@ -187,6 +193,7 @@ SCENARIO_CONFIGS = {
         "NETFILE": "Hangzhou",
         "JUNCTION_NAME": _HANGZHOU_JUNCTIONS,
         "PHASE_NUMBER": 4,
+        "APPROACH_DIRS": ["N", "E", "S", "W"],
         "CENTER_COORDINATES": (172, 201, 100),
         "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:0, 3:1},
         "RENDERER_CFG": {

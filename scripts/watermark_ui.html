@@ -15,6 +15,7 @@
         .input-row .val { width: 40px; text-align: right; font-size: 12px; }
         #configOutput { width: 100%; height: 200px; font-family: monospace; font-size: 10px; margin-top: 20px; white-space: pre-wrap; background: #fff; padding: 5px; box-sizing: border-box; }
         #imageUpload { margin-bottom: 15px; }
+        #approachSelect { width: 100%; padding: 5px; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -22,7 +23,7 @@
         <h3>Watermark Tuner (水印调参工具)</h3>
         <!-- 上传测试图像源文件 -->
         <input type="file" id="imageUpload" accept="image/*">
-        
+
         <div class="control-group" id="sceneSelector">
             <label style="color: black;">Scene Preset (选择场景预设)</label>
             <select id="presetSelect" style="width: 100%; padding: 5px;">
@@ -31,6 +32,8 @@
                 <option value="SONGDO_4WAY_RHT_ASYM">SONGDO_4WAY_RHT_ASYM (Songdo)</option>
                 <option value="YMT_4WAY_LHT_3LANE">YMT_4WAY_LHT_3LANE (Hongkong)</option>
             </select>
+            <label style="color: black; margin-top: 8px;">Approach (选择方向)</label>
+            <select id="approachSelect"></select>
         </div>
 
         <div id="controlsContainer"></div>
@@ -38,7 +41,7 @@
         <button id="saveBtn" style="margin-top: 10px; width: 100%; padding: 10px; background: #28a745; color: white; border: none; cursor: pointer; border-radius: 4px; font-weight: bold;">Save to add_lane_watermarks.py (保存到脚本)</button>
         <p style="font-size: 11px; color: #666; margin-top: 10px;">Tip: Use sliders to adjust, or drag the numbers directly on the canvas to move their offset. Rotate the numbers to align with the lanes. (提示: 支持拖动调节 X/Y 偏移以及手动滑块调节，可同时旋转整个水印组)</p>
     </div>
-    
+
     <div id="main">
         <canvas id="canvas"></canvas>
     </div>
@@ -47,39 +50,94 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         let img = new Image();
-        let W = 0, H = 0; // 图像宽高
+        let W = 0, H = 0;
         const sliderValueMap = new Map();
-        
-        // 场景布局初始化默认数据。参数意义与 python 后端严格对齐。
-        const presets = {
-            "4_WAY_RHT_3LANE": { approaches: { 
-                South: { type: "vertical", lanes: 3, side_sign: 1, lane_w_ratio: 0.025, x_offset_ratio: -0.001950275590701156, y_offset_ratio: 0.08384862204649422, text_rotation: 0 }, 
-                North: { type: "vertical", lanes: 3, side_sign: -1, lane_w_ratio: 0.025, x_offset_ratio: 0.0019502755907011005, y_offset_ratio: -0.07829614173018393, text_rotation: 0 }, 
-                West: { type: "horizontal", lanes: 3, side_sign: 1, lane_w_ratio: 0.025, x_offset_ratio: -0.08444751968368965, y_offset_ratio: -0.0009751377953506335, text_rotation: 0 }, 
-                East: { type: "horizontal", lanes: 3, side_sign: -1, lane_w_ratio: 0.025, x_offset_ratio: 0.08152210629763791, y_offset_ratio: 0.01365192913490798, text_rotation: 0 } 
-            }},
-            "T_JUNCTION_RHT_2LANE": { approaches: { 
-                North: { type: "vertical", lanes: 2, side_sign: -1, lane_w_ratio: 0.028, x_offset_ratio: -0.008074586613948265, y_offset_ratio: -0.08565192913490798, text_rotation: -21 }, 
-                South: { type: "vertical", lanes: 2, side_sign: 1, lane_w_ratio: 0.029, x_offset_ratio: 0.059831476381476886, y_offset_ratio: 0.048746968502287394, text_rotation: -26 }, 
-                West: { type: "horizontal", lanes: 2, side_sign: 1, lane_w_ratio: 0.029, x_offset_ratio: -0.053243110232471316, y_offset_ratio: 0.01725413386051723, text_rotation: -28 } 
-            }},
-            "SONGDO_4WAY_RHT_ASYM": { approaches: { 
-                North: { type: "vertical", lanes: 6, side_sign: -1, lane_w_ratio: 0.019, x_offset_ratio: -0.004879257438008655, y_offset_ratio: -0.24927554462805193, text_rotation: -3 }, 
-                South: { type: "vertical", lanes: 5, side_sign: 1, lane_w_ratio: 0.0198, x_offset_ratio: 0.02683591590904766, y_offset_ratio: 0.256106505041264, text_rotation: 0 }, 
-                West: { type: "horizontal", lanes: 6, side_sign: 1, lane_w_ratio: 0.0198, x_offset_ratio: -0.22487925743800863, y_offset_ratio: 0.03903405950406924, text_rotation: 17 }, 
-                East: { type: "horizontal", lanes: 5, side_sign: -1, lane_w_ratio: 0.022, x_offset_ratio: 0.21219318809918622, y_offset_ratio: -0.03903405950406924, text_rotation: 17 } 
-            }},
-            "YMT_4WAY_LHT_3LANE": { approaches: { 
-                South: { type: "vertical", lanes: 3, side_sign: -1, lane_w_ratio: 0.025, x_offset_ratio: 0.012975137795350578, y_offset_ratio: 0.0907265157488563, text_rotation: -8 }, 
-                North: { type: "vertical", lanes: 3, side_sign: 1, lane_w_ratio: 0.025, x_offset_ratio: -0.011024862204649367, y_offset_ratio: -0.09572651574885631, text_rotation: -8 }, 
-                West: { type: "horizontal", lanes: 3, side_sign: -1, lane_w_ratio: 0.025, x_offset_ratio: -0.09670165354420683, y_offset_ratio: 0.01657734252095977, text_rotation: -9 }, 
-                East: { type: "horizontal", lanes: 3, side_sign: 1, lane_w_ratio: 0.025, x_offset_ratio: 0.09280110236280452, y_offset_ratio: -0.007801102362804513, text_rotation: -7 } 
-            }}
-        };
 
-        let currentConfig = JSON.parse(JSON.stringify(presets["4_WAY_RHT_3LANE"]));
+        let presets = {};
+        let currentScenario = "4_WAY_RHT_3LANE";
+        let currentConfig = null;
+        let currentApproach = null;
 
-        // 加载外部图片供背景预览
+        let autoSaveTimer = null;
+        function scheduleAutoSave() {
+            if (autoSaveTimer) clearTimeout(autoSaveTimer);
+            autoSaveTimer = setTimeout(async () => {
+                try {
+                    await fetch('/api/save_config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ config_key: currentScenario, config: currentConfig })
+                    });
+                    const btn = document.getElementById('saveBtn');
+                    btn.textContent = "Saved";
+                    setTimeout(() => btn.textContent = "Save to add_lane_watermarks.py (保存到脚本)", 1000);
+                } catch(e) {}
+            }, 300);
+        }
+
+        async function initConfig() {
+            try {
+                const res = await fetch('/api/get_config');
+                presets = await res.json();
+            } catch(e) {
+                console.error(e);
+            }
+            updateSceneSelector();
+        }
+
+        function updateSceneSelector() {
+            const select = document.getElementById('presetSelect');
+            select.innerHTML = '';
+            for (const key in presets) {
+                const opt = document.createElement('option');
+                opt.value = key;
+                opt.textContent = key;
+                select.appendChild(opt);
+            }
+            if (presets[currentScenario]) {
+                select.value = currentScenario;
+            } else if (Object.keys(presets).length > 0) {
+                currentScenario = Object.keys(presets)[0];
+                select.value = currentScenario;
+            }
+            loadScenarioConfig();
+        }
+
+        function updateApproachSelector() {
+            const select = document.getElementById('approachSelect');
+            select.innerHTML = '';
+            if (!currentConfig) return;
+            const approaches = Object.keys(currentConfig);
+            for (const ap of approaches) {
+                const opt = document.createElement('option');
+                opt.value = ap;
+                opt.textContent = ap;
+                select.appendChild(opt);
+            }
+            // 保留已选方向，若不存在则选第一个
+            if (currentApproach && approaches.includes(currentApproach)) {
+                select.value = currentApproach;
+            } else {
+                currentApproach = approaches[0] || null;
+                if (currentApproach) select.value = currentApproach;
+            }
+        }
+
+        function loadScenarioConfig() {
+            if (presets[currentScenario]) {
+                currentConfig = JSON.parse(JSON.stringify(presets[currentScenario]));
+            } else {
+                currentConfig = {};
+            }
+            // 切换场景时重置方向选择
+            currentApproach = Object.keys(currentConfig)[0] || null;
+            updateApproachSelector();
+            buildControls();
+            draw();
+        }
+
+        initConfig();
+
         document.getElementById('imageUpload').addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
@@ -88,7 +146,7 @@
                     img.onload = function() {
                         W = img.width; H = img.height;
                         canvas.width = W; canvas.height = H;
-                        draw(); // 图像读取完毕后触发初次渲染
+                        draw();
                     }
                     img.src = event.target.result;
                 }
@@ -96,9 +154,13 @@
             }
         });
 
-        // 切换场景
         document.getElementById('presetSelect').addEventListener('change', function(e) {
-            currentConfig = JSON.parse(JSON.stringify(presets[e.target.value]));
+            currentScenario = e.target.value;
+            loadScenarioConfig();
+        });
+
+        document.getElementById('approachSelect').addEventListener('change', function(e) {
+            currentApproach = e.target.value;
             buildControls();
             draw();
         });
@@ -110,30 +172,6 @@
             return Number(value).toFixed(6);
         }
 
-        function laneLocalOffset(laneIdx, nLanes, laneWidthPx) {
-            return (laneIdx - (nLanes + 1) / 2) * laneWidthPx;
-        }
-
-        // 返回每条车道相对进口道组中心的未旋转偏移 {lane_idx, rx, ry}
-        // 与后端 _draw_approach_rigid 的刚体旋转逻辑严格对齐：
-        // 坐标不做旋转，旋转由 draw() 在整个组层面统一施加
-        function getApproachLanePoints(cfg) {
-            if (!W || !H) return [];
-            const laneWidthPx = W * cfg.lane_w_ratio;
-            const points = [];
-
-            for (let laneIdx = 1; laneIdx <= cfg.lanes; laneIdx++) {
-                const laneOffset = laneLocalOffset(laneIdx, cfg.lanes, laneWidthPx);
-                let rx = 0, ry = 0;
-                if (cfg.type === "vertical") rx = cfg.side_sign * laneOffset;
-                else ry = cfg.side_sign * laneOffset;
-                points.push({ lane_idx: laneIdx, rx, ry });
-            }
-
-            return points;
-        }
-
-        // 通用的生成滑块的逻辑
         function createSlider(container, label, value, min, max, step, param, approach) {
             const row = document.createElement('div');
             row.className = 'input-row';
@@ -143,52 +181,54 @@
             const valSpan = document.createElement('span');
             valSpan.className = 'val';
             valSpan.textContent = formatValue(param, value);
-            // 绑定滑块拖动事件，触发界面绘制更新数据
+
             input.oninput = function() {
-                currentConfig.approaches[approach][param] = parseFloat(this.value);
+                currentConfig[approach][param] = parseFloat(this.value);
                 valSpan.textContent = formatValue(param, parseFloat(this.value));
                 draw();
+                scheduleAutoSave();
             };
-            
+
             const sliderId = approach + '_' + param;
             input.id = sliderId;
             sliderValueMap.set(sliderId, valSpan);
-            
+
             row.appendChild(lbl); row.appendChild(input); row.appendChild(valSpan);
             container.appendChild(row);
         }
 
-        // 以选择的场景动态创建各个进口道的滑块侧边栏
         function buildControls() {
             const container = document.getElementById('controlsContainer');
             container.innerHTML = '';
+            if (!currentConfig || !currentApproach) return;
 
-            for (const [approach, cfg] of Object.entries(currentConfig.approaches)) {
-                const div = document.createElement('div');
-                div.className = 'control-group';
-                div.innerHTML = `<label>${approach} Approach</label>`;
-                
-                // 参数1: lane_w_ratio (车道宽)
-                // 参数2: x_offset_ratio (纯横向偏移比例)
-                // 参数3: y_offset_ratio (纯纵向偏移比例)
-                // 参数4: text_rotation (纯角度旋转)
-                createSlider(div, 'lane_w_ratio', cfg.lane_w_ratio, 0.005, 0.1, 0.001, 'lane_w_ratio', approach);
-                createSlider(div, 'x_offset_ratio', cfg.x_offset_ratio || 0, -0.5, 0.5, 0.001, 'x_offset_ratio', approach);
-                createSlider(div, 'y_offset_ratio', cfg.y_offset_ratio || 0, -0.5, 0.5, 0.001, 'y_offset_ratio', approach);
-                createSlider(div, 'text_rotation (°)', cfg.text_rotation || 0, -180, 180, 1, 'text_rotation', approach);
-                
-                container.appendChild(div);
-            }
+            const approach = currentApproach;
+            const cfg = currentConfig[approach];
+            if (!cfg) return;
+
+            const div = document.createElement('div');
+            div.className = 'control-group';
+            div.innerHTML = `<label>${approach}</label>`;
+
+            createSlider(div, 'lane_w_ratio', cfg.lane_w_ratio || 0.05, 0.005, 0.2, 0.001, 'lane_w_ratio', approach);
+            createSlider(div, 'x_offset_ratio', cfg.x_offset_ratio || 0, -0.5, 0.5, 0.001, 'x_offset_ratio', approach);
+            createSlider(div, 'y_offset_ratio', cfg.y_offset_ratio || 0, -0.5, 0.5, 0.001, 'y_offset_ratio', approach);
+            createSlider(div, 'text_rotation (°)', cfg.text_rotation || 0, -180, 180, 1, 'text_rotation', approach);
+            createSlider(div, 'text_pos_x', cfg.text_pos_x || 0.5, 0, 1, 0.001, 'text_pos_x', approach);
+            createSlider(div, 'text_pos_y', cfg.text_pos_y || 0.05, 0, 1, 0.001, 'text_pos_y', approach);
+            createSlider(div, 'lane_font_size_ratio', cfg.lane_font_size_ratio || 0.05, 0.01, 0.2, 0.001, 'lane_font_size_ratio', approach);
+            createSlider(div, 'text_font_size_ratio', cfg.text_font_size_ratio || 0.05, 0.01, 0.2, 0.001, 'text_font_size_ratio', approach);
+
+            container.appendChild(div);
         }
 
-        /* ----- 鼠标拖动物理属性计算区域 ----- */
-        let draggingApproach = null;
+        let dragTarget = null;
         let startScaleX = 0, startScaleY = 0;
-        let startOffX = 0, startOffY = 0;
+        let startOffXs = 0, startOffYs = 0;
 
         canvas.addEventListener('mousedown', function(e) {
-            if (!W) return;
-            draggingApproach = null;
+            if (!W || !currentConfig || !currentApproach) return;
+            dragTarget = null;
             const rect   = canvas.getBoundingClientRect();
             const scaleX = canvas.width  / rect.width;
             const scaleY = canvas.height / rect.height;
@@ -196,158 +236,157 @@
             const mouseY = (e.clientY - rect.top)  * scaleY;
 
             const Cx = W / 2.0, Cy = H / 2.0;
-            let minDist = Infinity;
+            const approach = currentApproach;
+            const cfg = currentConfig[approach];
+            if (!cfg) return;
 
-            // 用进口道组中心（而非各车道坐标质心）作为拖拽命中判定点
-            for (const [approach, cfg] of Object.entries(currentConfig.approaches)) {
-                const gx = Cx + W * (cfg.x_offset_ratio || 0);
-                const gy = Cy + H * (cfg.y_offset_ratio || 0);
-                const d  = Math.hypot(gx - mouseX, gy - mouseY);
-                if (d < Math.max(40, W * 0.06) && d < minDist) {
-                    minDist = d;
-                    draggingApproach = approach;
-                }
-            }
-            // 成功选中，初始化拖拽基准
-            if (draggingApproach) {
+            // Group center
+            const gx = Cx + W * (cfg.x_offset_ratio || 0);
+            const gy = Cy + H * (cfg.y_offset_ratio || 0);
+            const d_group = Math.hypot(gx - mouseX, gy - mouseY);
+
+            // Text center
+            const tx = W * (cfg.text_pos_x || 0.5);
+            const ty = H * (cfg.text_pos_y || 0.05);
+            const d_text = Math.hypot(tx - mouseX, ty - mouseY);
+
+            const threshold = Math.max(40, W * 0.06);
+
+            if (d_group < threshold && d_group <= d_text) {
+                dragTarget = "group";
                 startScaleX = mouseX; startScaleY = mouseY;
-                startOffX = currentConfig.approaches[draggingApproach].x_offset_ratio || 0;
-                startOffY = currentConfig.approaches[draggingApproach].y_offset_ratio || 0;
+                startOffXs = cfg.x_offset_ratio || 0;
+                startOffYs = cfg.y_offset_ratio || 0;
+            } else if (d_text < threshold) {
+                dragTarget = "text";
+                startScaleX = mouseX; startScaleY = mouseY;
+                startOffXs = cfg.text_pos_x || 0.5;
+                startOffYs = cfg.text_pos_y || 0.05;
             }
         });
 
-        // 进行位移并在前端更新界面数据
         canvas.addEventListener('mousemove', function(e) {
-            if(!draggingApproach) return;
+            if (!dragTarget || !currentConfig || !currentApproach) return;
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
             const scaleY = canvas.height / rect.height;
             const mouseX = (e.clientX - rect.left) * scaleX;
             const mouseY = (e.clientY - rect.top) * scaleY;
-            
-            // 计算位移比例差值
+
             const dx = (mouseX - startScaleX) / W;
             const dy = (mouseY - startScaleY) / H;
-            
-            currentConfig.approaches[draggingApproach].x_offset_ratio = startOffX + dx;
-            currentConfig.approaches[draggingApproach].y_offset_ratio = startOffY + dy;
-            
-            // 同步调整侧边栏的 Slider 参数反映实时拖拽的数据
-            const dxSlider = document.getElementById(draggingApproach + '_x_offset_ratio');
-            const dySlider = document.getElementById(draggingApproach + '_y_offset_ratio');
-            const nextX = startOffX + dx;
-            const nextY = startOffY + dy;
-            if(dxSlider) {
-                dxSlider.value = nextX;
-                const valSpan = sliderValueMap.get(dxSlider.id);
-                if (valSpan) valSpan.textContent = formatValue('x_offset_ratio', nextX);
+
+            const nextX = startOffXs + dx;
+            const nextY = startOffYs + dy;
+            const approach = currentApproach;
+
+            if (dragTarget === "group") {
+                currentConfig[approach].x_offset_ratio = nextX;
+                currentConfig[approach].y_offset_ratio = nextY;
+
+                const dxSlider = document.getElementById(approach + '_x_offset_ratio');
+                const dySlider = document.getElementById(approach + '_y_offset_ratio');
+                if(dxSlider) {
+                    dxSlider.value = nextX;
+                    const valSpan = sliderValueMap.get(dxSlider.id);
+                    if (valSpan) valSpan.textContent = formatValue('x_offset_ratio', nextX);
+                }
+                if(dySlider) {
+                    dySlider.value = nextY;
+                    const valSpan = sliderValueMap.get(dySlider.id);
+                    if (valSpan) valSpan.textContent = formatValue('y_offset_ratio', nextY);
+                }
+            } else if (dragTarget === "text") {
+                currentConfig[approach].text_pos_x = nextX;
+                currentConfig[approach].text_pos_y = nextY;
+
+                const dxSlider = document.getElementById(approach + '_text_pos_x');
+                const dySlider = document.getElementById(approach + '_text_pos_y');
+                if(dxSlider) {
+                    dxSlider.value = nextX;
+                    const valSpan = sliderValueMap.get(dxSlider.id);
+                    if (valSpan) valSpan.textContent = formatValue('text_pos_x', nextX);
+                }
+                if(dySlider) {
+                    dySlider.value = nextY;
+                    const valSpan = sliderValueMap.get(dySlider.id);
+                    if (valSpan) valSpan.textContent = formatValue('text_pos_y', nextY);
+                }
             }
-            if(dySlider) {
-                dySlider.value = nextY;
-                const valSpan = sliderValueMap.get(dySlider.id);
-                if (valSpan) valSpan.textContent = formatValue('y_offset_ratio', nextY);
-            }
-            
+
             draw();
+            scheduleAutoSave();
         });
 
-        // 停止拖拽判定
         window.addEventListener('mouseup', function() {
-            draggingApproach = null;
+            dragTarget = null;
         });
 
-        // 核心渲染逻辑——与后端 _draw_approach_rigid 刚体旋转严格对齐：
-        // 对每个进口道，平移到组中心后整体旋转，再绘制各车道数字（不单独旋转每个数字）
         function draw() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             if (img.src) ctx.drawImage(img, 0, 0);
-            if (!W || !H) return;
+            if (!W || !H || !currentConfig || !currentApproach) return;
 
             const Cx = W / 2.0, Cy = H / 2.0;
-            const fontSize = Math.max(12, W * 0.03);
-            ctx.font = `bold ${fontSize}px Arial`;
+            const approach = currentApproach;
+            const cfg = currentConfig[approach];
+            if (!cfg) return;
+
+            const n_lanes = cfg.lanes || 1;
+            const lane_w_ratio = cfg.lane_w_ratio || 0.05;
+            const xOffset  = W * (cfg.x_offset_ratio || 0);
+            const yOffset  = H * (cfg.y_offset_ratio || 0);
+            const groupCx  = Cx + xOffset;
+            const groupCy  = Cy + yOffset;
+            const rotation = (cfg.text_rotation || 0) * Math.PI / 180;
+
+            const laneFontSize = Math.max(10, W * (cfg.lane_font_size_ratio || 0.05));
+            ctx.font = `bold ${laneFontSize}px Arial`;
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillStyle = "rgba(255,255,255,0.7)";
             ctx.strokeStyle = "rgba(0,0,0,0.6)";
             ctx.lineWidth = 3;
 
-            for (const [approach, cfg] of Object.entries(currentConfig.approaches)) {
-                const points = getApproachLanePoints(cfg); // [{lane_idx, rx, ry}, ...]
-                if (!points.length) continue;
-
-                const xOffset  = W * (cfg.x_offset_ratio || 0);
-                const yOffset  = H * (cfg.y_offset_ratio || 0);
-                const groupCx  = Cx + xOffset;
-                const groupCy  = Cy + yOffset;
-                const rotation = (cfg.text_rotation || 0) * Math.PI / 180;
-
-                ctx.save();
-                // 1. 平移到进口道组中心
-                ctx.translate(groupCx, groupCy);
-                // 2. 将整个组作为刚体旋转
-                ctx.rotate(rotation);
-                // 3. 在旋转后的坐标系中，按各车道未旋转偏移绘制数字（不再单独旋转）
-                for (const pt of points) {
-                    ctx.strokeText(pt.lane_idx, pt.rx, pt.ry);
-                    ctx.fillText(pt.lane_idx, pt.rx, pt.ry);
-                }
-                ctx.restore();
+            ctx.save();
+            ctx.translate(groupCx, groupCy);
+            ctx.rotate(rotation);
+            for (let laneIdx = 1; laneIdx <= n_lanes; laneIdx++) {
+                const rx = -(laneIdx - (n_lanes + 1) / 2.0) * W * lane_w_ratio;
+                const ry = 0.0;
+                ctx.strokeText(laneIdx, rx, ry);
+                ctx.fillText(laneIdx, rx, ry);
             }
+            ctx.restore();
+
+            const textFontSize = Math.max(10, W * (cfg.text_font_size_ratio || 0.05));
+            ctx.font = `bold ${textFontSize}px Arial`;
+            const tx = W * (cfg.text_pos_x || 0.5);
+            const ty = H * (cfg.text_pos_y || 0.05);
+
+            const is_upstream = approach.startsWith("upstream_");
+            const dir_long = approach.replace("upstream_", "");
+            const type_str = is_upstream ? "Upstream" : "Downstream";
+
+            const line1 = `Approach: ${dir_long}`;
+            const line2 = `Type: ${type_str}`;
+
+            ctx.strokeText(line1, tx, ty - textFontSize * 0.6);
+            ctx.fillText(line1, tx, ty - textFontSize * 0.6);
+            ctx.strokeText(line2, tx, ty + textFontSize * 0.6);
+            ctx.fillText(line2, tx, ty + textFontSize * 0.6);
         }
 
-        // 保存按键点击事件: POST 发送 API /api/save_config 触发真正的自动写入代码逻辑
         document.getElementById('saveBtn').addEventListener('click', async function() {
-            const configKey = document.getElementById('presetSelect').value;
-            const payload = {
-                config_key: configKey,
-                config: currentConfig
-            };
-
-            const btn = document.getElementById('saveBtn');
-            const origText = btn.textContent;
-            btn.textContent = "Saving... (保存中...)";
-            btn.disabled = true;
-            
-            try {
-                // 通过 Python Server 发送参数结构以进行正则表达式覆写
-                const response = await fetch('/api/save_config', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const result = await response.json();
-                
-                if (result.success) {
-                    alert('Configuration successfully saved to add_lane_watermarks.py! (配置已成功覆写至 Python 文件！)');
-                } else {
-                    alert('Failed to save configuration: (保存失败：)' + (result.error || 'Unknown error'));
-                }
-            } catch (e) {
-                alert('Error communicating with backend server: (无法连接后台配置热更新进程：)' + e);
-            } finally {
-                btn.textContent = origText;
-                btn.disabled = false;
-            }
+            scheduleAutoSave();
         });
 
-        // 侧边栏初始化
-        buildControls();
-
-        // 检测是否通过 file:// 直接打开（而非 HTTP 服务器），提前警告用户
         if (location.protocol === 'file:') {
             const banner = document.createElement('div');
-            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;' +
-                'padding:10px 16px;font-size:13px;z-index:9999;line-height:1.5;';
-            banner.innerHTML =
-                '<b>⚠ 当前页面通过 file:// 直接打开，无法连接后端，保存功能将失效。</b><br>' +
-                '请先启动服务器：<code style="background:rgba(0,0,0,.3);padding:1px 6px;border-radius:3px;">' +
-                'python scripts/watermark_server.py</code>，' +
-                '然后在浏览器访问 <code style="background:rgba(0,0,0,.3);padding:1px 6px;border-radius:3px;">' +
-                'http://localhost:8085</code>';
+            banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#c0392b;color:#fff;padding:10px 16px;z-index:9999;';
+            banner.innerHTML = '请先启动服务器：python scripts/watermark_server.py，然后在浏览器访问 http://localhost:8085';
             document.body.prepend(banner);
         }
-        
-    </script>
+</script>
 </body>
 </html>

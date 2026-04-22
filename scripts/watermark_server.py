@@ -96,6 +96,40 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Location', HTML_PATH)
             self._send_cors_headers()
             self.end_headers()
+        elif self.path.startswith('/api/get_config'):
+            import ast
+            try:
+                script_path = os.path.join(os.path.dirname(__file__), 'add_lane_watermarks.py')
+                with open(script_path, 'r', encoding='utf-8') as sf:
+                    content = sf.read()
+                start_idx = content.find("WATERMARK_CONFIGS = {")
+                if start_idx != -1:
+                    brace_start = content.find('{', start_idx)
+                    brace_count = 0
+                    brace_end = -1
+                    for i in range(brace_start, len(content)):
+                        if content[i] == '{': brace_count += 1
+                        elif content[i] == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                brace_end = i
+                                break
+                    if brace_end != -1:
+                        dict_str = content[brace_start:brace_end+1]
+                        config_dict = ast.literal_eval(dict_str)
+                        self.send_response(200)
+                        self.send_header('Content-Type', 'application/json')
+                        self._send_cors_headers()
+                        self.end_headers()
+                        self.wfile.write(json.dumps(config_dict).encode())
+                        return
+            except Exception as e:
+                print(f"Error reading config: {e}")
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(b"{}")
         else:
             # 其余路径交由父类提供静态文件服务（CSS、JS、图片等）
             super().do_GET()
@@ -127,10 +161,10 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
-    def log_message(self, fmt, *args):
+    def log_message(self, format, *args):
         """屏蔽静态文件的日志噪音，只打印 API 请求。"""
-        if '/api/' in (args[0] if args else ''):
-            super().log_message(fmt, *args)
+        if hasattr(self, 'path') and self.path and '/api/' in self.path:
+            super().log_message(format, *args)
 
 
 if __name__ == '__main__':

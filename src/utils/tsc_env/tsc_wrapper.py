@@ -4,7 +4,7 @@
 @Description: 处理 TSCHub ENV 中的 state, reward (处理后的 state 作为 RL 的输入)
 + state: 5 个时刻的每一个 movement 的 queue length
 + reward: 路口总的 waiting time
-LastEditTime: 2026-04-21 20:11:40
+LastEditTime: 2026-04-21 23:36:16
 '''
 import numpy as np
 import gymnasium as gym
@@ -305,21 +305,12 @@ class TSCEnvWrapper(gym.Wrapper):
         
         # 处理好的时序的 state
         render_json = states.copy()
-        # 在删除 next_tls 之前，先把每辆车的下一个信号灯信息存入 infos，
-        # 供上层做路口拓扑推断（上下游协同广播板使用）
-        vehicle_next_tls: dict = {}
-        if 'vehicle' in render_json and isinstance(render_json['vehicle'], dict):
-            render_json['vehicle'] = {k: v.copy() for k, v in render_json['vehicle'].items()}
-            for veh_id, vehicle_info in render_json['vehicle'].items():
-                if 'next_tls' in vehicle_info:
-                    vehicle_next_tls[veh_id] = vehicle_info.pop('next_tls')
+        
 
         avg_occupancy = self.occupancy.calculate_average()
         rewards = self.compute_rollout_q_value(rewards_list=rewards_list)
         infos = self.info_wrapper(infos, occupancy=avg_occupancy)
         infos['3d_data'] = sensor_data
-        # 将 next_tls 拓扑信息透传给上层（用于上下游协同）
-        infos['vehicle_next_tls'] = vehicle_next_tls
         self.states.append(avg_occupancy)
         state = self.get_state()
 

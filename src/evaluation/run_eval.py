@@ -200,6 +200,10 @@ class Evaluator:
             self.env_params['renderer_cfg'] = ft_cfg
             self.env_params['sensor_cfg'] = None
 
+        # 本场景的进口道方向列表（T字路口等非标准路口可能少于4个方向）
+        self.approach_dirs = self.scenario_config.get("APPROACH_DIRS", ['N', 'E', 'S', 'W'])
+        logger.info(f"[EVAL] Approach directions: {self.approach_dirs}")
+
         self._log_configurations()
 
         # --- 2. 初始化仿真环境 ---
@@ -250,21 +254,19 @@ class Evaluator:
         logger.info(f"[CFG] {json.dumps(MODEL_CONFIG, indent=2, sort_keys=True, default=str)}")
         logger.info("[CFG] ==========================================")
 
-    # 进口道方向顺序（N/E/S/W，顺时针）
-    _APPROACH_DIRS = ['N', 'E', 'S', 'W']
-
-    def _collect_8_images(self, jid: str, sensor_imgs: dict, step_dir: str) -> List:
-        """采集路口 jid 的 8 张图像（4 进口道 + 4 上游），保存到 step_dir。
+    def _collect_images(self, jid: str, sensor_imgs: dict, step_dir: str,
+                        approach_dirs: List[str]) -> List[str]:
+        """采集路口 jid 的多视角图像，按 approach_dirs 指定的方向采集进口道和上游各一张。
 
         图像命名格式：{element_id}.png
-        返回有序路径列表（N/E/S/W 进口道 → N/E/S/W 上游），缺失位置为 None。
-        若全部缺失则返回空列表。
+        返回已成功保存的图像路径列表（不含 None），顺序为：
+          各方向进口道停止线视图（按 approach_dirs 顺序）→ 各方向上游视图（按 approach_dirs 顺序）
+        若全部方向均无图像数据则返回空列表。
         """
         image_paths = []
-        any_found = False
 
         for prefix in [jid, f'upstream_{jid}']:
-            for d in self._APPROACH_DIRS:
+            for d in approach_dirs:
                 element_id = f'{prefix}_{d}'
                 img_data = None
                 if element_id in sensor_imgs:
@@ -275,15 +277,12 @@ class Evaluator:
                     try:
                         cv2.imwrite(img_path, convert_rgb_to_bgr(img_data))
                         image_paths.append(img_path)
-                        any_found = True
                     except Exception as e:
                         logger.warning(f"[EVAL] 图像保存失败 {element_id}: {e}")
-                        image_paths.append(None)
                 else:
                     logger.debug(f"[EVAL] 无图像数据: {element_id}")
-                    image_paths.append(None)
 
-        return image_paths if any_found else []
+        return image_paths
 
     @staticmethod
     def _parse_phase_duration(vlm_resp: str):
@@ -430,12 +429,15 @@ class Evaluator:
                         f"[Bulletin][注入] {jid} | sumo_t={sumo_sim_step:.0f}s | 注入上游协同通知"
                     )
 
-                image_paths = self._collect_8_images(jid, sensor_imgs, jid_step_dir)
+                image_paths = self._collect_images(
+                    jid, sensor_imgs, jid_step_dir, self.approach_dirs
+                )
                 if image_paths:
                     prompt = PromptBuilder.build_decision_prompt(
                         current_phase_id=cur_phase,
                         scenario_name=self.scenario_key,
                         coordination_context=coord_ctx,
+                        available_dirs=self.approach_dirs,
                     )
                     inference_tasks.append((jid, image_paths, prompt, cur_phase, jid_step_dir))
                 else:
@@ -448,11 +450,12 @@ class Evaluator:
                     b_jids     = [t[0] for t in batch]
                     b_imgs     = [t[1] for t in batch]
                     b_prompts  = [t[2] for t in batch]
+                    b_cur_phs  = [t[3] for t in batch]
                     b_dirs     = [t[4] for t in batch]
 
                     results = self.agent.get_batch_decision(b_imgs, b_prompts)
 
-                    for jid, step_dir, (vlm_resp, latency, _, thought) in zip(b_jids, b_dirs, results):
+                    for jid, step_dir, cur_phase, (vlm_resp, latency, _, thought) in zip(b_jids, b_dirs, b_cur_phs, results):
                         # 保存 VLM 响应文本
                         gt_counts = {}
                         if 'bev_lane_vehicle_counts' in sensor_datas:
@@ -498,18 +501,18 @@ class Evaluator:
                                     current_sumo_step=sumo_sim_step,
                                 )
                         else:
+                            next_phase = (cur_phase + 1) % num_phases
+                            last_action[jid] = {'phase_id': next_phase, 'duration': FIXED_TIME_GREEN_DURATION}
                             logger.warning(
                                 f"[EVAL] VLM解析失败 | {jid} | "
-                                f"resp={str(vlm_resp)[:80]} | 沿用上次动作"
+                                f"resp={str(vlm_resp)[:80]} | 降级为 FixedTime (phase={next_phase}, duration={FIXED_TIME_GREEN_DURATION}s)"
                             )
 
-            # 保存本轮 render_json（存入第一个决策路口目录，便于调试）
+            # 保存本轮 render_json
             if deciding_jids:
-                render_dir = os.path.join(
-                    self.output_folder, deciding_jids[0], f"{int(sumo_sim_step)}"
-                )
+                render_dir = os.path.join(self.output_folder, "render_info")
                 os.makedirs(render_dir, exist_ok=True)
-                save_to_json(render_json, os.path.join(render_dir, 'render.json'))
+                save_to_json(render_json, os.path.join(render_dir, f'render_{int(sumo_sim_step)}.json'))
 
             # ── 推进仿真（传全量 last_action，非决策路口动作由 TransSimHub 忽略）──
             final_action = last_action if is_multi_agent else last_action.get(self.junction_name, 0)
@@ -545,8 +548,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="交通信号控制评测主入口（异步决策，支持 VLM / FixedTime / MaxPressure）"
     )
-    parser.add_argument("--scenario",    "-sc", type=str, default="JiNan",
-                        help="场景键名 (e.g., JiNan, Hangzhou, Hongkong_YMT)")
+    parser.add_argument("--scenario",    "-sc", type=str, default="France_Massy",
+                        help="场景键名 (e.g., JiNan, Hangzhou, Hongkong_YMT, SouthKorea_Songdo, France_Massy)")
     parser.add_argument("--log_dir",     "-l",  type=str, default="./log/eval_results",
                         help="日志输出目录")
     parser.add_argument("--route_file",  "-r",  type=str, default=None,
@@ -570,7 +573,7 @@ if __name__ == "__main__":
         scenario_key=args.scenario,
         log_dir=args.log_dir,
         route_file=args.route_file,
-        use_fixed_time=True,
+        use_fixed_time=args.fixed_time,
         use_max_pressure=args.max_pressure,
         api_url=args.api_url,
         model_name_override=args.model_name,

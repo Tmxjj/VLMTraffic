@@ -129,11 +129,12 @@ class VLMAgent:
             try:
                 messages_batch = []
                 for img_paths, p in zip(image_paths_list, prompts):
-                    # 每个路口有多张图像
+                    # 每个路口有多张图像；过滤 None（T字路口等非标准场景可能缺少某方向图像）
                     if isinstance(img_paths, (list, tuple)):
-                        content = [{"type": "image", "image": ip} for ip in img_paths]
+                        valid_paths = [ip for ip in img_paths if ip is not None]
                     else:
-                        content = [{"type": "image", "image": img_paths}]
+                        valid_paths = [img_paths] if img_paths is not None else []
+                    content = [{"type": "image", "image": ip} for ip in valid_paths]
                     content.append({"type": "text", "text": p})
                     messages_batch.append([{"role": "user", "content": content}])
 
@@ -201,11 +202,12 @@ class VLMAgent:
         """仅包含网络/模型请求的核心逻辑。
 
         Args:
-            image_paths: str 或 List[str]，支持单图或多图（8张）输入
+            image_paths: str 或 List[str]，支持单图或多图输入
         """
-        # 统一为列表
+        # 统一为列表并过滤 None（T字路口等非标准路口可能缺少某方向图像）
         if isinstance(image_paths, str):
             image_paths = [image_paths]
+        image_paths = [p for p in image_paths if p is not None]
 
         if self.api_type == "local_model":
             if hasattr(self, 'processor') and self.processor is not None:
