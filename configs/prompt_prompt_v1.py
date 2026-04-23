@@ -1,3 +1,9 @@
+'''
+Author: yufei Ji
+Date: 2026-04-23
+Description: 交叉口进口道的图片输入（4张）不需要输入上游的图片进行流量预测了，因为上游的流量预测主要是为了辅助绿灯时长的决策，而现在我们改成了直接根据当前的车道级别的排队长度来选择绿灯时长，所以上游的图片对于决策的帮助不大，反而会增加模型的输入复杂度和理解难度。因此在新的版本中，我们将不再提供上游图片作为输入，而是专注于分析进口道的图片来评估当前的交通状态和排队情况，从而做出更精准的信号控制决策。 
+'''
+
 import inspect
 
 class PromptBuilder:
@@ -41,20 +47,14 @@ Note: Left-turning vehicles are unrestricted and permitted to turn at any time.
     SCENARIO_DESCRIPTIONS = {
         "4_JUNCTION": '''
 A standard four-way intersection under **Right-Hand Traffic (RHT)** rules.
-- **Visual Input Mapping (8 Images in Sequence)**:
-You will receive 8 sequential images. **Identify each view strictly by reading its on-image text**. The expected sequence is:
 
-  [Downstream Views] (Looking outward from the intersection)
-  - Image 1: "Approach: North", "Type: Downstream"
-  - Image 2: "Approach: East", "Type: Downstream"
-  - Image 3: "Approach: South", "Type: Downstream"
-  - Image 4: "Approach: West", "Type: Downstream"
+- **Visual Input Mapping (4 Images in Sequence)**:
+You will receive **4 sequential images**. These are **tilted overhead views** of each inlet approach, focusing on the lanes near the stop line. **Identify each approach strictly by reading its on-image text**. The expected sequence is:
 
-  [Upstream Views] (Looking towards the intersection)
-  - Image 5: "Approach: North", "Type: Upstream"
-  - Image 6: "Approach: East", "Type: Upstream"
-  - Image 7: "Approach: South", "Type: Upstream"
-  - Image 8: "Approach: West", "Type: Upstream"
+  - Image 1: View of the North Approach
+  - Image 2: View of the East Approach
+  - Image 3: View of the South Approach
+  - Image 4: View of the West Approach
 
 - **Lane Layout & Numbering**:
 Each approach consists of **3 lanes**.
@@ -66,20 +66,13 @@ As indicated by the on-road numbering (1, 2, 3) in the images, lanes MUST be ide
 
         "Hongkong_SPECIAL_JUNCTION": '''
 The intersection is a high-capacity 4-way urban junction operating under **Left-Hand Traffic (LHT)** rules.
-- **Visual Input Mapping (8 Images in Sequence)**:
-You will receive 8 sequential images. **Identify each view strictly by reading its on-image text**. The expected sequence is:
+- **Visual Input Mapping (4 Images in Sequence)**:
+You will receive **4 sequential images**. These are **tilted overhead views** of each inlet approach, focusing on the lanes near the stop line. **Identify each approach strictly by reading its on-image text**. The expected sequence is:
 
-  [Downstream Views] (Looking outward from the intersection)
-  - Image 1: "Approach: North", "Type: Downstream"
-  - Image 2: "Approach: East", "Type: Downstream"
-  - Image 3: "Approach: South", "Type: Downstream"
-  - Image 4: "Approach: West", "Type: Downstream"
-
-  [Upstream Views] (Looking towards the intersection)
-  - Image 5: "Approach: North", "Type: Upstream"
-  - Image 6: "Approach: East", "Type: Upstream"
-  - Image 7: "Approach: South", "Type: Upstream"
-  - Image 8: "Approach: West", "Type: Upstream"
+  - Image 1: View of the North Approach
+  - Image 2: View of the East Approach
+  - Image 3: View of the South Approach
+  - Image 4: View of the West Approach
 
 - **Lane Layout & Numbering**:
 Each approach consists of **3 lanes**.
@@ -91,18 +84,13 @@ As indicated by the on-road numbering (1, 2, 3) in the images, lanes MUST be ide
 
         "T_JUNCTION": '''
 A T-shaped three-way junction under **Right-Hand Traffic (RHT)** rules.
-- **Visual Input Mapping (8 Images in Sequence)**:
-You will receive 8 sequential images. **Identify each view strictly by reading its on-image text**. The expected sequence is:
+- **Visual Input Mapping (4 Images in Sequence)**:
+You will receive **4 sequential images**. These are **tilted overhead views** of each inlet approach, focusing on the lanes near the stop line. **Identify each approach strictly by reading its on-image text**. The expected sequence is:
 
-  [Downstream Views] (Looking outward from the intersection)
-  - Image 1: "Approach: North", "Type: Downstream"
-  - Image 2: "Approach: South", "Type: Downstream"
-  - Image 3: "Approach: West", "Type: Downstream"
-
-  [Upstream Views] (Looking towards the intersection)
-  - Image 4: "Approach: North", "Type: Upstream"
-  - Image 5: "Approach: South", "Type: Upstream"
-  - Image 6: "Approach: West", "Type: Upstream"
+  - Image 1: View of the North Approach
+  - Image 2: View of the East Approach
+  - Image 3: View of the South Approach
+  - Image 4: View of the West Approach
 
 - **Lane Layout & Numbering**:
   Each approach has **2 lanes**. From the yellow median (center line) outward to the white curb:
@@ -113,20 +101,14 @@ You will receive 8 sequential images. **Identify each view strictly by reading i
 
         "SONGDO_5LANE_JUNCTION": '''
 A high-capacity four-way intersection under **Right-Hand Traffic (RHT)** rules.
-- **Visual Input Mapping (8 Images in Sequence)**:
-You will receive 8 sequential images. **Identify each view strictly by reading its on-image text**. The expected sequence is:
+- **Visual Input Mapping (4 Images in Sequence)**:
+You will receive **4 sequential images**. These are **tilted overhead views** of each inlet approach, focusing on the lanes near the stop line. **Identify each approach strictly by reading its on-image text**. The expected sequence is:
 
-  [Downstream Views] (Looking outward from the intersection)
-  - Image 1: "Approach: North", "Type: Downstream"
-  - Image 2: "Approach: East", "Type: Downstream"
-  - Image 3: "Approach: South", "Type: Downstream"
-  - Image 4: "Approach: West", "Type: Downstream"
+  - Image 1: View of the North Approach
+  - Image 2: View of the East Approach
+  - Image 3: View of the South Approach
+  - Image 4: View of the West Approach
 
-  [Upstream Views] (Looking towards the intersection)
-  - Image 5: "Approach: North", "Type: Upstream"
-  - Image 6: "Approach: East", "Type: Upstream"
-  - Image 7: "Approach: South", "Type: Upstream"
-  - Image 8: "Approach: West", "Type: Upstream"
 - **Lane Layout & Numbering**:
   Lanes are numbered from the **Median (Innermost)** outward to the **Curb (Outermost)**.
     - **North/West Approach** (6 lanes): Lane 1-2(Left), Lane 3-5(Straight), Lane 6(Right)
@@ -148,44 +130,44 @@ You will receive 8 sequential images. **Identify each view strictly by reading i
     COT_LANE_TEMPLATES = {
     "4_JUNCTION": '''
 North Approach:
-  Lane 1(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 3(Right): Ignored
+  Lane 1(Left): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Right): Ignored
 South Approach:
-  Lane 1(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 3(Right): Ignored
+  Lane 1(Left): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Right): Ignored
 East Approach:
-  Lane 1(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 3(Right): Ignored
+  Lane 1(Left): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Right): Ignored
 West Approach:
-  Lane 1(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 3(Right): Ignored
+  Lane 1(Left): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Right): Ignored
     ''',
 
     "Hongkong_SPECIAL_JUNCTION": '''
 North Approach:
-  Lane 1(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 3(Straight): [Queue:<Level>, UpstreamDensity:<Level>]
+  Lane 1(Straight): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Straight): [Queue:<Level>]
 South Approach:
-  Lane 1(Right): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 3(Straight): [Queue:<Level>, UpstreamDensity:<Level>]
+  Lane 1(Right): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Straight): [Queue:<Level>]
 East Approach:
-  Lane 1(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 3(Left): Ignored
+  Lane 1(Straight): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Left): Ignored
 West Approach:
-  Lane 1(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 3(Straight): [Queue:<Level>, UpstreamDensity:<Level>]
+  Lane 1(Straight): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Straight): [Queue:<Level>]
     ''',
 
     "T_JUNCTION": '''
 North Approach (Major):
-  Lane 1(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Right): Ignored
+  Lane 1(Straight): [Queue:<Level>], Lane 2(Right): Ignored
 South Approach (Major):
-  Lane 1(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Straight): [Queue:<Level>, UpstreamDensity:<Level>]
+  Lane 1(Left): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>]
 West Approach (Minor):
-  Lane 1(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Right): Ignored
+  Lane 1(Left): [Queue:<Level>], Lane 2(Right): Ignored
     ''',
 
     "SONGDO_5LANE_JUNCTION": '''
 North Approach (6 lanes):
-  Lane 1(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 3-5(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 6(Right): Ignored
+  Lane 1(Left): [Queue:<Level>], Lane 2(Left): [Queue:<Level>], Lane 3-5(Straight): [Queue:<Level>], Lane 6(Right): Ignored
 West Approach (6 lanes):
-  Lane 1(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2-5(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 6(Right): Ignored
+  Lane 1(Left): [Queue:<Level>], Lane 2-5(Straight): [Queue:<Level>], Lane 6(Right): Ignored
 East Approach (5 lanes):
-  Lane 1(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2-4(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 5(Right): Ignored
+  Lane 1(Left): [Queue:<Level>], Lane 2-4(Straight): [Queue:<Level>], Lane 5(Right): Ignored
 South Approach (5 lanes):
-  Lane 1(Left): [Queue:<Level>, UpstreamDensity:<Level>], Lane 2-4(Straight): [Queue:<Level>, UpstreamDensity:<Level>], Lane 5(Right): Ignored
+  Lane 1(Left): [Queue:<Level>], Lane 2-4(Straight): [Queue:<Level>], Lane 5(Right): Ignored
     '''
 }
 
@@ -205,13 +187,13 @@ South Approach (5 lanes):
 
     TRAFFIC_KNOWLEDGE = '''
 **Traffic Engineering Principles (Apply as World Knowledge):**
-- **Signal Starvation Prevention**: A phase that has been waiting the longest (i.e., the phase that is NOT the currently active phase) should be prioritized when queue levels are equal, to prevent any direction from being indefinitely delayed.
+- **Signal Starvation Prevention**: A phase that has been waiting the longest (i.e., the phase that is NOT the currently active phase) should be prioritized when queue levels are equal across approaches, to prevent any direction from being indefinitely delayed.
 - **Emergency Vehicle Preemption**: When an emergency vehicle (ambulance, fire truck, police car) is detected approaching, immediately grant and hold a green phase on its travel path. Emergency preemption overrides all other considerations.
 - **Transit Priority**: Buses and school buses carry high passenger loads. Grant priority passage when detected, but this is secondary to emergency preemption.
 - **Incident Capacity Reduction**: A crash or road obstruction effectively removes one or more lanes from service. Avoid selecting a phase whose movement is blocked; if all phases are partially blocked, minimize green time on the most-blocked phase.
-- **Queue Discharge Rate**: A fully loaded lane (Long queue) needs more green time to discharge than a short queue. Upstream density predicts future demand and should lengthen the green window when the current queue is already heavy.
+- **Queue Discharge Rate**: A fully loaded lane (Long or Critical queue) requires significantly more green time to complete discharge compared to a Short or Medium queue.
 - **Minimum Green Time**: Even with an empty queue, a minimum green duration is needed to allow stopped vehicles to react and start moving safely (reaction time + acceleration).
-    '''
+   '''
 
     DENSITY_LEVELS = """
     - **Density Quantification Standards**:
@@ -264,7 +246,7 @@ South Approach (5 lanes):
 
         prompt = f"""
 1. Role Description
-You are an expert in traffic signal control and computer vision. Your goal is to ensure safety, minimize delays, and handle special traffic events by analyzing visual inputs and asynchronous messages from neighboring intersections.
+You are an expert in traffic signal control and computer vision. Your goal is to ensure safety, minimize delays, and handle special traffic events by analyzing visual inputs from the intersection approaches and asynchronous messages from neighboring intersections.
 
 2. Traffic Engineering Knowledge
 {traffic_knowledge}
@@ -284,37 +266,34 @@ You must select EXACTLY ONE Phase ID and EXACTLY ONE Duration.
 Currently Active Phase: **[ Phase {current_phase_id} ]**
 
 6. Task Definition
-Based on the **8 multi-view images**, current **Scenario Information**, **Traffic Engineering Knowledge**, and **Action Space**, execute:
+Based on the **4 approach view images**, current **Scenario Information**, **Traffic Engineering Knowledge**, and **Action Space**, execute:
 
 A. Scene Understanding
-Analyze Images 1-4 (Downstream) and Images 5-8 (Upstream) to assess lane-level and phase-level traffic states. Strictly follow these steps:
+Analyze Images 1-4, which represent the tilted overhead views of the approaches, to assess lane-level traffic states near the stop line. Strictly follow these steps:
 
 **Step 1: Lane-Level Density Assessment**
 {density_standards}
-- **Queue** (from Downstream Images 1-4): The stop-line queue density of vehicles WAITING at the intersection. This is your **PRIMARY basis for Phase Selection**.
-- **UpstreamDensity** (from Upstream Images 5-8): The density of vehicles currently approaching but not yet queued. This is your **AUXILIARY basis for Duration Selection** — it estimates how much demand will arrive during the upcoming green window.
-- *Note:* Strictly **IGNORE** unrestricted turn lanes (e.g., dedicated Right-Turn lanes under RHT).
+- **Queue Density**: Identify the number of vehicles waiting at the stop line for each controlled lane. This visual assessment is your **SOLE basis for both Phase Selection and Duration Selection**.
+- *Note:* Strictly **IGNORE** unrestricted turn lanes (e.g., dedicated Right-Turn lanes under RHT) as they do not require signal control.
 
 **Step 2: Phase Mapping**
-Map lane densities to Phase IDs.For each phase, compute summary statistics combining ALL constituent lanes belonging to that phase:
-- **OverallPressure**: Evaluate the overall traffic demand for this phase (Output as: Low, Medium, High, or Severe) by holistically synthesizing the Queue densities of its governed lanes. *(Captures total demand; used for Phase Selection.)*
-- **CriticalQueue**: The MAX Queue density level between the two opposing directions. *(Captures the worst-case lane that sets the discharge time; used for Duration Selection.)*
-- **CriticalUpstream**: The MAX upstream density among the constituent lanes.
-
+Map the observed lane queue densities to Phase IDs. For each phase, compute summary statistics combining ALL constituent lanes belonging to that phase:
+- **OverallPressure**: Evaluate the overall traffic demand for this phase (Output as: Low, Medium, High, or Severe) by holistically synthesizing the Queue Densities of its governed lanes. *(Captures total demand; used for Phase Selection.)*
+- **CriticalQueue**: The MAX Queue Density level among the constituent lanes of the phase. *(Captures the worst-case lane that sets the required discharge time; used for Duration Selection.)*
 B. Scene Analysis
 **Step 1: Event Recognition**
-- Detection Task: Scan ALL 8 images for traffic events based on the defined categories below.
+- Detection Task: Scan ALL 4 images for traffic events based on the defined categories below.
 {event_description}
 - Localization:
   - IF an event is detected: Specify the `[Type]`, `[Location: Approach & Lane ID]`, and the `[Directly Affected Phase ID]`.
   - IF NO event is present: Strictly output `None`.
 
 **Step 2: Neighboring Messages**
-- Status: {"ACTIVE" if neighbor_info != "None" else "INACTIVE"}
+- Status: {"Active" if neighbor_info != "None" else "Inactive"}
 - Content: {neighbor_info}
 
 **Step 3: Condition Assessment**
-- Output strictly `Special` IF a local event is detected OR Neighboring Messages Status is ACTIVE.
+- Output strictly `Special` IF a local event is detected OR Neighboring Messages Status is Active.
 - Otherwise, output strictly `Normal`.
 
 C. Adaptive Reasoning
@@ -322,37 +301,34 @@ Based on your `Condition Assessment`, you MUST choose ONLY ONE of the following 
 
 **[Path 1] IF Condition == Normal:**
 Keep reasoning extremely concise. Limit each part to EXACTLY ONE clear sentence.
-- Phase Reasoning: Select Phase ID with the highest **OverallPressure**.
-- Duration Reasoning: Scale duration considering CriticalQueue and CriticalUpstream. Use longer durations for `Long`/`Critical`.
+- Phase Reasoning: Select Phase ID with the highest **OverallPressure** based on the observed queues.
+- Duration Reasoning: Scale duration based solely on the **CriticalQueue** level of the selected phase. Use longer durations for `Long`/`Critical` queues to ensure complete discharge.
 
 **[Path 2] IF Condition == Special:**
 Apply your traffic engineering world knowledge to reason step-by-step:
 - Impact Analysis: Evaluate how the detected local event AND/OR the received neighboring messages physically impact the current intersection's capacity and safety.
-- Phase Reasoning: Synthesize Impact Analysis and Scene Understanding; prioritize event mitigation over standard traffic pressure per the Traffic Engineering Knowledge principles.
-- Duration Reasoning: Apply your knowledge of the specific event type, its severity, and standard traffic engineering practice to determine the appropriate green duration.
-- Broadcast Notice: Output exactly "None" if no local event is detected. Otherwise, strictly format as: "[Event Type] - [Brief warning on upstream/downstream impact]".
+- Phase Reasoning: Synthesize Impact Analysis and visible queue lengths; prioritize event mitigation over standard traffic pressure per the Traffic Engineering Knowledge principles.
+- Duration Reasoning: Apply your knowledge of the specific event type, its severity, and current queue lengths to determine the appropriate green duration.
+- Broadcast Notice: Output exactly "None" if no local event is detected. Otherwise, strictly format as: "[Event Type] - [Brief warning on impact]".
 
 7. Output Format
 Thought: [
 1.Scene Understanding:
-- Lane Analysis:
+- Lane Analysis (Queue Assessment):
 {cot_lane_template}
 - Phase Mapping:
-Phase ID (<Direction, e.g., NTST>): OverallPressure: <Level> | CriticalQueue: <Level> | CriticalUpstream: <Level>
-
+[List all valid Phase IDs]: Phase <ID> (<Direction>): OverallPressure: <Level> | CriticalQueue: <Level>
 2.Scene Analysis:
 - Event Recognition: <"None" OR "[Type] detected at [Location], affects Phase [ID]">
 - Neighboring Messages: <"Inactive" OR "Active">
 - Final Condition: <"Normal" OR "Special">
-
 3.Adaptive Reasoning:
-<Strictly follow [Path 1] OR [Path 2] formatting based on your Final Condition above.>
+Strictly follow [Path 1] OR [Path 2] formatting based on your Final Condition above.
 ]
-
 Action: {{"phase": <ID>, "duration": <Duration>}}
 """
         return inspect.cleandoc(prompt).strip()
 
 if __name__ == "__main__":
-    print("--- JiNan Example ---")
-    print(PromptBuilder.build_decision_prompt(0, "JiNan_test"))
+    # Testing the generated prompt for a standard 4-way junction scenario
+    print(PromptBuilder.build_decision_prompt(current_phase_id=0, scenario_name="JiNan_test"))
