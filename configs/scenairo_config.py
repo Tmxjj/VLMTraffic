@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-04-21 19:29:35
+LastEditTime: 2026-04-23 21:37:58
 Description: 各场景配置。
     SENSOR_CFG 格式说明：
       - tls: {tls_id: {sensor_types, tls_camera_height}}   进口道摄像头（停止线处俯拍）
@@ -67,7 +67,7 @@ SCENARIO_CONFIGS = {
         },
         "SENSOR_CFG": {
             "tls": _tls_sensor_cfg("J1"),         # 进口道摄像头（停止线处）
-            "upstream": _tls_sensor_cfg("J1"),     # 上游摄像头（lane 起点处）
+            # "upstream": _tls_sensor_cfg("J1"),     # 上游摄像头（lane 起点处）
             # "aircraft": {"sensor_types": ["aircraft_all"], "height": 65.0}
         },
         "TOPOLOGY": {}  # 单交叉口场景不考虑事件广播
@@ -94,7 +94,7 @@ SCENARIO_CONFIGS = {
         },
         "SENSOR_CFG": {
             "tls": _tls_sensor_cfg("J2"),
-            "upstream": _tls_sensor_cfg("J2"),
+            # "upstream": _tls_sensor_cfg("J2"),
             # "aircraft": {
             #     "sensor_types": ["aircraft_all"],
             #     "height": 85.0,
@@ -128,7 +128,7 @@ SCENARIO_CONFIGS = {
         },
         "SENSOR_CFG": {
             "tls": _tls_sensor_cfg("INT1"),
-            "upstream": _tls_sensor_cfg("INT1"),
+            # "upstream": _tls_sensor_cfg("INT1"),
             # "aircraft": {"sensor_types": ["aircraft_all"], "height": 55.0}
         },
         "TOPOLOGY": {}  # 单交叉口场景不考虑事件广播
@@ -155,7 +155,7 @@ SCENARIO_CONFIGS = {
         },
         "SENSOR_CFG": {
             "tls": _tls_sensor_cfg(_JINAN_JUNCTIONS),
-            "upstream": _tls_sensor_cfg(_JINAN_JUNCTIONS),
+            # "upstream": _tls_sensor_cfg(_JINAN_JUNCTIONS),
             # "aircraft": {"sensor_types": ["aircraft_all"], "height": 60.0}
         },
         "TOPOLOGY": _generate_grid_topology(m=4, n=3)  # JiNan 是 4x3 路网，排除虚拟路口
@@ -182,7 +182,7 @@ SCENARIO_CONFIGS = {
         },
         "SENSOR_CFG": {
             "tls": _tls_sensor_cfg(_NEWYORK_JUNCTIONS),
-            "upstream": _tls_sensor_cfg(_NEWYORK_JUNCTIONS),
+            # "upstream": _tls_sensor_cfg(_NEWYORK_JUNCTIONS),
             # "aircraft": {"sensor_types": ["aircraft_all"], "height": 60.0}
         },
         "TOPOLOGY": _generate_grid_topology(m=7, n=28)  # NewYork 是 7*28 路网网络
@@ -209,7 +209,7 @@ SCENARIO_CONFIGS = {
         },
         "SENSOR_CFG": {
             "tls": _tls_sensor_cfg(_HANGZHOU_JUNCTIONS),
-            "upstream": _tls_sensor_cfg(_HANGZHOU_JUNCTIONS),
+            # "upstream": _tls_sensor_cfg(_HANGZHOU_JUNCTIONS),
             # "aircraft": {"sensor_types": ["aircraft_all"], "height": 60.0}
         },
         "TOPOLOGY": _generate_grid_topology(m=4, n=4)   # Hangzhou 是 4x4 路网网络

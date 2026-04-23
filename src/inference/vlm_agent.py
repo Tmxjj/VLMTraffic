@@ -1,3 +1,5 @@
+import argparse
+import os
 import torch
 from PIL import Image
 import requests
@@ -88,7 +90,7 @@ class VLMAgent:
         """支持多图多Prompt的Batch并发推理。
 
         Args:
-            image_paths_list: List[List[str]] — 每个元素是一个路口的多张图像路径列表（8张：4进口道+4上游）
+            image_paths_list: List[List[str]] — 每个元素是一个路口的多张图像路径列表（当前默认为4张进口道视图）
             prompts: List[str] — 每个路口对应的 prompt
         """
         if not image_paths_list or not prompts:
@@ -264,7 +266,7 @@ class VLMAgent:
         """多图推理主入口。
 
         Args:
-            image_paths: str 或 List[str]，支持单图或8张多视角图像
+            image_paths: str 或 List[str]，支持单图或多张进口道图像
         """
         response, thought = "ERROR", None
         input_tokens, output_tokens = 0, 0
@@ -345,3 +347,87 @@ class VLMAgent:
             return int(old_fmt.group(1)), GREEN_DURATION_CANDIDATES[len(GREEN_DURATION_CANDIDATES) // 2]
 
         return 0, GREEN_DURATION_CANDIDATES[len(GREEN_DURATION_CANDIDATES) // 2]
+
+
+def main():
+    """单次图像输入输出调试入口。
+
+    该入口接收图片路径，并基于场景名通过 PromptBuilder 生成 prompt。
+    """
+    parser = argparse.ArgumentParser(description="VLMAgent 单次调试入口")
+    parser.add_argument(
+        "--images",
+        nargs="+",
+        required=True,
+        help="输入图像路径，支持 1 张或多张",
+    )
+    parser.add_argument(
+        "--scenario_name",
+        type=str,
+        default="JiNan",
+        help="用于 PromptBuilder 生成与场景一致的 prompt",
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        default="",
+        help="可选：直接指定 prompt；留空则根据 scenario_name 生成",
+    )
+    parser.add_argument(
+        "--output_path",
+        type=str,
+        required=True,
+        help="将 response 写入的目标文件路径",
+    )
+    args = parser.parse_args()
+
+    agent = VLMAgent()
+
+    image_paths = [os.path.abspath(path) for path in args.images]
+    missing_paths = [path for path in image_paths if not os.path.exists(path)]
+    if missing_paths:
+        raise FileNotFoundError(f"以下图像不存在: {missing_paths}")
+
+    prompt = args.prompt.strip()
+    if not prompt:
+        prompt = PromptBuilder.build_decision_prompt(
+            current_phase_id=0,
+            scenario_name=args.scenario_name,
+        )
+    response, latency, action, thought = agent.get_decision(image_paths, prompt)
+
+    output_path = os.path.abspath(args.output_path)
+    output_dir = os.path.dirname(output_path)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
+    payload = {
+        "images": image_paths,
+        "prompt": prompt,
+        "response": response,
+        "action": {
+            "phase_id": action[0],
+            "duration": action[1],
+        },
+        "latency": latency,
+        "thought": thought,
+    }
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+
+    print("=== Prompt ===")
+    print(prompt)
+    print("\n=== Response ===")
+    print(response)
+    print("\n=== Parsed Action ===")
+    print(json.dumps({"phase_id": action[0], "duration": action[1]}, ensure_ascii=False, indent=2))
+    print("\n=== Latency ===")
+    print(f"{latency:.2f}s")
+    print(f"\n=== Saved To ===\n{output_path}")
+    if thought:
+        print("\n=== Thought ===")
+        print(thought)
+
+
+if __name__ == "__main__":
+    main()

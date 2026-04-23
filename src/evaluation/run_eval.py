@@ -15,7 +15,7 @@ Description: 端到端 LVLM 交通信号控制评测主脚本，支持 VLM / Fix
 上下游协同（EventBulletin）：
   - 拓扑由 configs/scenairo_config.py 的 TOPOLOGY 字段静态配置。
   - TTL = green_duration 秒（以 SUMO 仿真时间为单位）。
-  - 广播触发条件：VLM CoT 中检测到 "Final Condition: Special"。
+  - 广播触发条件：VLM CoT 中检测到本地事件（而非仅收到邻居通知）。
 '''
 import os
 import sys
@@ -44,6 +44,10 @@ from inference.vlm_agent import VLMAgent
 from configs.prompt_builder import PromptBuilder
 from src.utils.event_bulletin import EventBulletin
 from src.utils.tsc_env.tsc_wrapper import GREEN_DURATION_CANDIDATES, FIXED_TIME_GREEN_DURATION
+
+# 水印模块（路径相对项目根目录）
+sys.path.insert(0, os.path.join(_PROJECT_ROOT, "scripts"))
+from add_lane_watermarks import add_lane_watermarks
 
 # 合法 scene_type 列表（normal_triple 用于 NewYork 高密度流量变体）
 VALID_SCENE_TYPES = [
@@ -256,31 +260,40 @@ class Evaluator:
 
     def _collect_images(self, jid: str, sensor_imgs: dict, step_dir: str,
                         approach_dirs: List[str]) -> List[str]:
-        """采集路口 jid 的多视角图像，按 approach_dirs 指定的方向采集进口道和上游各一张。
+        """采集路口 jid 的进口道图像，按 approach_dirs 指定的方向各采集一张。
+        图像写盘后叠加车道编号水印（add_lane_watermarks 原地覆写）。
 
         图像命名格式：{element_id}.png
         返回已成功保存的图像路径列表（不含 None），顺序为：
-          各方向进口道停止线视图（按 approach_dirs 顺序）→ 各方向上游视图（按 approach_dirs 顺序）
+          各方向进口道停止线视图（按 approach_dirs 顺序）
         若全部方向均无图像数据则返回空列表。
         """
         image_paths = []
 
-        for prefix in [jid, f'upstream_{jid}']:
-            for d in approach_dirs:
-                element_id = f'{prefix}_{d}'
-                img_data = None
-                if element_id in sensor_imgs:
-                    img_data = sensor_imgs[element_id].get('junction_front_all')
+        for d in approach_dirs:
+            element_id = f'{jid}_{d}'
+            img_data = None
+            if element_id in sensor_imgs:
+                img_data = sensor_imgs[element_id].get('junction_front_all')
 
-                if img_data is not None:
-                    img_path = os.path.join(step_dir, f"{element_id}.png")
+            if img_data is not None:
+                img_path = os.path.join(step_dir, f"{element_id}.png")
+                try:
+                    cv2.imwrite(img_path, convert_rgb_to_bgr(img_data))
+                    # 叠加车道编号水印（原地覆写同一路径）
                     try:
-                        cv2.imwrite(img_path, convert_rgb_to_bgr(img_data))
-                        image_paths.append(img_path)
-                    except Exception as e:
-                        logger.warning(f"[EVAL] 图像保存失败 {element_id}: {e}")
-                else:
-                    logger.debug(f"[EVAL] 无图像数据: {element_id}")
+                        add_lane_watermarks(
+                            input_path=img_path,
+                            output_path=img_path,
+                            scenario_name=self.scenario_key,
+                        )
+                    except Exception as wm_err:
+                        logger.warning(f"[EVAL] 水印叠加失败 {element_id}: {wm_err}")
+                    image_paths.append(img_path)
+                except Exception as e:
+                    logger.warning(f"[EVAL] 图像保存失败 {element_id}: {e}")
+            else:
+                logger.debug(f"[EVAL] 无图像数据: {element_id}")
 
         return image_paths
 
@@ -289,22 +302,41 @@ class Evaluator:
         """从 VLM 响应中解析 (phase_id, green_duration) 二元组。
 
         支持格式：
+          Action: {"phase": 1, "duration": 25}
+          Action: { "phase": 1, "duration": 25 }
           Action: phase=1, duration=25
-          Action: phase=1,duration=25
-        兼容旧格式：Action: 1（duration 默认 25s）
+          Action: phase: 1, duration: 25
+        兼容旧格式：Action: 1（duration 默认取候选集中心值）
         返回 (int, int) 或 None（解析失败）。
         """
         if not vlm_resp or vlm_resp == "ERROR":
             return None
-        match = re.search(
-            r"Action:?\s*phase\s*=\s*(\d+)[,\s]+duration\s*=\s*(\d+)",
-            vlm_resp, re.IGNORECASE
-        )
-        if match:
-            return int(match.group(1)), int(match.group(2))
-        match_legacy = re.search(r"Action:?\s*\[?(\d+)\]?", vlm_resp, re.IGNORECASE)
+
+        default_duration = GREEN_DURATION_CANDIDATES[len(GREEN_DURATION_CANDIDATES) // 2]
+        action_match = re.search(r"Action\s*:\s*(.+)", vlm_resp, re.IGNORECASE | re.DOTALL)
+        search_text = action_match.group(1).strip() if action_match else vlm_resp
+
+        patterns = [
+            r'"phase"\s*:\s*(\d+)\D+"duration"\s*:\s*(\d+)',
+            r"'phase'\s*:\s*(\d+)\D+'duration'\s*:\s*(\d+)",
+            r"phase\s*=\s*(\d+)\D+duration\s*=\s*(\d+)",
+            r"phase\s*:\s*(\d+)\D+duration\s*:\s*(\d+)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, search_text, re.IGNORECASE | re.DOTALL)
+            if match:
+                return int(match.group(1)), int(match.group(2))
+
+        phase_match = re.search(r'["\']?phase["\']?\s*[:=]\s*(\d+)', search_text, re.IGNORECASE)
+        duration_match = re.search(r'["\']?duration["\']?\s*[:=]\s*(\d+)', search_text, re.IGNORECASE)
+        if phase_match and duration_match:
+            return int(phase_match.group(1)), int(duration_match.group(1))
+
+        match_legacy = re.search(r"^\[?(\d+)\]?\s*$", search_text, re.IGNORECASE)
+        if not match_legacy:
+            match_legacy = re.search(r"Action:?\s*\[?(\d+)\]?", vlm_resp, re.IGNORECASE)
         if match_legacy:
-            return int(match_legacy.group(1)), 25
+            return int(match_legacy.group(1)), default_duration
         return None
 
     def run_eval(self, max_sumo_seconds: int = 3600):
@@ -436,7 +468,7 @@ class Evaluator:
                     prompt = PromptBuilder.build_decision_prompt(
                         current_phase_id=cur_phase,
                         scenario_name=self.scenario_key,
-                        coordination_context=coord_ctx,
+                        neighbor_messages=coord_ctx,
                         available_dirs=self.approach_dirs,
                     )
                     inference_tasks.append((jid, image_paths, prompt, cur_phase, jid_step_dir))
@@ -478,29 +510,39 @@ class Evaluator:
                         parsed = self._parse_phase_duration(vlm_resp)
                         if parsed is not None:
                             p_id, raw_dur = parsed
-                            actual_dur = min(GREEN_DURATION_CANDIDATES, key=lambda x: abs(x - raw_dur))
-                            if raw_dur not in GREEN_DURATION_CANDIDATES:
+                            if not 0 <= p_id < num_phases:
                                 logger.warning(
-                                    f"[VLM] {jid} | VLM输出时长 {raw_dur}s 不在候选集 "
-                                    f"{GREEN_DURATION_CANDIDATES}，已吸附至 {actual_dur}s"
+                                    f"[VLM] {jid} | 非法 phase_id={p_id}，"
+                                    f"合法范围应为 [0, {num_phases - 1}]，本轮降级为 FixedTime"
                                 )
-                            # 防御性校验：确保吸附结果合法
-                            assert actual_dur in GREEN_DURATION_CANDIDATES, \
-                                f"吸附后时长 {actual_dur}s 仍不在候选集"
-                            last_action[jid] = {'phase_id': p_id, 'duration': actual_dur}
-                            logger.info(
-                                f"[VLM] {jid} | phase={p_id} | duration={actual_dur}s | "
-                                f"latency={latency:.2f}s | sumo_t={sumo_sim_step:.0f}s"
-                            )
-                            # 广播事件通知给邻居路口
-                            if is_multi_agent:
-                                self.bulletin.broadcast(
-                                    from_jid=jid,
-                                    vlm_response=vlm_resp,
-                                    green_duration=actual_dur,
-                                    current_sumo_step=sumo_sim_step,
+                                parsed = None
+                            else:
+                                actual_dur = min(
+                                    GREEN_DURATION_CANDIDATES,
+                                    key=lambda x: abs(x - raw_dur)
                                 )
-                        else:
+                                if raw_dur not in GREEN_DURATION_CANDIDATES:
+                                    logger.warning(
+                                        f"[VLM] {jid} | VLM输出时长 {raw_dur}s 不在候选集 "
+                                        f"{GREEN_DURATION_CANDIDATES}，已吸附至 {actual_dur}s"
+                                    )
+                                # 防御性校验：确保吸附结果合法
+                                assert actual_dur in GREEN_DURATION_CANDIDATES, \
+                                    f"吸附后时长 {actual_dur}s 仍不在候选集"
+                                last_action[jid] = {'phase_id': p_id, 'duration': actual_dur}
+                                logger.info(
+                                    f"[VLM] {jid} | phase={p_id} | duration={actual_dur}s | "
+                                    f"latency={latency:.2f}s | sumo_t={sumo_sim_step:.0f}s"
+                                )
+                                # 广播事件通知给邻居路口
+                                if is_multi_agent:
+                                    self.bulletin.broadcast(
+                                        from_jid=jid,
+                                        vlm_response=vlm_resp,
+                                        green_duration=actual_dur,
+                                        current_sumo_step=sumo_sim_step,
+                                    )
+                        if parsed is None:
                             next_phase = (cur_phase + 1) % num_phases
                             last_action[jid] = {'phase_id': next_phase, 'duration': FIXED_TIME_GREEN_DURATION}
                             logger.warning(

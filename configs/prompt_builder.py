@@ -321,7 +321,7 @@ Thought: [
 2.Scene Analysis:
 - Event Recognition: <"None" OR "[Type] detected at [Location], affects Phase [ID]">
 - Neighboring Messages: <"Inactive" OR "Active">
-- Final Condition: <"Normal" OR "Special">
+- Condition Assessment: <"Normal" OR "Special">
 3.Adaptive Reasoning:
 Strictly follow [Path 1] OR [Path 2] formatting based on your Final Condition above.
 ]

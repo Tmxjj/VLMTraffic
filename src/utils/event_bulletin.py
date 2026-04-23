@@ -22,7 +22,7 @@ class EventNotice:
     """上游路口向下游路口广播的交通事件通知。"""
     from_jid: str         # 来源路口 ID
     from_direction: str   # 下游路口视角下，事件来自哪个方向（N/E/S/W/Unknown）
-    event_type: str       # 事件类型（emergency_vehicle / incident / road_obstruction / special_event）
+    event_type: str       # 事件类型（emergency / transit / crash / obstruction / pedestrian / special_event）
     description: str      # VLM 原始事件描述文本（直接注入 prompt）
     expires_at_sumo: float  # 通知过期的 SUMO 仿真时刻（秒），inclusive
 
@@ -134,25 +134,60 @@ class EventBulletin:
 
     # ── 内部工具 ──────────────────────────────────────────────────────────────
     @staticmethod
-    #TODO: 目前的事件类型和描述提取规则非常简单，后续可以根据实际 VLM 输出进行优化。不需要提取emergency和bus事件
     def _extract_event(vlm_response: str) -> tuple:
-        """从 VLM CoT 输出中提取事件类型和描述。"""
+        """从 VLM CoT 输出中提取本地事件类型和描述。
+
+        仅当本地事件存在时返回结果：
+          1. ``Condition Assessment: Special`` 只是进入慢思考的必要条件；
+             若 Special 仅由邻居通知触发，不应再次广播。
+          2. 优先读取 ``Broadcast Notice``，因为它是专门为邻居广播设计的精简描述。
+          3. 若未输出 ``Broadcast Notice``，则回退到 ``Event Recognition``。
+        """
         if not vlm_response or "ERROR" in vlm_response:
             return None, None
-        if not re.search(r"Final Condition\s*:\s*Special", vlm_response, re.IGNORECASE):
+        if not re.search(r"Condition Assessment\s*:\s*Special", vlm_response, re.IGNORECASE):
             return None, None
-        m = re.search(r"Emergency Check\s*:\s*(.+?)(?:\n|$)", vlm_response, re.IGNORECASE)
-        description = m.group(1).strip() if m else "Special condition detected"
+
+        notice_match = re.search(
+            r"Broadcast Notice\s*:\s*(.+?)(?:\n|$)",
+            vlm_response,
+            re.IGNORECASE,
+        )
+        if notice_match:
+            description = notice_match.group(1).strip()
+            if description and description.lower() != "none":
+                return EventBulletin._map_event_type(description), description
+
+        event_match = re.search(
+            r"Event Recognition\s*:\s*(.+?)(?:\n|$)",
+            vlm_response,
+            re.IGNORECASE,
+        )
+        if not event_match:
+            return None, None
+
+        description = event_match.group(1).strip()
+        if not description or description.lower() == "none":
+            return None, None
+
+        return EventBulletin._map_event_type(description), description
+
+    @staticmethod
+    def _map_event_type(description: str) -> str:
+        """将 VLM 文本描述归一化为广播板内部事件类型。"""
         desc_lower = description.lower()
-        if any(k in desc_lower for k in ["ambulance", "police", "fire", "emergency"]):
-            event_type = "emergency_vehicle"
-        elif any(k in desc_lower for k in ["accident", "collision", "crash"]):
-            event_type = "incident"
-        elif any(k in desc_lower for k in ["construction", "debris", "obstacle", "barrier"]):
-            event_type = "road_obstruction"
-        else:
-            event_type = "special_event"
-        return event_type, description
+
+        if any(k in desc_lower for k in ["ambulance", "police", "fire truck", "fire_engine", "emergency"]):
+            return "emergency"
+        if any(k in desc_lower for k in ["bus", "school bus", "transit"]):
+            return "transit"
+        if any(k in desc_lower for k in ["pedestrian", "crosswalk", "crossing"]):
+            return "pedestrian"
+        if any(k in desc_lower for k in ["accident", "collision", "crash"]):
+            return "crash"
+        if any(k in desc_lower for k in ["construction", "debris", "obstacle", "barrier", "blocked", "obstruction"]):
+            return "obstruction"
+        return "special_event"
 
     @staticmethod
     def _infer_direction(from_jid: str, to_jid: str) -> str:

@@ -23,19 +23,68 @@ import glob
 import json
 import os
 import sys
+import xml.etree.ElementTree as ET
 
 import cv2
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Debug 模式配置（仅在直接 python offline_bev_render.py 时生效）
+# 每个任务都需要一一对应：
+# - scenario_key
+# - json_files 或 json_glob（二选一）
+# - route_xml（可选，不填则自动推断）
 # ──────────────────────────────────────────────────────────────────────────────
-DEBUG_SCENARIO_KEY = "JiNan"
-DEBUG_JSON_FILES = [
-    "data/eval/JiNan/anon_3_4_jinan_real/qwen3-vl-4b/render_info/render_28.json",
+DEBUG_RENDER_TASKS = [
+    # {
+    #     "scenario_key": "France_Massy",
+    #     "json_files": [
+    #         "data/test/prompt_test/France_Massy/render_540.json",
+    #     ],
+    #     "json_glob": None,
+    #     "route_xml": "data/raw/France_Massy/env/massy_accident.rou.xml",
+    # },
+    # {
+    #     "scenario_key": "JiNan",
+    #     "json_files": [
+    #         "data/test/prompt_test/JiNan/render_1000.json",
+    #     ],
+    #     "json_glob": None,
+    #     "route_xml": "data/raw/JiNan/env/anon_3_4_jinan_real_accident.rou.xml",
+    # },
+    # {
+    #     "scenario_key": "SouthKorea_Songdo",
+    #     "json_files": [
+    #         "data/test/prompt_test/SouthKorea_Songdo/render_540.json",
+    #     ],
+    #     "json_glob": None,
+    #     "route_xml": "data/raw/SouthKorea_Songdo/env/songdo_accident.rou.xml",
+    # },
+        {
+        "scenario_key": "Hongkong_YMT",
+        "json_files": [
+            "data/test/prompt_test/Hongkong_YMT/render_390.json",
+        ],
+        "json_glob": None,
+        "route_xml": "data/raw/Hongkong_YMT/env/YMT_debris.rou.xml",
+    },
+    #     {
+    #     "scenario_key": "Hangzhou",
+    #     "json_files": [
+    #         "data/test/prompt_test/Hangzhou/render_900.json",
+    #     ],
+    #     "json_glob": None,
+    #     "route_xml": "data/raw/Hangzhou/env/anon_4_4_hangzhou_real_emergy.rou.xml",
+    # },
+    #     {
+    #     "scenario_key": "Hangzhou",
+    #     "json_files": [
+    #         "data/test/prompt_test/Hangzhou/render_1200.json",
+    #     ],
+    #     "json_glob": None,
+    #     "route_xml": "data/raw/Hangzhou/env/anon_4_4_hangzhou_real_bus.rou.xml",
+    # },
 ]
-# 设为 None 则自动扫描 render_info/ 目录下所有 render_*.json
-DEBUG_JSON_GLOB = None  # e.g. "data/eval/JiNan/.../render_info/render_*.json"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -59,6 +108,177 @@ def _save_folder_for(json_path: str, step: int) -> str:
     return os.path.join(render_info_dir, str(step))
 
 
+def _get_project_root() -> str:
+    return os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+    )
+
+
+def _normalize_render_task(
+    scenario_key: str,
+    json_files: list[str] | None = None,
+    json_glob: str | None = None,
+    route_xml_path: str | None = None,
+) -> dict:
+    """统一渲染任务结构，并解析 json_glob。"""
+    if json_files and json_glob:
+        raise ValueError("json_files 与 json_glob 只能二选一。")
+    if not json_files and not json_glob:
+        raise ValueError("必须提供 json_files 或 json_glob 之一。")
+
+    if json_glob:
+        resolved_json_files = sorted(glob.glob(json_glob))
+        if not resolved_json_files:
+            raise FileNotFoundError(f"json_glob 无匹配文件: {json_glob}")
+    else:
+        resolved_json_files = json_files or []
+
+    return {
+        "scenario_key": scenario_key,
+        "json_files": resolved_json_files,
+        "route_xml_path": route_xml_path,
+    }
+
+
+def _collect_debug_render_tasks() -> list[dict]:
+    """收集并校验 Debug 模式下的批量渲染任务。"""
+    if not DEBUG_RENDER_TASKS:
+        raise ValueError("DEBUG_RENDER_TASKS 为空，请至少配置一个调试渲染任务。")
+
+    normalized_tasks = []
+    for idx, task in enumerate(DEBUG_RENDER_TASKS, start=1):
+        if "scenario_key" not in task:
+            raise KeyError(f"DEBUG_RENDER_TASKS 第 {idx} 项缺少 scenario_key")
+
+        normalized_tasks.append(
+            _normalize_render_task(
+                scenario_key=task["scenario_key"],
+                json_files=task.get("json_files"),
+                json_glob=task.get("json_glob"),
+                route_xml_path=task.get("route_xml"),
+            )
+        )
+
+    return normalized_tasks
+
+
+def _read_route_file_from_sumocfg(sumocfg_path: str) -> str | None:
+    """从 sumocfg 的 <route-files> 节点解析首个路由文件绝对路径。"""
+    try:
+        tree = ET.parse(sumocfg_path)
+        root = tree.getroot()
+        node = root.find(".//route-files")
+        if node is None:
+            return None
+
+        rel_route = node.get("value", "").split(",")[0].strip()
+        if not rel_route:
+            return None
+
+        sumocfg_dir = os.path.dirname(os.path.abspath(sumocfg_path))
+        return os.path.normpath(os.path.join(sumocfg_dir, rel_route))
+    except Exception:
+        return None
+
+
+def _resolve_route_xml_path(
+    scenario_key: str,
+    scenario_name: str,
+    netfile: str,
+    json_path: str,
+) -> str | None:
+    """
+    为离线渲染解析对应的 .rou.xml。
+
+    优先级：
+      1. 从 json 路径中匹配 data/raw/{scenario}/env 下已有的 route stem
+      2. 回退到 {NETFILE}.sumocfg 中默认的 <route-files> 配置
+    """
+    project_root = _get_project_root()
+    scenario_dir = os.path.join(project_root, "data", "raw", scenario_name)
+    env_dir = os.path.join(scenario_dir, "env")
+
+    route_candidates = {}
+    if os.path.isdir(env_dir):
+        for route_path in glob.glob(os.path.join(env_dir, "*.rou.xml")):
+            stem = os.path.basename(route_path)
+            if stem.endswith(".rou.xml"):
+                stem = stem[:-8]
+            route_candidates[stem] = route_path
+
+    json_parts = set(os.path.normpath(os.path.abspath(json_path)).split(os.sep))
+    for stem in sorted(route_candidates.keys(), key=len, reverse=True):
+        if stem in json_parts:
+            return route_candidates[stem]
+
+    sumocfg_path = os.path.join(scenario_dir, f"{netfile}.sumocfg")
+    if os.path.exists(sumocfg_path):
+        return _read_route_file_from_sumocfg(sumocfg_path)
+
+    print(
+        f"[OfflineRender] 未能为场景 {scenario_key} 解析 sumocfg: {sumocfg_path}"
+    )
+    return None
+
+
+class OfflineEventManager:
+    """离线解析路由文件中的事件，并按仿真时间步筛选活跃事件。"""
+
+    def __init__(self, project_root: str):
+        self.project_root = project_root
+        self.active_events = []
+
+    def load_events_from_xml(self, route_xml_path: str) -> list[dict]:
+        self.active_events = []
+        if not route_xml_path or not os.path.exists(route_xml_path):
+            print(f"[OfflineRender] 事件路由文件不存在: {route_xml_path}")
+            return self.active_events
+
+        try:
+            tree = ET.parse(route_xml_path)
+            root = tree.getroot()
+            for trip in root.findall("trip"):
+                params = {p.get("key"): p.get("value") for p in trip.findall("param")}
+                if "pos_x" not in params or "pos_y" not in params:
+                    continue
+
+                stop = trip.find("stop")
+                duration = float(stop.get("duration", 0)) if stop is not None else 0.0
+                model_path = params.get("model_path", "")
+                if model_path and not os.path.isabs(model_path):
+                    model_path = os.path.normpath(
+                        os.path.join(self.project_root, model_path)
+                    )
+
+                self.active_events.append(
+                    {
+                        "id": trip.get("id"),
+                        "type": params.get("event_type", "unknown"),
+                        "x": float(params["pos_x"]),
+                        "y": float(params["pos_y"]),
+                        "heading": float(params.get("heading", 0.0)),
+                        "start_time": float(trip.get("depart", 0)),
+                        "end_time": float(trip.get("depart", 0)) + duration,
+                        "model_path": model_path,
+                    }
+                )
+        except Exception as e:
+            print(f"[OfflineRender] 解析事件路由失败 {route_xml_path}: {e}")
+            self.active_events = []
+
+        print(
+            f"[OfflineRender] 从 {os.path.basename(route_xml_path)} 加载事件 {len(self.active_events)} 个"
+        )
+        return self.active_events
+
+    def get_active_events(self, current_time: float) -> list[dict]:
+        return [
+            event
+            for event in self.active_events
+            if event["start_time"] <= current_time <= event["end_time"]
+        ]
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 核心渲染类
 # ──────────────────────────────────────────────────────────────────────────────
@@ -69,9 +289,18 @@ class OfflineBEVGenerator:
     同一个 Renderer 实例可连续处理多帧，TSHubRenderer.reset() 只在第一帧调用一次。
     """
 
-    def __init__(self, scenario_glb_dir: str, sensor_cfg: dict, renderer_cfg: dict):
+    def __init__(
+        self,
+        scenario_glb_dir: str,
+        sensor_cfg: dict,
+        renderer_cfg: dict,
+        route_xml_path: str | None = None,
+    ):
         try:
             from tshub.tshub_env3d.vis3d_renderer.tshub_render import TSHubRenderer
+            from tshub.tshub_env3d.vis3d_renderer.emergency.emergency_manager import (
+                EmergencyManager3D,
+            )
         except ImportError as e:
             raise ImportError(f"无法导入 TSHubRenderer，请确认 TransSimHub 已安装: {e}")
 
@@ -84,16 +313,26 @@ class OfflineBEVGenerator:
             vehicle_model=renderer_cfg.get("vehicle_model", "low"),
             render_mode=renderer_cfg.get("render_mode", "offscreen"),
         )
+        self.event_logic_manager = None
+        self.emergency_renderer = EmergencyManager3D(
+            self.renderer._showbase_instance,
+            self.renderer._root_np,
+            show_closure_zone=renderer_cfg.get("show_closure_zone", True),
+        )
+        if route_xml_path:
+            self.event_logic_manager = OfflineEventManager(_get_project_root())
+            self.event_logic_manager.load_events_from_xml(route_xml_path)
         self._reset_done = False
 
     # ------------------------------------------------------------------
-    def process_state(self, full_data: dict, save_folder: str) -> dict:
+    def process_state(self, full_data: dict, save_folder: str, current_time: float) -> dict:
         """
         渲染单帧状态并将图像保存到 save_folder。
 
         Args:
             full_data:   render_{t}.json 的完整内容（含 vehicle/tls/aircraft/person）
             save_folder: 图像输出目录（会自动创建）
+            current_time: 当前仿真时间步，用于激活对应事件
 
         Returns:
             sensor_data: TSHubRenderer.step() 的原始返回值
@@ -111,6 +350,10 @@ class OfflineBEVGenerator:
             )
             self._reset_done = True
 
+        if self.event_logic_manager is not None and self.emergency_renderer is not None:
+            active_events = self.event_logic_manager.get_active_events(current_time)
+            self.emergency_renderer.update(active_events)
+
         sensor_data = self.renderer.step(current_state, should_count_vehicles=False)
 
         if sensor_data:
@@ -126,6 +369,8 @@ class OfflineBEVGenerator:
 
     # ------------------------------------------------------------------
     def close(self):
+        if self.emergency_renderer is not None:
+            self.emergency_renderer.clear()
         self.renderer.destroy()
 
 
@@ -133,7 +378,11 @@ class OfflineBEVGenerator:
 # 渲染流程
 # ──────────────────────────────────────────────────────────────────────────────
 
-def run_offline_render(scenario_key: str, json_files: list[str]) -> None:
+def run_offline_render(
+    scenario_key: str,
+    json_files: list[str],
+    route_xml_path: str | None = None,
+) -> None:
     """
     对给定的 JSON 文件列表执行离线渲染，结果写回各文件所在 render_info/ 的子目录。
 
@@ -162,6 +411,7 @@ def run_offline_render(scenario_key: str, json_files: list[str]) -> None:
         )
 
     SCENARIO_NAME = config["SCENARIO_NAME"]
+    NETFILE       = config["NETFILE"]
     RENDERER_CFG  = config.get("RENDERER_CFG", {})
     SENSOR_CFG    = config.get("SENSOR_CFG", {})
 
@@ -182,12 +432,26 @@ def run_offline_render(scenario_key: str, json_files: list[str]) -> None:
     print(f"  场景: {SCENARIO_NAME}")
     print(f"  待渲染帧数: {len(json_files_sorted)}")
     print(f"  3D 资产目录: {scenario_glb_dir}")
+
+    if route_xml_path is None:
+        route_xml_path = _resolve_route_xml_path(
+            scenario_key=scenario_key,
+            scenario_name=SCENARIO_NAME,
+            netfile=NETFILE,
+            json_path=json_files_sorted[0],
+        )
+    if route_xml_path:
+        print(f"  事件路由: {route_xml_path}")
+    else:
+        print("  事件路由: 未解析到，将仅渲染普通交通参与者")
+
     print(f"{'='*60}\n")
 
     renderer = OfflineBEVGenerator(
         scenario_glb_dir=scenario_glb_dir,
         sensor_cfg=SENSOR_CFG,
         renderer_cfg=RENDERER_CFG,
+        route_xml_path=route_xml_path,
     )
 
     success_count = 0
@@ -202,7 +466,11 @@ def run_offline_render(scenario_key: str, json_files: list[str]) -> None:
             with open(json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            sensor_data = renderer.process_state(data, save_folder=save_folder)
+            sensor_data = renderer.process_state(
+                data,
+                save_folder=save_folder,
+                current_time=step,
+            )
             n_images = sum(
                 1 for v in sensor_data.values() if v.get("junction_front_all") is not None
             )
@@ -264,6 +532,12 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="PATTERN",
         help='glob 模式，自动匹配所有帧，e.g. "render_info/render_*.json"',
     )
+    parser.add_argument(
+        "--route_xml",
+        type=str,
+        default=None,
+        help="可选：显式指定事件路由 .rou.xml，适用于自定义 JSON 目录结构",
+    )
     return parser
 
 
@@ -272,31 +546,32 @@ if __name__ == "__main__":
     _is_debug = len(sys.argv) == 1  # 无命令行参数 → Debug 模式
 
     if _is_debug:
-        # Debug 模式：直接使用脚本顶部的 DEBUG_* 变量
         print("[OfflineRender] Debug 模式（无 CLI 参数）")
-        _scenario_key = DEBUG_SCENARIO_KEY
-        if DEBUG_JSON_GLOB:
-            _json_files = sorted(glob.glob(DEBUG_JSON_GLOB))
-            if not _json_files:
-                raise FileNotFoundError(f"DEBUG_JSON_GLOB 无匹配文件: {DEBUG_JSON_GLOB}")
-        else:
-            _json_files = DEBUG_JSON_FILES
+        _render_tasks = _collect_debug_render_tasks()
     else:
         # CLI 模式
         _args = _build_parser().parse_args()
-        _scenario_key = _args.scenario_key
-        if _args.json_glob:
-            _json_files = sorted(glob.glob(_args.json_glob))
-            if not _json_files:
-                raise FileNotFoundError(f"--json_glob 无匹配文件: {_args.json_glob}")
-        else:
-            _json_files = _args.json_files
+        _render_tasks = [
+            _normalize_render_task(
+                scenario_key=_args.scenario_key,
+                json_files=_args.json_files,
+                json_glob=_args.json_glob,
+                route_xml_path=_args.route_xml,
+            )
+        ]
 
     # ── 将项目根目录加入 sys.path（兼容从任意目录启动的情况）──────────────────
-    _project_root = os.path.normpath(
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
-    )
+    _project_root = _get_project_root()
     if _project_root not in sys.path:
         sys.path.insert(0, _project_root)
 
-    run_offline_render(scenario_key=_scenario_key, json_files=_json_files)
+    for task_idx, task in enumerate(_render_tasks, start=1):
+        print(
+            f"[OfflineRender] 开始任务 {task_idx}/{len(_render_tasks)}: "
+            f"{task['scenario_key']}"
+        )
+        run_offline_render(
+            scenario_key=task["scenario_key"],
+            json_files=task["json_files"],
+            route_xml_path=task["route_xml_path"],
+        )

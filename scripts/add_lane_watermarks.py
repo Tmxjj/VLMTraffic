@@ -46,7 +46,7 @@ WATERMARK_CONFIGS = {
         "South": {
             "lanes": 3,
             "lane_w_ratio": 0.1,
-                        "x_offset_ratio": 0,
+            "x_offset_ratio": 0,
             "y_offset_ratio": 0.155,
             "text_rotation": 0,
             "text_pos_x": 0.594,
@@ -68,7 +68,7 @@ WATERMARK_CONFIGS = {
         "West": {
             "lanes": 3,
             "lane_w_ratio": 0.1,
-                        "x_offset_ratio": 0,
+            "x_offset_ratio": 0,
             "y_offset_ratio": 0.155,
             "text_rotation": 0,
             "text_pos_x": 0.594,
@@ -90,7 +90,7 @@ WATERMARK_CONFIGS = {
         "East": {
             "lanes": 3,
             "lane_w_ratio": 0.1,
-                        "x_offset_ratio": 0,
+            "x_offset_ratio": 0,
             "y_offset_ratio": 0.155,
             "text_rotation": 0,
             "text_pos_x": 0.594,
@@ -497,7 +497,12 @@ def add_lane_watermarks(input_path: str, output_path: str = None, scenario_name:
         lanes = []
         for lane_idx in range(1, n_lanes + 1):
             # 将车道标识横向展开，通过 x_offset/y_offset 以及整体的 text_rotation 来调节（y轴镜像）
-            rx = -(lane_idx - (n_lanes + 1) / 2.0) * W * lane_w_ratio
+            base_rx = (lane_idx - (n_lanes + 1) / 2.0) * W * lane_w_ratio
+             # 根据要求：downstream 翻转，upstream 不翻转
+            if is_upstream:
+                rx = base_rx
+            else:
+                rx = -base_rx
             ry = 0.0
             lanes.append((str(lane_idx), rx, ry))
 
@@ -507,8 +512,8 @@ def add_lane_watermarks(input_path: str, output_path: str = None, scenario_name:
         )
 
         d = ImageDraw.Draw(txt_layer)
-        info_text = f"Approach: {dir_long}\nType: {'Upstream' if is_upstream else 'Downstream'}"
-        
+        # info_text = f"Approach: {dir_long}\nType: {'Upstream' if is_upstream else 'Downstream'}"
+        info_text = f"Approach: {dir_long}"
         stroke_width = 2
         tx = int(W * text_pos_x_ratio)
         ty = int(H * text_pos_y_ratio)
