@@ -130,50 +130,50 @@ You will receive **4 sequential images**. These are **tilted overhead views** of
     COT_LANE_TEMPLATES = {
     "4_JUNCTION": '''
 North Approach:
-  Lane 1(Left): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Right): Ignored
+  Lane 1(Left): <Level>, Lane 2(Straight): <Level>, Lane 3(Right): Ignored
 South Approach:
-  Lane 1(Left): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Right): Ignored
+  Lane 1(Left): <Level>, Lane 2(Straight): <Level>, Lane 3(Right): Ignored
 East Approach:
-  Lane 1(Left): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Right): Ignored
+  Lane 1(Left): <Level>, Lane 2(Straight): <Level>, Lane 3(Right): Ignored
 West Approach:
-  Lane 1(Left): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Right): Ignored
+  Lane 1(Left): <Level>, Lane 2(Straight): <Level>, Lane 3(Right): Ignored
     ''',
 
     "Hongkong_SPECIAL_JUNCTION": '''
 North Approach:
-  Lane 1(Straight): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Straight): [Queue:<Level>]
+  Lane 1(Straight): <Level>, Lane 2(Straight): <Level>, Lane 3(Straight): <Level>
 South Approach:
-  Lane 1(Right): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Straight): [Queue:<Level>]
+  Lane 1(Right): <Level>, Lane 2(Straight): <Level>, Lane 3(Straight): <Level>
 East Approach:
-  Lane 1(Straight): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Left): Ignored
+  Lane 1(Straight): <Level>, Lane 2(Straight): <Level>, Lane 3(Left): Ignored
 West Approach:
-  Lane 1(Straight): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>], Lane 3(Straight): [Queue:<Level>]
+  Lane 1(Straight): <Level>, Lane 2(Straight): <Level>, Lane 3(Straight): <Level>
     ''',
 
     "T_JUNCTION": '''
 North Approach (Major):
-  Lane 1(Straight): [Queue:<Level>], Lane 2(Right): Ignored
+  Lane 1(Straight): <Level>, Lane 2(Right): Ignored
 South Approach (Major):
-  Lane 1(Left): [Queue:<Level>], Lane 2(Straight): [Queue:<Level>]
+  Lane 1(Left): <Level>, Lane 2(Straight): <Level>
 West Approach (Minor):
-  Lane 1(Left): [Queue:<Level>], Lane 2(Right): Ignored
+  Lane 1(Left): <Level>, Lane 2(Right): Ignored
     ''',
 
     "SONGDO_5LANE_JUNCTION": '''
 North Approach (6 lanes):
-  Lane 1(Left): [Queue:<Level>], Lane 2(Left): [Queue:<Level>], Lane 3-5(Straight): [Queue:<Level>], Lane 6(Right): Ignored
+  Lane 1(Left): <Level>, Lane 2(Left): <Level>, Lane 3-5(Straight): <Level>, Lane 6(Right): Ignored
 West Approach (6 lanes):
-  Lane 1(Left): [Queue:<Level>], Lane 2-5(Straight): [Queue:<Level>], Lane 6(Right): Ignored
+  Lane 1(Left): <Level>, Lane 2-5(Straight): <Level>, Lane 6(Right): Ignored
 East Approach (5 lanes):
-  Lane 1(Left): [Queue:<Level>], Lane 2-4(Straight): [Queue:<Level>], Lane 5(Right): Ignored
+  Lane 1(Left): <Level>, Lane 2-4(Straight): <Level>, Lane 5(Right): Ignored
 South Approach (5 lanes):
-  Lane 1(Left): [Queue:<Level>], Lane 2-4(Straight): [Queue:<Level>], Lane 5(Right): Ignored
+  Lane 1(Left): <Level>, Lane 2-4(Straight): <Level>, Lane 5(Right): Ignored
     '''
 }
 
     # 与 tsc_wrapper.py 中的 GREEN_DURATION_CANDIDATES 保持一致
     DURATION_OPTIONS = [15, 20, 25, 30, 35, 40]
-
+    #TODO：type和具体类型分离
     EVENT_DESCRIPTIONS = '''
         - Event Types:
             - Emergency: Ambulances, police cars, fire trucks.
@@ -285,7 +285,7 @@ B. Scene Analysis
 - Detection Task: Scan ALL 4 images for traffic events based on the defined categories below.
 {event_description}
 - Localization:
-  - IF an event is detected: Specify the `[Type]`, `[Location: Approach & Lane ID]`, and the `[Directly Affected Phase ID]`.
+  - IF an event is detected: Specify the `[Type]` , `[Location: Approach & Lane ID]`, and the `[Directly Affected Phase ID]`.
   - IF NO event is present: Strictly output `None`.
 
 **Step 2: Neighboring Messages**

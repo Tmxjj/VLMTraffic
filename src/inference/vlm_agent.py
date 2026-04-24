@@ -326,27 +326,62 @@ class VLMAgent:
     def _parse_action(self, response: str) -> tuple:
         """解析 VLM 输出的动作，返回 (phase_id, green_duration) 元组。
 
-        支持新格式: Action: phase=X, duration=Y
+        支持 JSON 格式: Action: {"phase": X, "duration": Y}
+        支持键值格式: Action: phase=X, duration=Y / phase: X, duration: Y
         兼容旧格式: Action: X
         duration 必须在候选集 [10, 15, 20, 25, 30, 35] 内，否则取最近合法值。
         """
         from src.utils.tsc_env.tsc_wrapper import GREEN_DURATION_CANDIDATES
 
-        # 新格式：phase=X, duration=Y
-        new_fmt = re.search(r"Action:.*?phase\s*=\s*(\d+).*?duration\s*=\s*(\d+)", response, re.IGNORECASE | re.DOTALL)
-        if new_fmt:
-            phase_id = int(new_fmt.group(1))
-            duration = int(new_fmt.group(2))
-            # 取最近候选值
-            duration = min(GREEN_DURATION_CANDIDATES, key=lambda x: abs(x - duration))
-            return phase_id, duration
+        default_duration = GREEN_DURATION_CANDIDATES[len(GREEN_DURATION_CANDIDATES) // 2]
 
-        # 兼容旧格式：Action: X
+        if not isinstance(response, str) or not response.strip():
+            return 0, default_duration
+
+        def _nearest_duration(duration: int) -> int:
+            return min(GREEN_DURATION_CANDIDATES, key=lambda x: abs(x - duration))
+
+        # 1. JSON 格式：Action: {"phase": 0, "duration": 40}
+        json_fmt = re.search(r"Action\s*:?\s*(\{.*?\})", response, re.IGNORECASE | re.DOTALL)
+        if json_fmt:
+            try:
+                action_payload = json.loads(json_fmt.group(1))
+                phase_id = int(action_payload.get("phase", action_payload.get("phase_id", 0)))
+                duration = int(action_payload.get("duration", default_duration))
+                return phase_id, _nearest_duration(duration)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+
+        # 2. 键值格式：phase=X, duration=Y 或 phase: X, duration: Y
+        kv_fmt = re.search(
+            r"Action:.*?[\"']?phase(?:_id)?[\"']?\s*[:=]\s*(\d+).*?"
+            r"[\"']?duration[\"']?\s*[:=]\s*(\d+)",
+            response,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if kv_fmt:
+            phase_id = int(kv_fmt.group(1))
+            duration = int(kv_fmt.group(2))
+            return phase_id, _nearest_duration(duration)
+
+        # 3. 兼容旧格式：Action: X
         old_fmt = re.search(r"Action:?\s*\[?(\d+)\]?", response, re.IGNORECASE)
         if old_fmt:
-            return int(old_fmt.group(1)), GREEN_DURATION_CANDIDATES[len(GREEN_DURATION_CANDIDATES) // 2]
+            return int(old_fmt.group(1)), default_duration
 
-        return 0, GREEN_DURATION_CANDIDATES[len(GREEN_DURATION_CANDIDATES) // 2]
+        # 4. 兜底：有些模型会漏掉 Action 前缀，但仍输出 phase/duration
+        fallback_fmt = re.search(
+            r"[\"']?phase(?:_id)?[\"']?\s*[:=]\s*(\d+).*?"
+            r"[\"']?duration[\"']?\s*[:=]\s*(\d+)",
+            response,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if fallback_fmt:
+            phase_id = int(fallback_fmt.group(1))
+            duration = int(fallback_fmt.group(2))
+            return phase_id, _nearest_duration(duration)
+
+        return 0, default_duration
 
 
 def main():

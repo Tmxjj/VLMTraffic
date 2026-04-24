@@ -4,7 +4,7 @@
 @Description: 处理 TSCHub ENV 中的 state, reward (处理后的 state 作为 RL 的输入)
 + state: 5 个时刻的每一个 movement 的 queue length
 + reward: 路口总的 waiting time
-LastEditTime: 2026-04-21 23:36:16
+LastEditTime: 2026-04-24 10:12:15
 '''
 import numpy as np
 import gymnasium as gym
@@ -14,7 +14,7 @@ import copy
 from typing import Any, SupportsFloat, Tuple, Dict, List, Union
 
 # 与 choose_next_phase_with_duration 一致的绿灯候选集（VLM 可选时长，单位：秒）
-GREEN_DURATION_CANDIDATES = [10, 15, 20, 25, 30, 35]
+GREEN_DURATION_CANDIDATES = [15, 20, 25, 30, 35,40]
 
 # 固定配时/MaxPressure 基线的绿灯时长：27s 绿灯 + 3s 黄灯 = 30s 整步，与决策步间隔对齐
 FIXED_TIME_GREEN_DURATION = 27
