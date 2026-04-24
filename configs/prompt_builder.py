@@ -56,12 +56,8 @@ You will receive **4 sequential images**. These are **tilted overhead views** of
   - Image 3: View of the South Approach
   - Image 4: View of the West Approach
 
-- **Lane Layout & Numbering**:
-Each approach consists of **3 lanes**.
-As indicated by the on-road numbering (1, 2, 3) in the images, lanes MUST be identified from the yellow median (center line) outward to the white curb (road edge):
-- **Lane 1 (Innermost)**: Dedicated Left-Turn
-- **Lane 2 (Middle)**: Straight
-- **Lane 3 (Outermost)**: Dedicated Right-Turn
+- **Lane Layout** (numbered from median outward; L=Left, S=Straight, R=Right):
+Each approach: **L1(L), L2(S), L3(R)**
 ''',
 
         "Hongkong_SPECIAL_JUNCTION": '''
@@ -74,29 +70,27 @@ You will receive **4 sequential images**. These are **tilted overhead views** of
   - Image 3: View of the South Approach
   - Image 4: View of the West Approach
 
-- **Lane Layout & Numbering**:
-Each approach consists of **3 lanes**.
-As indicated by the on-road numbering (1, 2, 3) in the images, lanes MUST be identified from the yellow median (center line) outward to the white curb (road edge):
-  - **East Inlet**: Has a **Left-Turn Lane** located at the **OUTERMOST Lane** (Lane 3).
-  - **South Inlet**: Has a **Right-Turn Lane** located at the **INNERMOST Lane** (Lane 1).
-  - **North & West Inlets**: No dedicated turn lanes; all lanes are straight-only.
+- **Lane Layout** (numbered from median outward; L=Left, S=Straight, R=Right):
+  - **N/W**: L1(S), L2(S), L3(S)
+  - **E**: L1(S), L2(S), L3(L)
+  - **S**: L1(R), L2(S), L3(S)
         ''',
 
         "T_JUNCTION": '''
 A T-shaped three-way junction under **Right-Hand Traffic (RHT)** rules.
-- **Visual Input Mapping (4 Images in Sequence)**:
-You will receive **4 sequential images**. These are **tilted overhead views** of each inlet approach, focusing on the lanes near the stop line. **Identify each approach strictly by reading its on-image text**. The expected sequence is:
+- **Visual Input Mapping (3 Images in Sequence)**:
+You will receive **3 sequential images**. These are **tilted overhead views** of each inlet approach, focusing on the lanes near the stop line. **Identify each approach strictly by reading its on-image text**. The expected sequence is:
 
   - Image 1: View of the North Approach
-  - Image 2: View of the East Approach
-  - Image 3: View of the South Approach
-  - Image 4: View of the West Approach
+  - Image 2: View of the South Approach
+  - Image 3: View of the West Approach
 
-- **Lane Layout & Numbering**:
-  Each approach has **2 lanes**. From the yellow median (center line) outward to the white curb:
-    - **North Approach** (Major Road): Lane 1 (Straight-Through), Lane 2 (Right-Turn toward West)
-    - **South Approach** (Major Road): Lane 1 (Left-Turn toward West), Lane 2 (Straight-Through)
-    - **West Approach** (Minor Road): Lane 1 (Left-Turn toward South), Lane 2 (Right-Turn toward North)
+  **Note: The East approach does NOT exist at this T-junction. There is no Image 4.**
+
+- **Lane Layout** (numbered from median outward; L=Left, S=Straight, R=Right):
+  - **N** (Major): L1(S), L2(R→W)
+  - **S** (Major): L1(L→W), L2(S)
+  - **W** (Minor): L1(L→S), L2(R→N)
         ''',
 
         "SONGDO_5LANE_JUNCTION": '''
@@ -109,10 +103,9 @@ You will receive **4 sequential images**. These are **tilted overhead views** of
   - Image 3: View of the South Approach
   - Image 4: View of the West Approach
 
-- **Lane Layout & Numbering**:
-  Lanes are numbered from the **Median (Innermost)** outward to the **Curb (Outermost)**.
-    - **North/West Approach** (6 lanes): Lane 1-2(Left), Lane 3-5(Straight), Lane 6(Right)
-    - **East/South Approach** (5 lanes): Lane 1(Left), Lane 2-4(Straight), Lane 5(Right)
+- **Lane Layout** (numbered from median outward; L=Left, S=Straight, R=Right):
+  - **N/W** (6): L1-2(L), L3-5(S), L6(R)
+  - **E/S** (5): L1(L), L2-4(S), L5(R)
         '''
     }
 
@@ -126,50 +119,35 @@ You will receive **4 sequential images**. These are **tilted overhead views** of
         "JiNan_test": "4_JUNCTION"
     }
 
-    # Queue = downstream stop-line queue density; UpstreamDensity = upstream approaching density
+    # Queue = downstream stop-line queue density; L=Left, S=Straight, R=Right
     COT_LANE_TEMPLATES = {
     "4_JUNCTION": '''
-North Approach:
-  Lane 1(Left): <Level>, Lane 2(Straight): <Level>, Lane 3(Right): Ignored
-South Approach:
-  Lane 1(Left): <Level>, Lane 2(Straight): <Level>, Lane 3(Right): Ignored
-East Approach:
-  Lane 1(Left): <Level>, Lane 2(Straight): <Level>, Lane 3(Right): Ignored
-West Approach:
-  Lane 1(Left): <Level>, Lane 2(Straight): <Level>, Lane 3(Right): Ignored
+N: L1(L):<Level>, L2(S):<Level>
+S: L1(L):<Level>, L2(S):<Level>
+E: L1(L):<Level>, L2(S):<Level>
+W: L1(L):<Level>, L2(S):<Level>
     ''',
 
     "Hongkong_SPECIAL_JUNCTION": '''
-North Approach:
-  Lane 1(Straight): <Level>, Lane 2(Straight): <Level>, Lane 3(Straight): <Level>
-South Approach:
-  Lane 1(Right): <Level>, Lane 2(Straight): <Level>, Lane 3(Straight): <Level>
-East Approach:
-  Lane 1(Straight): <Level>, Lane 2(Straight): <Level>, Lane 3(Left): Ignored
-West Approach:
-  Lane 1(Straight): <Level>, Lane 2(Straight): <Level>, Lane 3(Straight): <Level>
+N: L1(S):<Level>, L2(S):<Level>, L3(S):<Level>
+S: L1(R):<Level>, L2(S):<Level>, L3(S):<Level>
+E: L1(S):<Level>, L2(S):<Level>
+W: L1(S):<Level>, L2(S):<Level>, L3(S):<Level>
     ''',
 
     "T_JUNCTION": '''
-North Approach (Major):
-  Lane 1(Straight): <Level>, Lane 2(Right): Ignored
-South Approach (Major):
-  Lane 1(Left): <Level>, Lane 2(Straight): <Level>
-West Approach (Minor):
-  Lane 1(Left): <Level>, Lane 2(Right): Ignored
+N(Major): L1(S):<Level>
+S(Major): L1(L):<Level>, L2(S):<Level>
+W(Minor): L1(L):<Level>
     ''',
 
     "SONGDO_5LANE_JUNCTION": '''
-North Approach (6 lanes):
-  Lane 1(Left): <Level>, Lane 2(Left): <Level>, Lane 3-5(Straight): <Level>, Lane 6(Right): Ignored
-West Approach (6 lanes):
-  Lane 1(Left): <Level>, Lane 2-5(Straight): <Level>, Lane 6(Right): Ignored
-East Approach (5 lanes):
-  Lane 1(Left): <Level>, Lane 2-4(Straight): <Level>, Lane 5(Right): Ignored
-South Approach (5 lanes):
-  Lane 1(Left): <Level>, Lane 2-4(Straight): <Level>, Lane 5(Right): Ignored
-    '''
-}
+N(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
+W(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
+E(5): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>
+S(5): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>
+'''
+    }
 
     # 与 tsc_wrapper.py 中的 GREEN_DURATION_CANDIDATES 保持一致
     DURATION_OPTIONS = [15, 20, 25, 30, 35, 40]
@@ -266,20 +244,21 @@ You must select EXACTLY ONE Phase ID and EXACTLY ONE Duration.
 Currently Active Phase: **[ Phase {current_phase_id} ]**
 
 6. Task Definition
-Based on the **4 approach view images**, current **Scenario Information**, **Traffic Engineering Knowledge**, and **Action Space**, execute:
+Based on the **approach view images**, current **Scenario Information**, **Traffic Engineering Knowledge**, and **Action Space**, execute:
 
 A. Scene Understanding
-Analyze Images 1-4, which represent the tilted overhead views of the approaches, to assess lane-level traffic states near the stop line. Strictly follow these steps:
+Analyze the provided images, which represent the tilted overhead views of each approach near the stop line. Strictly follow these steps:
 
 **Step 1: Lane-Level Density Assessment**
 {density_standards}
-- **Queue Density**: Identify the number of vehicles waiting at the stop line for each controlled lane. This visual assessment is your **SOLE basis for both Phase Selection and Duration Selection**.
+- **Queue Density**: Count ONLY vehicles that are **stopped or queuing behind the stop line** in each controlled lane. Vehicles that have already passed the stop line or are beyond the intersection must be excluded. This visual assessment is your basis for both Phase Selection and Duration Selection.
 - *Note:* Strictly **IGNORE** unrestricted turn lanes (e.g., dedicated Right-Turn lanes under RHT) as they do not require signal control.
 
 **Step 2: Phase Mapping**
 Map the observed lane queue densities to Phase IDs. For each phase, compute summary statistics combining ALL constituent lanes belonging to that phase:
 - **OverallPressure**: Evaluate the overall traffic demand for this phase (Output as: Low, Medium, High, or Severe) by holistically synthesizing the Queue Densities of its governed lanes. *(Captures total demand; used for Phase Selection.)*
 - **CriticalQueue**: The MAX Queue Density level among the constituent lanes of the phase. *(Captures the worst-case lane that sets the required discharge time; used for Duration Selection.)*
+- **Tie-Breaker** *(Fill in ONLY when two or more phases share the same OverallPressure level)*: Visually compare the total queuing length across the tied phases and output which phase appears to have more vehicles (e.g., "Phase 0 queue appears longer than Phase 1"). If no tie exists, output `N/A`.
 B. Scene Analysis
 **Step 1: Event Recognition**
 - Detection Task: Scan ALL 4 images for traffic events based on the defined categories below.
@@ -318,6 +297,7 @@ Thought: [
 {cot_lane_template}
 - Phase Mapping:
 [List all valid Phase IDs]: Phase <ID> (<Direction>): OverallPressure: <Level> | CriticalQueue: <Level>
+- Tie-Breaker: <"N/A" OR "Phase X queue appears longer than Phase Y">
 2.Scene Analysis:
 - Event Recognition: <"None" OR "[Type] detected at [Location], affects Phase [ID]">
 - Neighboring Messages: <"Inactive" OR "Active">
