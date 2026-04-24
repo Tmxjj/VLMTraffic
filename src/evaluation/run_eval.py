@@ -67,7 +67,8 @@ class Evaluator:
 
     def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None,
                  batch_size=12, use_fixed_time=False, use_max_pressure=False,
-                 api_url=None, model_name_override=None, scene_type="normal"):
+                 api_url=None, model_name_override=None, scene_type="normal",
+                 temperature=None, max_new_tokens=None):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
         self.use_fixed_time = use_fixed_time
@@ -75,6 +76,8 @@ class Evaluator:
         self.api_url = api_url
         self.model_name_override = model_name_override
         self.scene_type = scene_type
+        self.temperature = temperature
+        self.max_new_tokens = max_new_tokens
 
         # --- 1. 加载场景配置 ---
         self.scenario_config = SCENARIO_CONFIGS.get(scenario_key)
@@ -233,6 +236,10 @@ class Evaluator:
                     agent_kwargs["url"] = self.api_url
                 if self.model_name_override:
                     agent_kwargs["model_name"] = self.model_name_override
+                if self.temperature is not None:
+                    agent_kwargs["temperature"] = self.temperature
+                if self.max_new_tokens is not None:
+                    agent_kwargs["max_new_tokens"] = self.max_new_tokens
                 self.agent = VLMAgent(batch_size=self.batch_size, **agent_kwargs)
             except Exception as e:
                 logger.critical(f"[EVAL] Failed to initialize VLM Agent: {e}")
@@ -469,7 +476,6 @@ class Evaluator:
                         current_phase_id=cur_phase,
                         scenario_name=self.scenario_key,
                         neighbor_messages=coord_ctx,
-                        available_dirs=self.approach_dirs,
                     )
                     inference_tasks.append((jid, image_paths, prompt, cur_phase, jid_step_dir))
                 else:
@@ -608,6 +614,10 @@ if __name__ == "__main__":
 
     parser.add_argument("--api_url",    type=str, default=None, help="覆盖 model_config 中的 api_url")
     parser.add_argument("--model_name", type=str, default=None, help="覆盖 model_config 中的 model_name")
+    parser.add_argument("--temperature", type=float, default=None,
+                        help="覆盖 model_config 中的 temperature（如推理用 0）")
+    parser.add_argument("--max_new_tokens", type=int, default=None,
+                        help="覆盖 model_config 中的 max_new_tokens")
 
     args = parser.parse_args()
 
@@ -620,5 +630,7 @@ if __name__ == "__main__":
         api_url=args.api_url,
         model_name_override=args.model_name,
         scene_type=args.scene_type,
+        temperature=args.temperature,
+        max_new_tokens=args.max_new_tokens,
     )
     evaluator.run_eval(max_sumo_seconds=args.max_sumo_seconds)

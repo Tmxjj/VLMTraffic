@@ -28,8 +28,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from add_lane_watermarks import add_lane_watermarks
-# from configs.prompt_builder import PromptBuilder
-from configs.prompt_count import PromptBuilder
+from configs.prompt_builder import PromptBuilder
 
 
 def _collect_step_images(step_dir: Path) -> list[str]:
@@ -90,7 +89,7 @@ def _get_response_output_path(step_output_dir: Path, agent: object) -> Path:
         raw_model_name = Path(model_path).name if model_path else "unknown_model"
 
     model_name = _sanitize_filename_part(str(raw_model_name))
-    return step_output_dir / f"response_count_{api_type}_{model_name}.txt"
+    return step_output_dir / f"response_{api_type}_{model_name}.txt"
 
 
 def main() -> None:
@@ -110,7 +109,7 @@ def main() -> None:
     parser.add_argument(
         "--scenario_name",
         type=str,
-        default="",
+        default="SouthKorea_Songdo",
         help="可选：仅测试某个场景；留空则遍历所有场景",
     )
     parser.add_argument(
@@ -189,7 +188,7 @@ def main() -> None:
                 f.write("\n\nResponse:\n")
                 f.write(response)
                 if thought:
-                    f.write("\n\nThought:\n")
+                    f.write("\n\n Model Thought:\n")
                     f.write(thought)
                 f.write("\n")
 

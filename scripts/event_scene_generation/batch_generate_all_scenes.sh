@@ -80,7 +80,7 @@ DEBRIS_MAX_DUR=600.0  # 最大持续时间（s）
 PEDESTRIAN_RATE=1.0   # 每小时每交叉口行人过街组数
 PEDESTRIAN_PER_GROUP=4 # 每组行人数
 
-MAX_RANGE=200.0       # 距路口最大距离（m）针对路障、事故的范围限制
+MAX_RANGE=80.0       # 距路口最大距离（m）针对路障、事故的范围限制
 
 # ── 各数据集配置（路口 ID 由各 Python 脚本自动从 configs/scenairo_config.py 读取）───
 declare -A NET_FILES

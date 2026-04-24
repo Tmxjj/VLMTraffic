@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-04-20 19:52:51
+LastEditTime: 2026-04-24 22:23:28
 Description: 在线 BEV 渲染脚本。
              支持一次性循环渲染多种交通事件类型（共 6 种：normal / emergency / bus /
              accident / debris / pedestrian），每种事件类型独立运行一次仿真。
@@ -50,8 +50,8 @@ RENDER_EVENT_TYPES = [
     # 'emergency',
     # 'bus',
     # 'accident',
-    # 'debris',
-    'pedestrian',
+    'debris',
+    # 'pedestrian',
 ]
 
 # 每种事件类型对应的路由文件后缀（与 batch_generate_all_scenes.sh 生成的文件名保持一致）
@@ -59,7 +59,7 @@ _EVENT_ROUTE_SUFFIX = {
     'normal':     None,          # 不覆盖，使用 sumocfg 默认值
     'emergency':  '_emergy',     # {BASE}_emergy.rou.xml
     'bus':        '_bus',        # {BASE}_bus.rou.xml
-    'accident':   '_accident',   # {BASE}_accident.rou.xml
+    'accident':   '_accident_1',   # {BASE}_accident.rou.xml
     'debris':     '_debris',     # {BASE}_debris.rou.xml
     'pedestrian': '_pedestrian', # {BASE}_pedestrian.rou.xml
 }
@@ -263,7 +263,7 @@ def _run_event_render(event_type: str, sumo_cfg: str, scenario_glb_dir: str) -> 
                 front_img = jid_imgs.get('junction_front_all')
                 if front_img is not None:
                     cv2.imwrite(
-                        os.path.join(step_folder, f"{jid}_front.png"),
+                        os.path.join(step_folder, f"{jid}.png"),
                         _convert_rgb_to_bgr(front_img)
                     )
         prof_img_save   += time.perf_counter() - t2
@@ -271,7 +271,7 @@ def _run_event_render(event_type: str, sumo_cfg: str, scenario_glb_dir: str) -> 
 
         if dones or truncated:
             break
-        if time_step >= 4:
+        if time_step >= 20:
             break
 
     # ── 性能摘要 ────────────────────────────────────────────────────────────────
@@ -305,5 +305,5 @@ if __name__ == '__main__':
     print(f"\n{'='*60}")
     print(f"  全部事件类型渲染完毕！")
     print(f"  输出根目录: data/test/{SCENARIO_NAME}/")
-    print(f"  子目录结构: {{event_type}}/{{time_step}}/{{junction_id}}_front.png")
+    print(f"  子目录结构: {{event_type}}/{{time_step}}/{{element_id}}.png")
     print(f"{'='*60}\n")

@@ -31,6 +31,9 @@ def is_api_retryable_error(exception):
 
 class VLMAgent:
     def __init__(self, api_type=None, batch_size=1, **kwargs):
+        # 若调用方传入了 url（即本地 vLLM API），自动切换到 requests 后端
+        if api_type is None and "url" in kwargs:
+            api_type = "requests"
         self.api_type = api_type or MODEL_CONFIG.get("api_type", "local_model")
         self.batch_size = batch_size  # 新增：并发推理数量
         backend_config = MODEL_CONFIG.get(self.api_type, {})
@@ -240,10 +243,17 @@ class VLMAgent:
         elif self.api_type == "gemini_sdk":
             from google.genai import types
             imgs = [Image.open(ip) for ip in image_paths]
-            config = types.GenerateContentConfig(
-                temperature=self.temperature, max_output_tokens=self.max_tokens,
-                thinking_config=types.ThinkingConfig(include_thoughts=True)
-            )
+            model_name=self.config.get("model_name", "gemini-3.1-pro-preview")
+            if model_name.startswith("gemini-3.1-pro-preview"):
+                config = types.GenerateContentConfig(
+                    temperature=self.temperature, max_output_tokens=self.max_tokens,
+                    thinking_config=types.ThinkingConfig(thinking_level="low")
+                )
+            else: # gemini-2.5-pro-preview 以及其他模型使用默认 config,不启动think模式
+                config = types.GenerateContentConfig(
+                    temperature=self.temperature, max_output_tokens=self.max_tokens,
+                    thinking_config=types.ThinkingConfig(include_thoughts=False)
+                )
             contents = [prompt] + imgs
             return self.model.models.generate_content(model=self.config.get("model_name", "gemini-3-pro-preview"), contents=contents, config=config)
 

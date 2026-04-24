@@ -2,10 +2,11 @@
 ###
  # @Author: yufei Ji
  # @Date: 2026-04-20
- # @Description: 五类交通事件场景批量评测脚本（基线 + VLM，合并版）
- #               在全部 6 个数据集 × 5 类事件场景上运行评测。
+ # @Description: normal + 五类交通事件场景批量评测脚本（基线 + VLM，合并版）
+ #               在全部 6 个数据集 × 6 类场景上运行评测。
  #
- #               事件类型：
+ #               场景类型：
+ #                 normal     — 常规车流（无事件注入）
  #                 emergency  — 紧急车辆（_emergy.rou.xml）
  #                 bus        — 公交/校车（_bus.rou.xml）
  #                 accident   — 交通事故（_accident.rou.xml）
@@ -27,7 +28,7 @@
  #                 # 仅跑基线（本地，无需 GPU）：
  #                 bash scripts/run_batch_event_eval.sh --baseline-only
  #
- #                 # 仅跑特定事件类型的基线：
+ #                 # 仅跑特定场景类型的基线（支持 normal/emergency/bus/accident/debris/pedestrian）：
  #                 bash scripts/run_batch_event_eval.sh --baseline-only --event emergency
  #
  #                 # 仅跑 VLM（远程服务器，需提前启动 vLLM）：
@@ -51,9 +52,11 @@ LOG_DIR="./log/eval_results"
 
 API_PORT=""
 MODEL_NAME=""
+TEMPERATURE=""
+MAX_NEW_TOKENS=""
 BASELINE_ONLY=false
 WITH_BASELINE=false
-# 可选：仅运行单类事件（不指定则跑全部 5 类）
+# 可选：仅运行单类场景（不指定则跑全部 6 类：normal + 5 类事件）
 EVENT_FILTER=""
 
 # 解析参数
@@ -61,6 +64,8 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --port)           API_PORT="$2";      shift ;;
         --model_name)     MODEL_NAME="$2";    shift ;;
+        --temperature)    TEMPERATURE="$2";   shift ;;
+        --max_new_tokens) MAX_NEW_TOKENS="$2"; shift ;;
         --baseline-only)  BASELINE_ONLY=true  ;;
         --with-baseline)  WITH_BASELINE=true  ;;
         --event)          EVENT_FILTER="$2";  shift ;;
@@ -86,6 +91,14 @@ ENV_DIRS[NewYork]="data/raw/NewYork/env"
 # 各数据集对应的事件路由文件 basename（{DATASET}_{EVENT_SUFFIX}.rou.xml）
 # 格式：declare -A {SUFFIX}_{DATASET}
 # 为避免 Bash 关联数组的嵌套限制，使用扁平变量名
+
+# ── normal（无事件注入）──────────────────────────────────────────
+ROUTE_normal_JiNan="anon_3_4_jinan_real.rou.xml"
+ROUTE_normal_Hangzhou="anon_4_4_hangzhou_real.rou.xml"
+ROUTE_normal_SouthKorea_Songdo="songdo.rou.xml"
+ROUTE_normal_France_Massy="massy.rou.xml"
+ROUTE_normal_Hongkong_YMT="YMT.rou.xml"
+ROUTE_normal_NewYork="anon_28_7_newyork_real_double.rou.xml"
 
 # ── emergency（suffix: emergy）───────────────────────────────────
 ROUTE_emergency_JiNan="anon_3_4_jinan_real_emergy.rou.xml"
@@ -128,7 +141,7 @@ ROUTE_pedestrian_Hongkong_YMT="YMT_pedestrian.rou.xml"
 ROUTE_pedestrian_NewYork="anon_28_7_newyork_real_double_pedestrian.rou.xml"
 
 DATASETS=("JiNan" "Hangzhou" "SouthKorea_Songdo" "France_Massy" "Hongkong_YMT" "NewYork")
-EVENT_TYPES=("emergency" "bus" "accident" "debris" "pedestrian")
+EVENT_TYPES=("normal" "emergency" "bus" "accident" "debris" "pedestrian")
 
 # ─── 辅助函数 ──────────────────────────────────────────────────
 
@@ -204,6 +217,12 @@ EXTRA_VLM_ARGS=""
 if [ -n "$API_PORT" ] && [ -n "$MODEL_NAME" ]; then
     EXTRA_VLM_ARGS="--api_url http://localhost:${API_PORT}/v1/chat/completions --model_name ${MODEL_NAME}"
 fi
+if [ -n "$TEMPERATURE" ]; then
+    EXTRA_VLM_ARGS="${EXTRA_VLM_ARGS} --temperature ${TEMPERATURE}"
+fi
+if [ -n "$MAX_NEW_TOKENS" ]; then
+    EXTRA_VLM_ARGS="${EXTRA_VLM_ARGS} --max_new_tokens ${MAX_NEW_TOKENS}"
+fi
 
 # ─── 打印头部信息 ───────────────────────────────────────────────
 echo "============================================================"
@@ -214,7 +233,9 @@ if [ "$BASELINE_ONLY" = true ]; then
 elif [ -n "$MODEL_NAME" ]; then
     echo "  模式   : VLM [${MODEL_NAME}]$([ "$WITH_BASELINE" = true ] && echo " + 基线")"
 fi
-[ -n "$EVENT_FILTER" ] && echo "  事件过滤: ${EVENT_FILTER}" || echo "  事件类型: 全部 5 类"
+[ -n "$TEMPERATURE" ] && echo "  temperature: ${TEMPERATURE}"
+[ -n "$MAX_NEW_TOKENS" ] && echo "  max_new_tokens: ${MAX_NEW_TOKENS}"
+[ -n "$EVENT_FILTER" ] && echo "  场景过滤: ${EVENT_FILTER}" || echo "  场景类型: 全部 6 类（normal + 5 类事件）"
 echo "============================================================"
 
 # ─── 核心评测函数 ───────────────────────────────────────────────
@@ -224,11 +245,11 @@ run_all_baselines() {
     echo "=== [基线] MaxPressure + FixedTime ==="
 
     for EVENT in "${EVENT_TYPES[@]}"; do
-        # 如果指定了 --event 过滤，跳过不匹配的类型
+        # 如果指定了 --event 过滤，跳过不匹配的场景类型
         [ -n "$EVENT_FILTER" ] && [ "$EVENT" != "$EVENT_FILTER" ] && continue
 
         echo ""
-        echo "── Event: ${EVENT} ─────────────────────────────────"
+        echo "── Scene: ${EVENT} ─────────────────────────────────"
         for DS in "${DATASETS[@]}"; do
             VAR_NAME="ROUTE_${EVENT}_${DS}"
             ROUTE_FILE="${!VAR_NAME}"
@@ -257,7 +278,7 @@ run_all_vlm() {
         [ -n "$EVENT_FILTER" ] && [ "$EVENT" != "$EVENT_FILTER" ] && continue
 
         echo ""
-        echo "── Event: ${EVENT} ─────────────────────────────────"
+        echo "── Scene: ${EVENT} ─────────────────────────────────"
         for DS in "${DATASETS[@]}"; do
             VAR_NAME="ROUTE_${EVENT}_${DS}"
             ROUTE_FILE="${!VAR_NAME}"
@@ -288,6 +309,7 @@ else
     echo "   --baseline-only                                          # 仅基线"
     echo "   --port 8000 --model_name <name>                          # 仅 VLM"
     echo "   --port 8000 --model_name <name> --with-baseline          # 两者都跑"
+    echo "   --port 8000 --model_name <name> --temperature 0 --max_new_tokens 2048"
     echo "   --baseline-only --event emergency                        # 仅跑 emergency 基线"
     exit 1
 fi

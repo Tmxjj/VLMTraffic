@@ -68,6 +68,14 @@ DEBUG_RENDER_TASKS = [
         "json_glob": None,
         "route_xml": "data/raw/Hongkong_YMT/env/YMT_debris.rou.xml",
     },
+    {
+        "scenario_key": "Hangzhou",
+        "json_files": [
+            "data/test/prompt_test/Hangzhou/render_870.json",
+        ],
+        "json_glob": None,
+        "route_xml": "data/raw/Hangzhou/env/anon_4_4_hangzhou_real_emergy.rou.xml",
+    },
     #     {
     #     "scenario_key": "Hangzhou",
     #     "json_files": [

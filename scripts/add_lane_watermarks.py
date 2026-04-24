@@ -503,6 +503,8 @@ def add_lane_watermarks(input_path: str, output_path: str = None, scenario_name:
                 rx = base_rx
             else:
                 rx = -base_rx
+            if scenario_name == 'Hongkong_YMT':
+                rx = -rx
             ry = 0.0
             lanes.append((str(lane_idx), rx, ry))
 

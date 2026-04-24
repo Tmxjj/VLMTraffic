@@ -49,12 +49,11 @@ Note: Left-turning vehicles are unrestricted and permitted to turn at any time.
 A standard four-way intersection under **Right-Hand Traffic (RHT)** rules.
 
 - **Visual Input Mapping (4 Images in Sequence)**:
-You will receive **4 sequential images**. These are **tilted overhead views** of each inlet approach, focusing on the lanes near the stop line. **Identify each approach strictly by reading its on-image text**. The expected sequence is:
-
-  - Image 1: View of the North Approach
-  - Image 2: View of the East Approach
-  - Image 3: View of the South Approach
-  - Image 4: View of the West Approach
+You will receive **4 sequential tilted-overhead images** of the approach stop lines. **Strictly identify each approach using its on-image text**. Expected sequence:
+  - Image 1: North
+  - Image 2: East
+  - Image 3: South
+  - Image 4: West
 
 - **Lane Layout** (numbered from median outward; L=Left, S=Straight, R=Right):
 Each approach: **L1(L), L2(S), L3(R)**
@@ -63,12 +62,11 @@ Each approach: **L1(L), L2(S), L3(R)**
         "Hongkong_SPECIAL_JUNCTION": '''
 The intersection is a high-capacity 4-way urban junction operating under **Left-Hand Traffic (LHT)** rules.
 - **Visual Input Mapping (4 Images in Sequence)**:
-You will receive **4 sequential images**. These are **tilted overhead views** of each inlet approach, focusing on the lanes near the stop line. **Identify each approach strictly by reading its on-image text**. The expected sequence is:
-
-  - Image 1: View of the North Approach
-  - Image 2: View of the East Approach
-  - Image 3: View of the South Approach
-  - Image 4: View of the West Approach
+You will receive **4 sequential tilted-overhead images** of the approach stop lines. **Strictly identify each approach using its on-image text**. Expected sequence:
+  - Image 1: North
+  - Image 2: East
+  - Image 3: South
+  - Image 4: West
 
 - **Lane Layout** (numbered from median outward; L=Left, S=Straight, R=Right):
   - **N/W**: L1(S), L2(S), L3(S)
@@ -79,32 +77,30 @@ You will receive **4 sequential images**. These are **tilted overhead views** of
         "T_JUNCTION": '''
 A T-shaped three-way junction under **Right-Hand Traffic (RHT)** rules.
 - **Visual Input Mapping (3 Images in Sequence)**:
-You will receive **3 sequential images**. These are **tilted overhead views** of each inlet approach, focusing on the lanes near the stop line. **Identify each approach strictly by reading its on-image text**. The expected sequence is:
-
-  - Image 1: View of the North Approach
-  - Image 2: View of the South Approach
-  - Image 3: View of the West Approach
+You will receive **3 sequential tilted-overhead images** of the approach stop lines. **Strictly identify each approach using its on-image text**. Expected sequence:
+  - Image 1: North
+  - Image 2: South
+  - Image 3: West
 
   **Note: The East approach does NOT exist at this T-junction. There is no Image 4.**
 
 - **Lane Layout** (numbered from median outward; L=Left, S=Straight, R=Right):
   - **N** (Major): L1(S), L2(R→W)
   - **S** (Major): L1(L→W), L2(S)
-  - **W** (Minor): L1(L→S), L2(R→N)
+  - **W** (Minor): L1(L→N), L2(R→S)
         ''',
 
         "SONGDO_5LANE_JUNCTION": '''
 A high-capacity four-way intersection under **Right-Hand Traffic (RHT)** rules.
 - **Visual Input Mapping (4 Images in Sequence)**:
-You will receive **4 sequential images**. These are **tilted overhead views** of each inlet approach, focusing on the lanes near the stop line. **Identify each approach strictly by reading its on-image text**. The expected sequence is:
-
-  - Image 1: View of the North Approach
-  - Image 2: View of the East Approach
-  - Image 3: View of the South Approach
-  - Image 4: View of the West Approach
+You will receive **4 sequential tilted-overhead images** of the approach stop lines. **Strictly identify each approach using its on-image text**. Expected sequence:
+  - Image 1: North
+  - Image 2: East
+  - Image 3: South
+  - Image 4: West
 
 - **Lane Layout** (numbered from median outward; L=Left, S=Straight, R=Right):
-  - **N/W** (6): L1-2(L), L3-5(S), L6(R)
+  - **N/W** (6): L1(L), L2-5(S), L6(R)
   - **E/S** (5): L1(L), L2-4(S), L5(R)
         '''
     }
@@ -125,62 +121,69 @@ You will receive **4 sequential images**. These are **tilted overhead views** of
 N: L1(L):<Level>, L2(S):<Level>
 S: L1(L):<Level>, L2(S):<Level>
 E: L1(L):<Level>, L2(S):<Level>
-W: L1(L):<Level>, L2(S):<Level>
-    ''',
+W: L1(L):<Level>, L2(S):<Level>''',
 
     "Hongkong_SPECIAL_JUNCTION": '''
 N: L1(S):<Level>, L2(S):<Level>, L3(S):<Level>
 S: L1(R):<Level>, L2(S):<Level>, L3(S):<Level>
 E: L1(S):<Level>, L2(S):<Level>
-W: L1(S):<Level>, L2(S):<Level>, L3(S):<Level>
-    ''',
+W: L1(S):<Level>, L2(S):<Level>, L3(S):<Level>''',
 
     "T_JUNCTION": '''
 N(Major): L1(S):<Level>
 S(Major): L1(L):<Level>, L2(S):<Level>
-W(Minor): L1(L):<Level>
-    ''',
+W(Minor): L1(L):<Level>''',
 
     "SONGDO_5LANE_JUNCTION": '''
 N(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
 W(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
 E(5): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>
-S(5): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>
-'''
+S(5): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>'''
     }
 
     # 与 tsc_wrapper.py 中的 GREEN_DURATION_CANDIDATES 保持一致
     DURATION_OPTIONS = [15, 20, 25, 30, 35, 40]
-    #TODO：type和具体类型分离
     EVENT_DESCRIPTIONS = '''
-        - Event Types:
-            - Emergency: Ambulances, police cars, fire trucks.
-            - Transit: Public buses, school buses.
-            - Crash: Traffic accidents, vehicle collisions.
-            - Obstruction: Road debris, construction barriers.
-        - Event Impacts:
-            - Priority Passage: Emergency > Transit.
-            - Capacity Reduction: Crash, Obstruction.
+| Specific Type        | Category    | Traffic Control Impact     |
+|----------------------|-------------|----------------------------|
+| Ambulance            | Emergency   | High Priority Passage      |
+| Police Car           | Emergency   | High Priority Passage      |
+| Fire Truck           | Emergency   | High Priority Passage      |
+| Public Bus           | Transit     | Low Priority Passage       |
+| School Bus           | Transit     | Low Priority Passage       |
+| Traffic Accident     | Crash       | Capacity Reduction         |
+| Road Debris          | Obstruction | Capacity Reduction         |
+| Construction Barrier | Obstruction | Capacity Reduction         |
+
+**Visual Identification Cues:**
+- Ambulance: Boxy medical vehicle with distinct roof lightbars.
+- Police Car: Law enforcement vehicle with distinct roof lightbars.
+- Fire Truck: Large red emergency truck with roof lightbars.
+- Public Bus: Long, large rectangular city passenger vehicle.
+- School Bus: Long, large yellow passenger vehicle.
+- Traffic Accident: Crashed vehicles positioned abnormally (e.g., stopped diagonally across lanes).
+- Road Debris: Non-vehicle scattered objects (e.g., logs, fallen cargo) blocking the lane.
+- Construction Barrier: Structured roadblocks featuring distinct yellow and black diagonal stripes.
     '''
 
     TRAFFIC_KNOWLEDGE = '''
-**Traffic Engineering Principles (Apply as World Knowledge):**
-- **Signal Starvation Prevention**: A phase that has been waiting the longest (i.e., the phase that is NOT the currently active phase) should be prioritized when queue levels are equal across approaches, to prevent any direction from being indefinitely delayed.
-- **Emergency Vehicle Preemption**: When an emergency vehicle (ambulance, fire truck, police car) is detected approaching, immediately grant and hold a green phase on its travel path. Emergency preemption overrides all other considerations.
-- **Transit Priority**: Buses and school buses carry high passenger loads. Grant priority passage when detected, but this is secondary to emergency preemption.
-- **Incident Capacity Reduction**: A crash or road obstruction effectively removes one or more lanes from service. Avoid selecting a phase whose movement is blocked; if all phases are partially blocked, minimize green time on the most-blocked phase.
+**Traffic Engineering Principles:**
+- **Signal Starvation Prevention**: When queue levels are equal, prioritize the longest-waiting inactive phase to prevent any direction from being indefinitely delayed.
+- **Emergency Preemption**: Immediately grant and hold a green phase for approaching emergency vehicles(ambulance, fire truck, police car). This overrides ALL other rules.
+- **Transit Priority**: Prioritize detected buses and school buses due to their high passenger loads, secondary only to emergency preemption.
+- **Capacity Reduction**: A crash or road obstruction effectively removes one or more lanes from service. Avoid selecting a phase whose movement is blocked. If all phases are partially blocked, minimize green time on the most-blocked phase.
 - **Queue Discharge Rate**: A fully loaded lane (Long or Critical queue) requires significantly more green time to complete discharge compared to a Short or Medium queue.
-- **Minimum Green Time**: Even with an empty queue, a minimum green duration is needed to allow stopped vehicles to react and start moving safely (reaction time + acceleration).
+- **Minimum Green Time**: Assign a minimum green duration even for empty queues to allow safe reaction and start-up times.
    '''
 
     DENSITY_LEVELS = """
-    - **Density Quantification Standards**:
-        - `Empty`: 0 vehicles.
-        - `Short`: 1-3 vehicles.
-        - `Medium`: 4-7 vehicles.
-        - `Long`: 8-10 vehicles.
-        - `Critical`: 10+ vehicles (Severe congestion).
-        """
+- **Density Quantification Standards**:
+  - `Empty`: 0 vehicles.
+  - `Short`: 1-3 vehicles.
+  - `Medium`: 4-7 vehicles.
+  - `Long`: 8-10 vehicles.
+  - `Critical`: 10+ vehicles (Severe congestion).
+"""
     @staticmethod
     def get_duration_description() -> str:
         options_str = ", ".join([f"{d}s" for d in PromptBuilder.DURATION_OPTIONS])
@@ -222,6 +225,8 @@ S(5): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>
 
         neighbor_info = neighbor_messages.strip() if neighbor_messages and neighbor_messages.strip() else "None"
 
+        neighbor_status = "Active" if neighbor_info != "None" else "Inactive"
+
         prompt = f"""
 1. Role Description
 You are an expert in traffic signal control and computer vision. Your goal is to ensure safety, minimize delays, and handle special traffic events by analyzing visual inputs from the intersection approaches and asynchronous messages from neighboring intersections.
@@ -234,6 +239,7 @@ You are an expert in traffic signal control and computer vision. Your goal is to
 
 4. Action Space
 You must select EXACTLY ONE Phase ID and EXACTLY ONE Duration.
+
 **A. Phase Selection:**
 {phase_explanation}
 
@@ -244,66 +250,71 @@ You must select EXACTLY ONE Phase ID and EXACTLY ONE Duration.
 Currently Active Phase: **[ Phase {current_phase_id} ]**
 
 6. Task Definition
-Based on the **approach view images**, current **Scenario Information**, **Traffic Engineering Knowledge**, and **Action Space**, execute:
+Based on the **Approach Bird's-Eye Oblique Images**, current **Scenario Information**, **Traffic Engineering Knowledge**, and **Action Space**, execute the following three-part analysis:
 
-A. Scene Understanding
-Analyze the provided images, which represent the tilted overhead views of each approach near the stop line. Strictly follow these steps:
+**A. Scene Understanding**
 
-**Step 1: Lane-Level Density Assessment**
+**A1. Lane-Level Density Assessment**
 {density_standards}
 - **Queue Density**: Count ONLY vehicles that are **stopped or queuing behind the stop line** in each controlled lane. Vehicles that have already passed the stop line or are beyond the intersection must be excluded. This visual assessment is your basis for both Phase Selection and Duration Selection.
 - *Note:* Strictly **IGNORE** unrestricted turn lanes (e.g., dedicated Right-Turn lanes under RHT) as they do not require signal control.
 
-**Step 2: Phase Mapping**
-Map the observed lane queue densities to Phase IDs. For each phase, compute summary statistics combining ALL constituent lanes belonging to that phase:
-- **OverallPressure**: Evaluate the overall traffic demand for this phase (Output as: Low, Medium, High, or Severe) by holistically synthesizing the Queue Densities of its governed lanes. *(Captures total demand; used for Phase Selection.)*
-- **CriticalQueue**: The MAX Queue Density level among the constituent lanes of the phase. *(Captures the worst-case lane that sets the required discharge time; used for Duration Selection.)*
-- **Tie-Breaker** *(Fill in ONLY when two or more phases share the same OverallPressure level)*: Visually compare the total queuing length across the tied phases and output which phase appears to have more vehicles (e.g., "Phase 0 queue appears longer than Phase 1"). If no tie exists, output `N/A`.
-B. Scene Analysis
-**Step 1: Event Recognition**
-- Detection Task: Scan ALL 4 images for traffic events based on the defined categories below.
-{event_description}
-- Localization:
-  - IF an event is detected: Specify the `[Type]` , `[Location: Approach & Lane ID]`, and the `[Directly Affected Phase ID]`.
-  - IF NO event is present: Strictly output `None`.
+**A2. Phase Mapping**
+Map the observed lane densities to their respective Phase IDs. For each phase, aggregate the states of its governed lanes into the following metrics:
+- **OverallPressure**: A holistic synthesis of traffic demand for the phase. Output: [Low, Medium, High, or Severe]. *(Primary factor for Phase Selection)*
+- **CriticalQueue**: The MAX density level among the phase's constituent lanes. *(Primary factor for Duration Selection)*
+- **Tie-Breaker** *(Active ONLY if multiple phases share the same OverallPressure)*: Perform a direct visual comparison of the physical congestion and output the conclusion as: "Phase X queue appears longer than Phase Y". Otherwise, output "N/A".
 
-**Step 2: Neighboring Messages**
-- Status: {"Active" if neighbor_info != "None" else "Inactive"}
+**B. Scene Analysis**
+
+**B1. Event Recognition**
+Scan ALL images for traffic events. Use the table below to identify Specific Type, Category, and Traffic Control Impact:
+
+{event_description}
+
+**Visual Localization:**
+- IF an event is detected: Specify [Specific Type], [Category], [Location: Approach & Lane ID], and [Directly Affected Phase ID].
+- IF NO event is present: Strictly output `None`.
+
+**B2. Neighboring Messages**
+- Status: {neighbor_status}
 - Content: {neighbor_info}
 
-**Step 3: Condition Assessment**
-- Output strictly `Special` IF a local event is detected OR Neighboring Messages Status is Active.
-- Otherwise, output strictly `Normal`.
+**B3. Condition Assessment**
+- Set to `SPECIAL` if an event is detected OR Neighboring Messages status is Active.
+- Otherwise, set to `NORMAL`.
 
-C. Adaptive Reasoning
-Based on your `Condition Assessment`, you MUST choose ONLY ONE of the following reasoning paths:
+**C. Adaptive Reasoning**
+Based on your Condition Assessment, you MUST follow ONLY ONE of the paths below:
 
 **[Path 1] IF Condition == Normal:**
-Keep reasoning extremely concise. Limit each part to EXACTLY ONE clear sentence.
-- Phase Reasoning: Select Phase ID with the highest **OverallPressure** based on the observed queues.
+Keep reasoning extremely concise (exactly ONE clear sentence per field).
+- Phase Reasoning: Select the Phase ID with the highest **OverallPressure** based on the observed visual queues.
 - Duration Reasoning: Scale duration based solely on the **CriticalQueue** level of the selected phase. Use longer durations for `Long`/`Critical` queues to ensure complete discharge.
 
 **[Path 2] IF Condition == Special:**
-Apply your traffic engineering world knowledge to reason step-by-step:
-- Impact Analysis: Evaluate how the detected local event AND/OR the received neighboring messages physically impact the current intersection's capacity and safety.
-- Phase Reasoning: Synthesize Impact Analysis and visible queue lengths; prioritize event mitigation over standard traffic pressure per the Traffic Engineering Knowledge principles.
-- Duration Reasoning: Apply your knowledge of the specific event type, its severity, and current queue lengths to determine the appropriate green duration.
-- Broadcast Notice: Output exactly "None" if no local event is detected. Otherwise, strictly format as: "[Event Type] - [Brief warning on impact]".
+Apply traffic engineering knowledge to reason step-by-step:
+- Impact Analysis: Evaluate how the detected local event AND/OR the neighboring messages physically impact the current intersection's capacity and safety.
+- Phase Reasoning: Synthesize Impact Analysis and visible queue lengths, prioritizing event mitigation over traffic pressure, and select the appropriate phase.
+- Duration Reasoning: Synthesize Impact Analysis and visible queue lengths, prioritizing event mitigation over traffic pressure, and select the appropriate duration.
+- Broadcast Notice: Format as "[Specific Type] - [Brief impact on upstream/downstream]" if an event is detected, else "None".
 
 7. Output Format
 Thought: [
-1.Scene Understanding:
+A. Scene Understanding:
 - Lane Analysis (Queue Assessment):
 {cot_lane_template}
 - Phase Mapping:
-[List all valid Phase IDs]: Phase <ID> (<Direction>): OverallPressure: <Level> | CriticalQueue: <Level>
-- Tie-Breaker: <"N/A" OR "Phase X queue appears longer than Phase Y">
-2.Scene Analysis:
-- Event Recognition: <"None" OR "[Type] detected at [Location], affects Phase [ID]">
+Phase <ID> (<Direction>): OverallPressure: <Level> | CriticalQueue: <Level>
+Tie-Breaker: <"N/A" OR "Phase X queue appears longer than Phase Y">
+
+B. Scene Analysis:
+- Event Recognition: <"None" OR "[Specific Type] ([Category]) detected at [Approach & Lane ID], affects Phase [ID]">
 - Neighboring Messages: <"Inactive" OR "Active">
 - Condition Assessment: <"Normal" OR "Special">
-3.Adaptive Reasoning:
-Strictly follow [Path 1] OR [Path 2] formatting based on your Final Condition above.
+
+C. Adaptive Reasoning:
+Strictly follow [Path 1] OR [Path 2] formatting based on your Condition Assessment.
 ]
 Action: {{"phase": <ID>, "duration": <Duration>}}
 """
