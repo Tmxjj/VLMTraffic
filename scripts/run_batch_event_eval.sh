@@ -25,14 +25,14 @@
  #                 max_sumo_seconds = max_depart + BUFFER_S，上下限 [300, 6000]
  #
  #               使用说明：
- #                 # 仅跑基线（本地，无需 GPU）：
+ #                 # 仅跑基线（本地，无需 GPU) MaxPressure + FixedTim
  #                 bash scripts/run_batch_event_eval.sh --baseline-only
  #
  #                 # 仅跑特定场景类型的基线（支持 normal/emergency/bus/accident/debris/pedestrian）：
  #                 bash scripts/run_batch_event_eval.sh --baseline-only --event emergency
  #
  #                 # 仅跑 VLM（远程服务器，需提前启动 vLLM）：
- #                 bash scripts/run_batch_event_eval.sh --port 8000 --model_name qwen3-vl-8b-sft
+ #                 bash scripts/run_batch_event_eval.sh --port 8000 --model_name qwen3-vl-8b-sft --temperature 0 --max_new_tokens 4096
  #
  #                 # 同时跑基线 + VLM：
  #                 bash scripts/run_batch_event_eval.sh --port 8000 --model_name qwen3-vl-8b-sft --with-baseline
@@ -93,12 +93,18 @@ ENV_DIRS[NewYork]="data/raw/NewYork/env"
 # 为避免 Bash 关联数组的嵌套限制，使用扁平变量名
 
 # ── normal（无事件注入）──────────────────────────────────────────
-ROUTE_normal_JiNan="anon_3_4_jinan_real.rou.xml"
-ROUTE_normal_Hangzhou="anon_4_4_hangzhou_real.rou.xml"
-ROUTE_normal_SouthKorea_Songdo="songdo.rou.xml"
-ROUTE_normal_France_Massy="massy.rou.xml"
-ROUTE_normal_Hongkong_YMT="YMT.rou.xml"
-ROUTE_normal_NewYork="anon_28_7_newyork_real_double.rou.xml"
+# ROUTE_normal_JiNan="anon_3_4_jinan_real.rou.xml"
+ROUTE_normal_JiNan_1="anon_3_4_jinan_real_2000.rou.xml"
+ROUTE_normal_JiNan_2="anon_3_4_jinan_real_2500.rou.xml"
+ROUTE_normal_JiNan_3="anon_3_4_jinan_synthetic_24000_60min.rou.xml"
+# ROUTE_normal_Hangzhou="anon_4_4_hangzhou_real.rou.xml"
+ROUTE_normal_Hangzhou_1="anon_4_4_hangzhou_real_5816.rou.xml"
+ROUTE_normal_Hangzhou_2="anon_4_4_hangzhou_synthetic_24000_60min.rou.xml"
+# ROUTE_normal_SouthKorea_Songdo="songdo.rou.xml"
+# ROUTE_normal_France_Massy="massy.rou.xml"
+# ROUTE_normal_Hongkong_YMT="YMT.rou.xml"
+# ROUTE_normal_NewYork="anon_28_7_newyork_real_double.rou.xml"
+ROUTE_normal_NewYork_1="anon_28_7_newyork_real_triple.rou.xml"
 
 # ── emergency（suffix: emergy）───────────────────────────────────
 ROUTE_emergency_JiNan="anon_3_4_jinan_real_emergy.rou.xml"
@@ -144,6 +150,20 @@ DATASETS=("JiNan" "Hangzhou" "SouthKorea_Songdo" "France_Massy" "Hongkong_YMT" "
 EVENT_TYPES=("normal" "emergency" "bus" "accident" "debris" "pedestrian")
 
 # ─── 辅助函数 ──────────────────────────────────────────────────
+
+get_route_files_for_scene() {
+    local event="$1"
+    local dataset="$2"
+    local prefix="ROUTE_${event}_${dataset}"
+    local var_name
+
+    # 支持同一 (event, dataset) 下定义多个路由变量：
+    # ROUTE_normal_JiNan / ROUTE_normal_JiNan_1 / ROUTE_normal_JiNan_2 ...
+    while IFS= read -r var_name; do
+        local route_file="${!var_name}"
+        [ -n "$route_file" ] && echo "$route_file"
+    done < <(compgen -A variable "$prefix" | sort -V)
+}
 
 get_max_sumo_seconds() {
     local rou_path="$1"
@@ -251,21 +271,23 @@ run_all_baselines() {
         echo ""
         echo "── Scene: ${EVENT} ─────────────────────────────────"
         for DS in "${DATASETS[@]}"; do
-            VAR_NAME="ROUTE_${EVENT}_${DS}"
-            ROUTE_FILE="${!VAR_NAME}"
-            if [ -z "$ROUTE_FILE" ]; then
+            mapfile -t ROUTE_FILES < <(get_route_files_for_scene "$EVENT" "$DS")
+            if [ ${#ROUTE_FILES[@]} -eq 0 ]; then
                 echo "  [SKIP] 未配置路由: ${DS}/${EVENT}"
                 continue
             fi
+
             ENV_DIR="${ENV_DIRS[$DS]}"
-            FULL_ROUTE="${ENV_DIR}/${ROUTE_FILE}"
-            if [ ! -f "$FULL_ROUTE" ]; then
-                echo "  [SKIP] 路由文件不存在: ${FULL_ROUTE}"
-                continue
-            fi
-            MAX_SUMO_SECONDS=$(get_max_sumo_seconds "$FULL_ROUTE")
-            run_baseline "$DS" "$ROUTE_FILE" "$EVENT" "--max_pressure" "MaxPressure" "$MAX_SUMO_SECONDS"
-            run_baseline "$DS" "$ROUTE_FILE" "$EVENT" "--fixed_time"   "FixedTime"   "$MAX_SUMO_SECONDS"
+            for ROUTE_FILE in "${ROUTE_FILES[@]}"; do
+                FULL_ROUTE="${ENV_DIR}/${ROUTE_FILE}"
+                if [ ! -f "$FULL_ROUTE" ]; then
+                    echo "  [SKIP] 路由文件不存在: ${FULL_ROUTE}"
+                    continue
+                fi
+                MAX_SUMO_SECONDS=$(get_max_sumo_seconds "$FULL_ROUTE")
+                run_baseline "$DS" "$ROUTE_FILE" "$EVENT" "--max_pressure" "MaxPressure" "$MAX_SUMO_SECONDS"
+                run_baseline "$DS" "$ROUTE_FILE" "$EVENT" "--fixed_time"   "FixedTime"   "$MAX_SUMO_SECONDS"
+            done
         done
     done
 }
@@ -280,20 +302,22 @@ run_all_vlm() {
         echo ""
         echo "── Scene: ${EVENT} ─────────────────────────────────"
         for DS in "${DATASETS[@]}"; do
-            VAR_NAME="ROUTE_${EVENT}_${DS}"
-            ROUTE_FILE="${!VAR_NAME}"
-            if [ -z "$ROUTE_FILE" ]; then
+            mapfile -t ROUTE_FILES < <(get_route_files_for_scene "$EVENT" "$DS")
+            if [ ${#ROUTE_FILES[@]} -eq 0 ]; then
                 echo "  [SKIP] 未配置路由: ${DS}/${EVENT}"
                 continue
             fi
+
             ENV_DIR="${ENV_DIRS[$DS]}"
-            FULL_ROUTE="${ENV_DIR}/${ROUTE_FILE}"
-            if [ ! -f "$FULL_ROUTE" ]; then
-                echo "  [SKIP] 路由文件不存在: ${FULL_ROUTE}"
-                continue
-            fi
-            MAX_SUMO_SECONDS=$(get_max_sumo_seconds "$FULL_ROUTE")
-            run_vlm "$DS" "$ROUTE_FILE" "$EVENT" "$MAX_SUMO_SECONDS" "$EXTRA_VLM_ARGS"
+            for ROUTE_FILE in "${ROUTE_FILES[@]}"; do
+                FULL_ROUTE="${ENV_DIR}/${ROUTE_FILE}"
+                if [ ! -f "$FULL_ROUTE" ]; then
+                    echo "  [SKIP] 路由文件不存在: ${FULL_ROUTE}"
+                    continue
+                fi
+                MAX_SUMO_SECONDS=$(get_max_sumo_seconds "$FULL_ROUTE")
+                run_vlm "$DS" "$ROUTE_FILE" "$EVENT" "$MAX_SUMO_SECONDS" "$EXTRA_VLM_ARGS"
+            done
         done
     done
 }

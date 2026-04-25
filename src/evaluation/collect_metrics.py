@@ -18,6 +18,8 @@ Description: 统一评估指标收集入口。
 
              指标差异对照：
                generalization : ATT / AWT / AQL（无特殊车辆过滤）
+                             comparison     : ATT / AWT / AQL（多数据集横向对比）
+                             ablation       : ATT / AWT / AQL（Zero-Shot / SFT / SFT+RLVR）
                emergency      : ATT / AWT / AQL / Special_ATT(EATT) / Special_AWT(EAWT)
                                 special_vtypes = {emergency, police, fire_engine}
                bus            : ATT / AWT / AQL / Special_ATT(BATT) / Special_AWT(BAWT)
@@ -31,6 +33,8 @@ Description: 统一评估指标收集入口。
 
 使用方式：
     python src/evaluation/collect_metrics.py --type generalization
+    python src/evaluation/collect_metrics.py --type comparison
+    python src/evaluation/collect_metrics.py --type ablation
     python src/evaluation/collect_metrics.py --type emergency
     python src/evaluation/collect_metrics.py --type bus
     python src/evaluation/collect_metrics.py --type accident
@@ -88,14 +92,131 @@ _CONFIGS: dict = {
         'eval_plan': [
             ("SouthKorea_Songdo", "songdo",         "fixed_time",   "FixedTime"),
             ("SouthKorea_Songdo", "songdo",         "max_pressure", "MaxPressure"),
+            ("SouthKorea_Songdo", "songdo",         "qwen3-vl-8b",   "qwen3-vl-8b"),
+            ("SouthKorea_Songdo", "songdo",         "qwen3-vl-8b-SFT",   "qwen3-vl-8b-SFT"),
+            ("SouthKorea_Songdo", "songdo",         "qwen3-vl-8b-SFT-RLVR",   "qwen3-vl-8b-SFT-RLVR"),
+
             ("France_Massy",      "massy",         "fixed_time",   "FixedTime"),
             ("France_Massy",      "massy",         "max_pressure", "MaxPressure"),
+            ("France_Massy",      "massy",         "qwen3-vl-8b", "qwen3-vl-8b"),
+            ("France_Massy",      "massy",         "qwen3-vl-8b-SFT", "qwen3-vl-8b-SFT"),
+            ("France_Massy",      "massy",         "qwen3-vl-8b-SFT-RLVR", "qwen3-vl-8b-SFT-RLVR"),
+
+
             ("Hongkong_YMT",      "YMT",         "fixed_time",   "FixedTime"),
             ("Hongkong_YMT",      "YMT",         "max_pressure", "MaxPressure"),
+            ("Hongkong_YMT",      "YMT",         "qwen3-vl-8b", "qwen3-vl-8b"),
+            ("Hongkong_YMT",      "YMT",         "qwen3-vl-8b-SFT", "qwen3-vl-8b-SFT"),
+            ("Hongkong_YMT",      "YMT",         "qwen3-vl-8b-SFT-RLVR", "qwen3-vl-8b-SFT-RLVR"),
+
             ("NewYork",           "anon_28_7_newyork_real_double",         "fixed_time",   "FixedTime"),
             ("NewYork",           "anon_28_7_newyork_real_double",         "max_pressure", "MaxPressure"),
-            ("NewYork",           "anon_28_7_newyork_real_triple",  "fixed_time",   "FixedTime"),
-            ("NewYork",           "anon_28_7_newyork_real_triple",  "max_pressure", "MaxPressure"),
+            ("NewYork",           "anon_28_7_newyork_real_double",         "qwen3-vl-8b", "qwen3-vl-8b"),
+            ("NewYork",           "anon_28_7_newyork_real_double",         "qwen3-vl-8b-SFT", "qwen3-vl-8b-SFT"),
+            ("NewYork",           "anon_28_7_newyork_real_double",         "qwen3-vl-8b-SFT-RLVR", "qwen3-vl-8b-SFT-RLVR"),
+
+        ],
+        'calc_kwargs': {},
+    },
+
+    # ── 1.1 对比总表（7 个常规路由，3 项指标）────────────────────────────────
+    'comparison': {
+        'csv_path': 'results/comparsion_result.csv',
+        'metric_keys': ['ATT', 'AWT', 'AQL'],
+        'scene_to_cols': {
+            ("JiNan",    "anon_3_4_jinan_real"):                     (2,  3,  4),
+            ("JiNan",    "anon_3_4_jinan_real_2000"):                (5,  6,  7),
+            ("JiNan",    "anon_3_4_jinan_real_2500"):                (8,  9,  10),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min"):    (11, 12, 13),
+            ("Hangzhou", "anon_4_4_hangzhou_real"):                  (14, 15, 16),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816"):             (17, 18, 19),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min"): (20, 21, 22),
+        },
+        'eval_plan': [
+            # Traditional
+            ("JiNan",    "anon_3_4_jinan_real",                     "fixed_time",   "FixedTime"),
+            ("JiNan",    "anon_3_4_jinan_real",                     "max_pressure", "MaxPressure"),
+            ("JiNan",    "anon_3_4_jinan_real_2000",                "fixed_time",   "FixedTime"),
+            ("JiNan",    "anon_3_4_jinan_real_2000",                "max_pressure", "MaxPressure"),
+            ("JiNan",    "anon_3_4_jinan_real_2500",                "fixed_time",   "FixedTime"),
+            ("JiNan",    "anon_3_4_jinan_real_2500",                "max_pressure", "MaxPressure"),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min",    "fixed_time",   "FixedTime"),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min",    "max_pressure", "MaxPressure"),
+            ("Hangzhou", "anon_4_4_hangzhou_real",                  "fixed_time",   "FixedTime"),
+            ("Hangzhou", "anon_4_4_hangzhou_real",                  "max_pressure", "MaxPressure"),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816",             "fixed_time",   "FixedTime"),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816",             "max_pressure", "MaxPressure"),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min", "fixed_time",   "FixedTime"),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min", "max_pressure", "MaxPressure"),
+
+            # E2ELight (ours)
+            ("JiNan",    "anon_3_4_jinan_real",                     "qwen3-vl-4b",  "Qwen-3-vl-4b"),
+            ("JiNan",    "anon_3_4_jinan_real",                     "qwen3-vl-8b",  "Qwen-3-vl-8b"),
+            ("JiNan",    "anon_3_4_jinan_real",                     ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("JiNan",    "anon_3_4_jinan_real",                     ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("JiNan",    "anon_3_4_jinan_real_2000",                "qwen3-vl-4b",  "Qwen-3-vl-4b"),
+            ("JiNan",    "anon_3_4_jinan_real_2000",                "qwen3-vl-8b",  "Qwen-3-vl-8b"),
+            ("JiNan",    "anon_3_4_jinan_real_2000",                ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("JiNan",    "anon_3_4_jinan_real_2000",                ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("JiNan",    "anon_3_4_jinan_real_2500",                "qwen3-vl-4b",  "Qwen-3-vl-4b"),
+            ("JiNan",    "anon_3_4_jinan_real_2500",                "qwen3-vl-8b",  "Qwen-3-vl-8b"),
+            ("JiNan",    "anon_3_4_jinan_real_2500",                ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("JiNan",    "anon_3_4_jinan_real_2500",                ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min",    "qwen3-vl-4b",  "Qwen-3-vl-4b"),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min",    "qwen3-vl-8b",  "Qwen-3-vl-8b"),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min",    ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min",    ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("Hangzhou", "anon_4_4_hangzhou_real",                  "qwen3-vl-4b",  "Qwen-3-vl-4b"),
+            ("Hangzhou", "anon_4_4_hangzhou_real",                  "qwen3-vl-8b",  "Qwen-3-vl-8b"),
+            ("Hangzhou", "anon_4_4_hangzhou_real",                  ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("Hangzhou", "anon_4_4_hangzhou_real",                  ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816",             "qwen3-vl-4b",  "Qwen-3-vl-4b"),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816",             "qwen3-vl-8b",  "Qwen-3-vl-8b"),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816",             ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816",             ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min", "qwen3-vl-4b",  "Qwen-3-vl-4b"),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min", ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min", ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+        ],
+        'calc_kwargs': {},
+    },
+
+    # ── 1.2 消融总表（3 个方法变体，3 项指标）────────────────────────────────
+    'ablation': {
+        'csv_path': 'results/ablation_result.csv',
+        'metric_keys': ['ATT', 'AWT', 'AQL'],
+        'scene_to_cols': {
+            ("JiNan",    "anon_3_4_jinan_real"):                     (2,  3,  4),
+            ("JiNan",    "+RLVR"):                (5,  6,  7),
+            ("JiNan",    "anon_3_4_jinan_real_2500"):                (8,  9,  10),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min"):    (11, 12, 13),
+            ("Hangzhou", "anon_4_4_hangzhou_real"):                  (14, 15, 16),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816"):             (17, 18, 19),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min"): (20, 21, 22),
+        },
+        'eval_plan': [
+            ("JiNan",    "anon_3_4_jinan_real",                     "qwen3-vl-8b",  "Zero-Shot"),
+            ("JiNan",    "anon_3_4_jinan_real",                     ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("JiNan",    "anon_3_4_jinan_real",                     ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("JiNan",    "anon_3_4_jinan_real_2000",                "qwen3-vl-8b",  "Zero-Shot"),
+            ("JiNan",    "anon_3_4_jinan_real_2000",                ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("JiNan",    "anon_3_4_jinan_real_2000",                ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("JiNan",    "anon_3_4_jinan_real_2500",                "qwen3-vl-8b",  "Zero-Shot"),
+            ("JiNan",    "anon_3_4_jinan_real_2500",                ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("JiNan",    "anon_3_4_jinan_real_2500",                ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min",    "qwen3-vl-8b",  "Zero-Shot"),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min",    ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("JiNan",    "anon_3_4_jinan_synthetic_24000_60min",    ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("Hangzhou", "anon_4_4_hangzhou_real",                  "qwen3-vl-8b",  "Zero-Shot"),
+            ("Hangzhou", "anon_4_4_hangzhou_real",                  ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("Hangzhou", "anon_4_4_hangzhou_real",                  ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816",             "qwen3-vl-8b",  "Zero-Shot"),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816",             ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("Hangzhou", "anon_4_4_hangzhou_real_5816",             ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min", "qwen3-vl-8b",  "Zero-Shot"),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min", ["sft", "qwen3-vl-8b-sft", "qwen3_vl_8b_sft", "Qwen3-VL-8B-SFT-Merged"], "SFT"),
+            ("Hangzhou", "anon_4_4_hangzhou_synthetic_24000_60min", ["sft+dpo", "sft_dpo", "qwen3-vl-8b-sft-dpo", "qwen3_vl_8b_sft_dpo", "Qwen3-VL-8B-SFT-DPO-Merged"], "SFT+RLVR"),
         ],
         'calc_kwargs': {},
     },
@@ -262,6 +383,45 @@ _CONFIGS: dict = {
 }
 
 
+def _dedup_keep_order(items):
+    """去重并保持原顺序。"""
+    seen = set()
+    out = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        out.append(item)
+    return out
+
+
+def _resolve_base_path(eval_root: str, scenario: str, scene_type: str, model_dir) -> tuple:
+    """解析 data/eval 目录，兼容 scene_type 与 model_dir 的命名差异。"""
+    scene_candidates = [scene_type]
+    if scene_type.endswith('.rou'):
+        scene_candidates.append(scene_type[:-4])
+    else:
+        scene_candidates.append(f"{scene_type}.rou")
+    scene_candidates = _dedup_keep_order(scene_candidates)
+
+    if isinstance(model_dir, (list, tuple)):
+        model_candidates = list(model_dir)
+    else:
+        model_candidates = [model_dir]
+    model_candidates = _dedup_keep_order(model_candidates)
+
+    for scene_name in scene_candidates:
+        for model_name in model_candidates:
+            base_path = os.path.join(eval_root, scenario, scene_name, model_name)
+            stat_path = os.path.join(base_path, "statistic_output.xml")
+            queue_path = os.path.join(base_path, "queue_output.xml")
+            if os.path.exists(stat_path) and os.path.exists(queue_path):
+                return base_path, scene_name, model_name
+
+    # 回退：用于打印更准确的缺失路径
+    return os.path.join(eval_root, scenario, scene_candidates[0], model_candidates[0]), scene_candidates[0], model_candidates[0]
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 通用 CSV 写入
 # ─────────────────────────────────────────────────────────────────────────────
@@ -330,7 +490,9 @@ def collect(event_type: str) -> None:
 
     for scenario, scene_type, model_dir, row_key in cfg['eval_plan']:
         total += 1
-        base_path     = os.path.join(eval_root, scenario, scene_type, model_dir)
+        base_path, scene_type_resolved, model_dir_resolved = _resolve_base_path(
+            eval_root, scenario, scene_type, model_dir
+        )
         stat_path     = os.path.join(base_path, "statistic_output.xml")
         queue_path    = os.path.join(base_path, "queue_output.xml")
         tripinfo_path = os.path.join(base_path, "tripinfo.out.xml")
@@ -353,6 +515,8 @@ def collect(event_type: str) -> None:
             continue
 
         _write_csv(cfg, metrics, scenario, scene_type, row_key)
+        if scene_type_resolved != scene_type or model_dir_resolved != model_dir:
+            print(f"ℹ️  [Resolve] {scenario}/{scene_type}/{model_dir} -> {scenario}/{scene_type_resolved}/{model_dir_resolved}")
         success += 1
 
     csv_abs = os.path.join(PROJECT_ROOT, cfg['csv_path'])

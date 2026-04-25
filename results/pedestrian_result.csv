@@ -1,7 +1,0 @@
-Category,Method,JiNan_pedestrian,,,,, Hangzhou_pedestrian,,,,,SouthKorea_Songdo_pedestrian,,,,,France_Massy_pedestrian,,,,,Hongkong_YMT_pedestrian,,,,,NewYork_double_pedestrian,,,,
-,,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑,ATT↓,AWT↓,AQL↓,MaxQL↓,TPT↑
-Traditional,FixedTime,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-,MaxPressure,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-VLM,qwen3-8b-vl Zero-Shot,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-,qwen3-8b-vl SFT,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-,qwen3-8b-vl SFT+DPO,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
