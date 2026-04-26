@@ -32,7 +32,7 @@
  #                 bash scripts/run_batch_event_eval.sh --baseline-only --event emergency
  #
  #                 # 仅跑 VLM（远程服务器，需提前启动 vLLM）：
- #                 bash scripts/run_batch_event_eval.sh --port 8000 --model_name qwen3-vl-8b-sft --temperature 0 --max_new_tokens 4096
+ #                 bash scripts/run_batch_event_eval.sh --port 8000 --model_name qwen3-vl-8b --temperature 0 --max_new_tokens 4096
  #
  #                 # 同时跑基线 + VLM：
  #                 bash scripts/run_batch_event_eval.sh --port 8000 --model_name qwen3-vl-8b-sft --with-baseline

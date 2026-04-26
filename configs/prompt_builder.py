@@ -99,8 +99,14 @@ You will receive **4 sequential tilted-overhead images** of the approach stop li
   - Image 3: South
   - Image 4: West
 
-- **Lane Layout** (numbered from median outward; L=Left, S=Straight, R=Right):
-  - **N/W** (6): L1(L), L2-5(S), L6(R)
+You must interpret the input images as viewed from inside the intersection, with vehicles facing the camera. This reverses left and right:
+- Image left = Vehicle right
+- Image right = Vehicle left
+**Note:** L1 (left-turn lane) is on the RIGHT side of the image
+
+- **Lane Layout** (Lane Locations:numbered from vehicle's left to vehicle's right; Lane Functions:L=Left, S=Straight, R=Right):
+  - **N** (6): L1(L), L2(L), L3-5(S), L6(R)
+  - **W** (6): L1(L), L2-5(S), L6(R)
   - **E/S** (5): L1(L), L2-4(S), L5(R)
         '''
     }
@@ -135,10 +141,11 @@ S(Major): L1(L):<Level>, L2(S):<Level>
 W(Minor): L1(L):<Level>''',
 
     "SONGDO_5LANE_JUNCTION": '''
-N(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
-W(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
+N(6): L1(L):<Level>, L2(L):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
+S(5): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>
 E(5): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>
-S(5): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>'''
+W(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
+'''
     }
 
     # 与 tsc_wrapper.py 中的 GREEN_DURATION_CANDIDATES 保持一致
@@ -159,11 +166,11 @@ S(5): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>'''
 - Ambulance: Boxy medical vehicle with distinct roof lightbars.
 - Police Car: Law enforcement vehicle with distinct roof lightbars.
 - Fire Truck: Large red emergency truck with roof lightbars.
-- Public Bus: Long, large rectangular city passenger vehicle.
-- School Bus: Long, large yellow passenger vehicle.
-- Traffic Accident: Crashed vehicles positioned abnormally (e.g., stopped diagonally across lanes).
+- Public Bus: Long, large, flat-front, white city passenger vehicle with a rectangular body.
+- School Bus: Long, large passenger vehicle with a protruding cowl-front hood.
+- Traffic Accident: Crashed vehicles with visible structural deformation, positioned abnormally (e.g., stopped diagonally across lanes).
 - Road Debris: Non-vehicle scattered objects (e.g., logs, fallen cargo) blocking the lane.
-- Construction Barrier: Structured roadblocks featuring distinct yellow and black diagonal stripes.
+- Construction Barrier: Orange longitudinal roadblock with red/orange striped end-supports.
     '''
 
     TRAFFIC_KNOWLEDGE = '''
@@ -263,7 +270,7 @@ Based on the **Approach Bird's-Eye Oblique Images**, current **Scenario Informat
 Map the observed lane densities to their respective Phase IDs. For each phase, aggregate the states of its governed lanes into the following metrics:
 - **OverallPressure**: A holistic synthesis of traffic demand for the phase. Output: [Low, Medium, High, or Severe]. *(Primary factor for Phase Selection)*
 - **CriticalQueue**: The MAX density level among the phase's constituent lanes. *(Primary factor for Duration Selection)*
-- **Tie-Breaker** *(Active ONLY if multiple phases share the same OverallPressure)*: Perform a direct visual comparison of the physical congestion and output the conclusion as: "Phase X queue appears longer than Phase Y". Otherwise, output "N/A".
+- **Tie-Breaker** *(Active ONLY if multiple phases share the same OverallPressure)*: Perform a direct visual comparison of the physical congestion and output the conclusion as: "Phase X queue appears longer than Phase Y". Otherwise, output "None".
 
 **B. Scene Analysis**
 
@@ -306,7 +313,7 @@ A. Scene Understanding:
 {cot_lane_template}
 - Phase Mapping:
 Phase <ID> (<Direction>): OverallPressure: <Level> | CriticalQueue: <Level>
-Tie-Breaker: <"N/A" OR "Phase X queue appears longer than Phase Y">
+Tie-Breaker: <"None" OR "Phase X queue appears longer than Phase Y">
 
 B. Scene Analysis:
 - Event Recognition: <"None" OR "[Specific Type] ([Category]) detected at [Approach & Lane ID], affects Phase [ID]">

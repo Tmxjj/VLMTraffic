@@ -237,16 +237,22 @@ _CONFIGS: dict = {
         'eval_plan': [
             ("JiNan",             "anon_3_4_jinan_real_emergy", "fixed_time",   "FixedTime"),
             ("JiNan",             "anon_3_4_jinan_real_emergy", "max_pressure", "MaxPressure"),
+            ("JiNan",             "anon_3_4_jinan_real_emergy", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("Hangzhou",          "anon_4_4_hangzhou_real_emergy", "fixed_time",   "FixedTime"),
             ("Hangzhou",          "anon_4_4_hangzhou_real_emergy", "max_pressure", "MaxPressure"),
+            ("Hangzhou",          "anon_4_4_hangzhou_real_emergy", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("SouthKorea_Songdo", "songdo_emergy", "fixed_time",   "FixedTime"),
             ("SouthKorea_Songdo", "songdo_emergy", "max_pressure", "MaxPressure"),
+            ("SouthKorea_Songdo", "songdo_emergy", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("France_Massy",      "massy_emergy", "fixed_time",   "FixedTime"),
             ("France_Massy",      "massy_emergy", "max_pressure", "MaxPressure"),
+            ("France_Massy",      "massy_emergy", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("Hongkong_YMT",      "YMT_emergy", "fixed_time",   "FixedTime"),
             ("Hongkong_YMT",      "YMT_emergy", "max_pressure", "MaxPressure"),
+            ("Hongkong_YMT",      "YMT_emergy", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("NewYork",           "anon_28_7_newyork_real_double_emergy", "fixed_time",   "FixedTime"),
             ("NewYork",           "anon_28_7_newyork_real_double_emergy", "max_pressure", "MaxPressure"),
+            ("NewYork",           "anon_28_7_newyork_real_double_emergy", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
         ],
         'calc_kwargs': {
             'special_vtypes': {"emergency", "police", "fire_engine"},
@@ -269,17 +275,23 @@ _CONFIGS: dict = {
         'eval_plan': [
             ("JiNan",             "anon_3_4_jinan_real_bus", "fixed_time",   "FixedTime"),
             ("JiNan",             "anon_3_4_jinan_real_bus", "max_pressure", "MaxPressure"),
+            ("JiNan",             "anon_3_4_jinan_real_bus", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("Hangzhou",          "anon_4_4_hangzhou_real_bus", "fixed_time",   "FixedTime"),
             ("Hangzhou",          "anon_4_4_hangzhou_real_bus", "max_pressure", "MaxPressure"),
+            ("Hangzhou",          "anon_4_4_hangzhou_real_bus", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("SouthKorea_Songdo", "songdo_bus", "fixed_time",   "FixedTime"),
             ("SouthKorea_Songdo", "songdo_bus", "max_pressure", "MaxPressure"),
+            ("SouthKorea_Songdo", "songdo_bus", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("France_Massy",      "massy_bus", "fixed_time",   "FixedTime"),
             ("France_Massy",      "massy_bus", "max_pressure", "MaxPressure"),
+            ("France_Massy",      "massy_bus", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("Hongkong_YMT",      "YMT_bus", "fixed_time",   "FixedTime"),
             ("Hongkong_YMT",      "YMT_bus", "max_pressure", "MaxPressure"),
+            ("Hongkong_YMT",      "YMT_bus", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("NewYork",           "anon_28_7_newyork_real_double_bus", "fixed_time",   "FixedTime"),
             ("NewYork",           "anon_28_7_newyork_real_double_bus", "max_pressure", "MaxPressure"),
-        ],
+            ("NewYork",           "anon_28_7_newyork_real_double_bus", "qwen3-vl-8b",  "Qwen-3-vl-8b"),     
+            ],
         'calc_kwargs': {
             'special_vtypes': {"bus", "school_bus"},
         },
@@ -301,16 +313,22 @@ _CONFIGS: dict = {
         'eval_plan': [
             ("JiNan",             "anon_3_4_jinan_real_accident", "fixed_time",   "FixedTime"),
             ("JiNan",             "anon_3_4_jinan_real_accident", "max_pressure", "MaxPressure"),
+            ("JiNan",             "anon_3_4_jinan_real_accident", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("Hangzhou",          "anon_4_4_hangzhou_real_accident", "fixed_time",   "FixedTime"),
             ("Hangzhou",          "anon_4_4_hangzhou_real_accident", "max_pressure", "MaxPressure"),
+            ("Hangzhou",          "anon_4_4_hangzhou_real_accident", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("SouthKorea_Songdo", "songdo_accident", "fixed_time",   "FixedTime"),
             ("SouthKorea_Songdo", "songdo_accident", "max_pressure", "MaxPressure"),
+            ("SouthKorea_Songdo", "songdo_accident", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("France_Massy",      "massy_accident", "fixed_time",   "FixedTime"),
             ("France_Massy",      "massy_accident", "max_pressure", "MaxPressure"),
+            ("France_Massy",      "massy_accident", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("Hongkong_YMT",      "YMT_accident", "fixed_time",   "FixedTime"),
             ("Hongkong_YMT",      "YMT_accident", "max_pressure", "MaxPressure"),
+            ("Hongkong_YMT",      "YMT_accident", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("NewYork",           "anon_28_7_newyork_real_double_accident", "fixed_time",   "FixedTime"),
             ("NewYork",           "anon_28_7_newyork_real_double_accident", "max_pressure", "MaxPressure"),
+            ("NewYork",           "anon_28_7_newyork_real_double_accident", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
         ],
         'calc_kwargs': {
             'event_id_prefixes': ["accident_"],
@@ -333,16 +351,22 @@ _CONFIGS: dict = {
         'eval_plan': [
             ("JiNan",             "anon_3_4_jinan_real_debris", "fixed_time",   "FixedTime"),
             ("JiNan",             "anon_3_4_jinan_real_debris", "max_pressure", "MaxPressure"),
+            ("JiNan",             "anon_3_4_jinan_real_debris", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("Hangzhou",          "anon_4_4_hangzhou_real_debris", "fixed_time",   "FixedTime"),
             ("Hangzhou",          "anon_4_4_hangzhou_real_debris", "max_pressure", "MaxPressure"),
+            ("Hangzhou",          "anon_4_4_hangzhou_real_debris", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("SouthKorea_Songdo", "songdo_debris", "fixed_time",   "FixedTime"),
             ("SouthKorea_Songdo", "songdo_debris", "max_pressure", "MaxPressure"),
+            ("SouthKorea_Songdo", "songdo_debris", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("France_Massy",      "massy_debris", "fixed_time",   "FixedTime"),
             ("France_Massy",      "massy_debris", "max_pressure", "MaxPressure"),
+            ("France_Massy",      "massy_debris", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("Hongkong_YMT",      "YMT_debris", "fixed_time",   "FixedTime"),
             ("Hongkong_YMT",      "YMT_debris", "max_pressure", "MaxPressure"),
+            ("Hongkong_YMT",      "YMT_debris", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
             ("NewYork",           "anon_28_7_newyork_real_double_debris", "fixed_time",   "FixedTime"),
             ("NewYork",           "anon_28_7_newyork_real_double_debris", "max_pressure", "MaxPressure"),
+            ("NewYork",           "anon_28_7_newyork_real_double_debris", "qwen3-vl-8b",  "Qwen-3-vl-8b"),
         ],
         'calc_kwargs': {
             'event_id_prefixes': ["debris_"],
@@ -351,35 +375,35 @@ _CONFIGS: dict = {
 
     # ── 6. 行人过街（5 项：ATT/AWT/AQL + MaxQL/TPT）──────────────────────────
     # trip id 前缀: ped_*（由 generate_pedestrian_crossing.py 生成）
-    'pedestrian': {
-        'csv_path': 'results/pedestrian_result.csv',
-        'metric_keys': ['ATT', 'AWT', 'AQL', 'MaxQL', 'TPT'],
-        'scene_to_cols': {
-            ("JiNan",             "anon_3_4_jinan_real_pedestrian"):  (2,  3,  4,  5,  6),
-            ("Hangzhou",          "anon_4_4_hangzhou_real_pedestrian"):  (7,  8,  9,  10, 11),
-            ("SouthKorea_Songdo", "songdo_pedestrian"):  (12, 13, 14, 15, 16),
-            ("France_Massy",      "massy_pedestrian"):  (17, 18, 19, 20, 21),
-            ("Hongkong_YMT",      "YMT_pedestrian"):  (22, 23, 24, 25, 26),
-            ("NewYork",           "anon_28_7_newyork_real_double_pedestrian"):  (27, 28, 29, 30, 31),
-        },
-        'eval_plan': [
-            ("JiNan",             "anon_3_4_jinan_real_pedestrian", "fixed_time",   "FixedTime"),
-            ("JiNan",             "anon_3_4_jinan_real_pedestrian", "max_pressure", "MaxPressure"),
-            ("Hangzhou",          "anon_4_4_hangzhou_real_pedestrian", "fixed_time",   "FixedTime"),
-            ("Hangzhou",          "anon_4_4_hangzhou_real_pedestrian", "max_pressure", "MaxPressure"),
-            ("SouthKorea_Songdo", "songdo_pedestrian", "fixed_time",   "FixedTime"),
-            ("SouthKorea_Songdo", "songdo_pedestrian", "max_pressure", "MaxPressure"),
-            ("France_Massy",      "massy_pedestrian", "fixed_time",   "FixedTime"),
-            ("France_Massy",      "massy_pedestrian", "max_pressure", "MaxPressure"),
-            ("Hongkong_YMT",      "YMT_pedestrian", "fixed_time",   "FixedTime"),
-            ("Hongkong_YMT",      "YMT_pedestrian", "max_pressure", "MaxPressure"),
-            ("NewYork",           "anon_28_7_newyork_real_double_pedestrian", "fixed_time",   "FixedTime"),
-            ("NewYork",           "anon_28_7_newyork_real_double_pedestrian", "max_pressure", "MaxPressure"),
-        ],
-        'calc_kwargs': {
-            'event_id_prefixes': ["ped_"],
-        },
-    },
+    # 'pedestrian': {
+    #     'csv_path': 'results/pedestrian_result.csv',
+    #     'metric_keys': ['ATT', 'AWT', 'AQL', 'MaxQL', 'TPT'],
+    #     'scene_to_cols': {
+    #         ("JiNan",             "anon_3_4_jinan_real_pedestrian"):  (2,  3,  4,  5,  6),
+    #         ("Hangzhou",          "anon_4_4_hangzhou_real_pedestrian"):  (7,  8,  9,  10, 11),
+    #         ("SouthKorea_Songdo", "songdo_pedestrian"):  (12, 13, 14, 15, 16),
+    #         ("France_Massy",      "massy_pedestrian"):  (17, 18, 19, 20, 21),
+    #         ("Hongkong_YMT",      "YMT_pedestrian"):  (22, 23, 24, 25, 26),
+    #         ("NewYork",           "anon_28_7_newyork_real_double_pedestrian"):  (27, 28, 29, 30, 31),
+    #     },
+    #     'eval_plan': [
+    #         ("JiNan",             "anon_3_4_jinan_real_pedestrian", "fixed_time",   "FixedTime"),
+    #         ("JiNan",             "anon_3_4_jinan_real_pedestrian", "max_pressure", "MaxPressure"),
+    #         ("Hangzhou",          "anon_4_4_hangzhou_real_pedestrian", "fixed_time",   "FixedTime"),
+    #         ("Hangzhou",          "anon_4_4_hangzhou_real_pedestrian", "max_pressure", "MaxPressure"),
+    #         ("SouthKorea_Songdo", "songdo_pedestrian", "fixed_time",   "FixedTime"),
+    #         ("SouthKorea_Songdo", "songdo_pedestrian", "max_pressure", "MaxPressure"),
+    #         ("France_Massy",      "massy_pedestrian", "fixed_time",   "FixedTime"),
+    #         ("France_Massy",      "massy_pedestrian", "max_pressure", "MaxPressure"),
+    #         ("Hongkong_YMT",      "YMT_pedestrian", "fixed_time",   "FixedTime"),
+    #         ("Hongkong_YMT",      "YMT_pedestrian", "max_pressure", "MaxPressure"),
+    #         ("NewYork",           "anon_28_7_newyork_real_double_pedestrian", "fixed_time",   "FixedTime"),
+    #         ("NewYork",           "anon_28_7_newyork_real_double_pedestrian", "max_pressure", "MaxPressure"),
+    #     ],
+    #     'calc_kwargs': {
+    #         'event_id_prefixes': ["ped_"],
+    #     },
+    # },
 }
 
 
@@ -423,20 +447,75 @@ def _resolve_base_path(eval_root: str, scenario: str, scene_type: str, model_dir
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CSV 自动创建
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_empty_csv(cfg: dict) -> list:
+    """根据 scene_to_cols 和 eval_plan 构造空白 CSV 的行列表。
+
+    第 0 行：表头（Category, Method, 场景列组...）
+    第 1 行：指标行（空, 空, ATT↓, AWT↓, ...）
+    后续行：每个唯一 row_key 对应一行，值全空。
+    """
+    metric_keys = cfg['metric_keys']
+    scene_to_cols = cfg['scene_to_cols']
+
+    # 计算总列数
+    max_col = max(max(cols) for cols in scene_to_cols.values())
+    total_cols = max_col + 1
+
+    # 第 0 行：场景名表头
+    header0 = [''] * total_cols
+    header0[0] = 'Category'
+    header0[1] = 'Method'
+    for (scenario, _scene_type), cols in scene_to_cols.items():
+        header0[cols[0]] = scenario
+
+    # 第 1 行：指标名表头（带箭头方向提示）
+    _arrow = {'ATT': 'ATT↓', 'AWT': 'AWT↓', 'AQL': 'AQL↓',
+              'MaxQL': 'MaxQL↓', 'TPT': 'TPT↑',
+              'Special_ATT': 'Special_ATT↓', 'Special_AWT': 'Special_AWT↓'}
+    header1 = [''] * total_cols
+    for (_scenario, _scene_type), cols in scene_to_cols.items():
+        for key, col in zip(metric_keys, cols):
+            header1[col] = _arrow.get(key, key)
+
+    # 收集所有唯一 row_key（保持顺序）
+    row_keys = _dedup_keep_order(rk for _, _, _, rk in cfg['eval_plan'])
+
+    # 为每个 row_key 生成空数据行
+    data_rows = []
+    for rk in row_keys:
+        row = [''] * total_cols
+        row[1] = rk
+        data_rows.append(row)
+
+    return [header0, header1] + data_rows
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # 通用 CSV 写入
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _write_csv(cfg: dict, metrics: dict, scenario: str, scene_type: str, row_key: str) -> None:
-    """将 metric_keys 按 scene_to_cols 指定的列写入对应 CSV。"""
+    """将 metric_keys 按 scene_to_cols 指定的列写入对应 CSV。
+
+    若 CSV 文件不存在则自动创建空模板。
+    """
     col_indices = cfg['scene_to_cols'].get((scenario, scene_type))
     if col_indices is None:
         print(f"⚠️  [CSV] ({scenario}, {scene_type}) 未在 scene_to_cols 中配置，跳过。")
         return
 
     csv_path = os.path.join(PROJECT_ROOT, cfg['csv_path'])
+
+    # CSV 不存在时自动创建
     if not os.path.exists(csv_path):
-        print(f"❌ [CSV] 结果 CSV 不存在: {csv_path}")
-        return
+        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        empty_rows = _build_empty_csv(cfg)
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            csv.writer(f).writerows(empty_rows)
+        print(f"ℹ️  [CSV] 自动创建空模板: {csv_path}")
 
     metric_keys = cfg['metric_keys']
     try:
@@ -449,9 +528,13 @@ def _write_csv(cfg: dict, metrics: dict, scenario: str, scene_type: str, row_key
                 target_row_idx = idx
                 break
 
+        # row_key 不存在时追加新行
         if target_row_idx is None:
-            print(f"⚠️  [CSV] 未找到 Method='{row_key}' 的行，跳过写入。")
-            return
+            new_row = [''] * (max(col_indices) + 1)
+            new_row[1] = row_key
+            rows.append(new_row)
+            target_row_idx = len(rows) - 1
+            print(f"ℹ️  [CSV] 新增行: Method='{row_key}'")
 
         target_row = rows[target_row_idx]
         while len(target_row) <= max(col_indices):

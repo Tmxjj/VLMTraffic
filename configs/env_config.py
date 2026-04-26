@@ -44,7 +44,7 @@ TSHUB_ENV_CONFIG = {
     # 默认绿灯持续时间（秒），仅在 choose_next_phase_with_duration 模式下作为初始/fallback 时长
     "delta_time": 27,
     # 绿灯时长候选集（秒），供 LVLM 从中选择；与 choose_next_phase_with_duration 配合使用
-    "green_duration_candidates": [10, 15, 20, 25, 30, 35],
+    "green_duration_candidates": [15, 20, 25, 30, 35, 40],
     
     # Files
     # 额外的 NET 文件路径（在 sumo.cfg 之外指定），默认为 None

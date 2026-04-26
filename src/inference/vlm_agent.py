@@ -1,5 +1,3 @@
-import argparse
-import os
 import torch
 from PIL import Image
 import requests
@@ -31,9 +29,6 @@ def is_api_retryable_error(exception):
 
 class VLMAgent:
     def __init__(self, api_type=None, batch_size=1, **kwargs):
-        # 若调用方传入了 url（即本地 vLLM API），自动切换到 requests 后端
-        if api_type is None and "url" in kwargs:
-            api_type = "requests"
         self.api_type = api_type or MODEL_CONFIG.get("api_type", "local_model")
         self.batch_size = batch_size  # 新增：并发推理数量
         backend_config = MODEL_CONFIG.get(self.api_type, {})
@@ -84,6 +79,23 @@ class VLMAgent:
         elif self.api_type == "gemini_sdk":
             from google import genai
             self.model = genai.Client(api_key=self.config.get("api_key"))
+
+        # 新增 Vertex SDK 初始化
+        elif self.api_type == "vertex_sdk":
+            from google import genai
+            from google.oauth2 import service_account
+            
+            # 使用项目密钥文件进行本地鉴权，并显式声明所需权限范围 (Scope)
+            credentials = service_account.Credentials.from_service_account_file(
+                self.config.get("credentials_path"),
+                scopes=["https://www.googleapis.com/auth/cloud-platform"] # <--- 加上这一行
+            )
+            self.model = genai.Client(
+                vertexai=True,
+                project=self.config.get("project_id"),
+                location=self.config.get("location", "us-central1"),
+                credentials=credentials
+            )
 
         elif self.api_type == "requests":
             self.url = self.config.get("url")
@@ -239,8 +251,9 @@ class VLMAgent:
                 messages=[{"role": "user", "content": content}],
                 max_tokens=self.max_tokens, temperature=self.temperature
             )
-
-        elif self.api_type == "gemini_sdk":
+        
+        # 将分支条件合并：支持 gemini_sdk 和 vertex_sdk
+        elif self.api_type in ["gemini_sdk", "vertex_sdk"]:
             from google.genai import types
             imgs = [Image.open(ip) for ip in image_paths]
             model_name=self.config.get("model_name", "gemini-3.1-pro-preview")
@@ -255,8 +268,12 @@ class VLMAgent:
                     thinking_config=types.ThinkingConfig(include_thoughts=False)
                 )
             contents = [prompt] + imgs
-            return self.model.models.generate_content(model=self.config.get("model_name", "gemini-3-pro-preview"), contents=contents, config=config)
-
+            return self.model.models.generate_content(
+                model=self.config.get("model_name", "gemini-3.1-pro-preview"), 
+                contents=contents, 
+                config=config
+            )
+        
         elif self.api_type == "requests":
             content = [{"type": "text", "text": prompt}]
             for ip in image_paths:
@@ -276,7 +293,7 @@ class VLMAgent:
         """多图推理主入口。
 
         Args:
-            image_paths: str 或 List[str]，支持单图或多张进口道图像
+            image_paths: str 或 List[str]，支持单图或8张多视角图像
         """
         response, thought = "ERROR", None
         input_tokens, output_tokens = 0, 0
@@ -301,7 +318,8 @@ class VLMAgent:
                 if raw_result.usage:
                     input_tokens, output_tokens = raw_result.usage.prompt_tokens, raw_result.usage.completion_tokens
 
-            elif self.api_type == "gemini_sdk":
+           # 将分支条件合并
+            elif self.api_type in ["gemini_sdk", "vertex_sdk"]:
                 res_parts, thought_parts = [], []
                 if raw_result.candidates:
                     for part in raw_result.candidates[0].content.parts:
