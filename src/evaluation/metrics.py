@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12
-LastEditTime: 2026-04-20 21:15:06
+LastEditTime: 2026-04-27 22:35:04
 Description: 核心指标计算引擎。
              支持在线（仿真步流式更新）和离线（SUMO 输出文件批量解析）两种模式。
              离线模式新增参数：
@@ -311,19 +311,23 @@ class MetricsCalculator:
 
 if __name__ == "__main__":
     secnario_dict = {
-        "JiNan": [
-            "anon_3_4_jinan_real.rou",
-            "anon_3_4_jinan_real_2000.rou",
-            "anon_3_4_jinan_real_2500.rou",
-            "anon_3_4_jinan_synthetic_24000_60min.rou",
-        ],
-        "Hangzhou": [
-            "anon_4_4_hangzhou_real.rou",
-            "anon_4_4_hangzhou_real_5816.rou",
-            "anon_4_4_hangzhou_synthetic_24000_60min.rou",
+        # "JiNan": [
+        #     "anon_3_4_jinan_real.rou",
+        #     "anon_3_4_jinan_real_2000.rou",
+        #     "anon_3_4_jinan_real_2500.rou",
+        #     "anon_3_4_jinan_synthetic_24000_60min.rou",
+        # ],
+        # "Hangzhou": [
+        #     "anon_4_4_hangzhou_real.rou",
+        #     "anon_4_4_hangzhou_real_5816.rou",
+        #     "anon_4_4_hangzhou_synthetic_24000_60min.rou",
+        # ]
+        "France_Massy":
+        [
+            "massy_emergy",
         ]
     }
-    methods = ['max_pressure']
+    methods = ['gemini_3']
 
     for secnario_name, net_files in secnario_dict.items():
         for net_file in net_files:

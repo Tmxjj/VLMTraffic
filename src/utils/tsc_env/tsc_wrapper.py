@@ -4,7 +4,7 @@
 @Description: 处理 TSCHub ENV 中的 state, reward (处理后的 state 作为 RL 的输入)
 + state: 5 个时刻的每一个 movement 的 queue length
 + reward: 路口总的 waiting time
-LastEditTime: 2026-04-24 10:12:15
+LastEditTime: 2026-04-27 17:58:01
 '''
 import numpy as np
 import gymnasium as gym
@@ -85,12 +85,22 @@ class TSCEnvWrapper(gym.Wrapper):
         
         self.movement_ids = None # 单路口用
         self.phase2movements = None # 单路口用
-        
+
         # 多路口用：存储每个路口的静态信息
-        self.multi_movement_ids = {} 
+        self.multi_movement_ids = {}
         self.multi_phase2movements = {}
-        
+
         self.occupancy = OccupancyList()
+
+        # {tls_id: {movement_key: avg_max_speed_m_s}}，reset() 时从 SUMO 读取并缓存
+        # 用于 reward_wrapper() 中对 mean_speed 归一化
+        self._lane_max_speed: Dict[str, Dict[str, float]] = {}
+
+        # reward 权重（occupancy 惩罚 + speed 奖励）
+        self._w_occ: float = 0.7
+        self._w_spd: float = 0.3
+        # 归一化 fallback：当 lane maxSpeed 查询失败时使用 50 km/h
+        self._fallback_max_speed: float = 13.9
     
     def _get_initial_state(self) -> Union[List[int], Dict[str, List[int]]]:
         if self.is_multi_agent:
@@ -154,15 +164,45 @@ class TSCEnvWrapper(gym.Wrapper):
             can_perform_action = state['tls'][self.tls_id]['can_perform_action']
             return occupancy, can_perform_action
     
-    def reward_wrapper(self, states) -> float:
-        """返回整个路口的排队长度的平均值
+    def reward_wrapper(self, states) -> Union[float, Dict[str, float]]:
+        """截面 reward：在 can_perform_action=True 时刻读取 e2 快照，计算归一化指标。
+
+        reward = -w_occ * norm_occ + w_spd * norm_spd
+          norm_occ：有效 movement（occ > 1%）的占用率均值 / 100，范围 [0, 1]
+          norm_spd：有效 movement（speed >= 0）的 (speed / maxSpeed) 均值，范围 [0, 1]
+
+        多路口时返回 {tls_id: reward}，单路口时返回 float。
         """
-        # 注意：原代码这里的 reward 是基于 waiting_time 的，但 compute_rollout_q_value 似乎用了传入的 rewards_list
-        # 这部分如果多智能体需要，可能要拆分 reward
-        total_waiting_time = 0
-        for _, veh_info in states['vehicle'].items():
-            total_waiting_time += veh_info['waiting_time']
-        return -total_waiting_time
+        def _compute_single(tls_id: str, tls_info: dict) -> float:
+            occupancies = tls_info.get('last_step_occupancy', [])
+            mean_speeds  = tls_info.get('last_step_mean_speed', [])
+            max_speeds   = self._lane_max_speed.get(tls_id, {})
+
+            # 有效 movement 的 occupancy（过滤空车道 occ <= 1%）
+            valid_occ = [occ for occ in occupancies if occ > 1.0]
+            norm_occ  = (sum(valid_occ) / len(valid_occ) / 100.0) if valid_occ else 0.0
+
+            # 有效 movement 的 speed（过滤 speed == -1 空车道）
+            movement_ids_list = self.multi_movement_ids.get(tls_id) or (
+                self.movement_ids if not self.is_multi_agent else []
+            )
+            norm_spd_list = []
+            for i, spd in enumerate(mean_speeds):
+                if spd < 0:
+                    continue
+                mv_key = movement_ids_list[i] if i < len(movement_ids_list) else None
+                lim = max_speeds.get(mv_key, self._fallback_max_speed) if mv_key else self._fallback_max_speed
+                lim = lim if lim > 0 else self._fallback_max_speed
+                norm_spd_list.append(min(spd / lim, 1.0))  # 限速归一化，上限截断到 1
+            norm_spd = (sum(norm_spd_list) / len(norm_spd_list)) if norm_spd_list else 0.0
+
+            return float(-self._w_occ * norm_occ + self._w_spd * norm_spd)
+
+        tls_obs = states.get('tls', {})
+        if self.is_multi_agent:
+            return {tid: _compute_single(tid, tls_obs.get(tid, {})) for tid in self.tls_id}
+        else:
+            return _compute_single(self.tls_id, tls_obs.get(self.tls_id, {}))
     
     def info_wrapper(self, infos, occupancy):
         """在 info 中加入每个 phase 的占有率
@@ -190,54 +230,45 @@ class TSCEnvWrapper(gym.Wrapper):
             infos['phase_occ'] = phase_occ
         return infos
 
+    def _build_lane_max_speed(self, tls_id: str, state: dict) -> Dict[str, float]:
+        """从 SUMO 查询每个 movement 关联 lane 的 maxSpeed，取均值缓存。
+        查询失败时 fallback 到 self._fallback_max_speed。
+        """
+        movement_lane_ids: dict = state['tls'][tls_id].get('movement_lane_ids', {})
+        sumo_conn = getattr(self.env.unwrapped, 'sumo', None)
+        result: Dict[str, float] = {}
+        for mv_key, lane_ids in movement_lane_ids.items():
+            speeds = []
+            for lane_id in (lane_ids or []):
+                try:
+                    spd = sumo_conn.lane.getMaxSpeed(lane_id) if sumo_conn else 0.0
+                    if spd > 0:
+                        speeds.append(spd)
+                except Exception:
+                    pass
+            result[mv_key] = (sum(speeds) / len(speeds)) if speeds else self._fallback_max_speed
+        return result
+
     def reset(self, seed=1) -> Tuple[Any, Dict[str, Any]]:
         """reset 时初始化 (1) 静态信息; (2) 动态信息
         """
-        state =  self.env.reset()
-        
+        state = self.env.reset()
+
         if self.is_multi_agent:
             for tid in self.tls_id:
-                self.multi_movement_ids[tid] = state['tls'][tid]['movement_ids']
+                self.multi_movement_ids[tid]   = state['tls'][tid]['movement_ids']
                 self.multi_phase2movements[tid] = state['tls'][tid]['phase2movements']
+                self._lane_max_speed[tid]       = self._build_lane_max_speed(tid, state)
         else:
-            self.movement_ids = state['tls'][self.tls_id]['movement_ids']
+            self.movement_ids   = state['tls'][self.tls_id]['movement_ids']
             self.phase2movements = state['tls'][self.tls_id]['phase2movements']
-            
+            self._lane_max_speed[self.tls_id] = self._build_lane_max_speed(self.tls_id, state)
+
         # 处理路口动态信息
         occupancy, _ = self.state_wrapper(state=state)
         self.states.append(occupancy)
         state = self.get_state()
-        return state, {'step_time':0}
-    
-    def compute_rollout_q_value(self, rewards_list:Union[List[float], Dict[str, List[float]]], gamma:float=0.95) -> Union[float, Dict[str, float]]:
-        """计算一段时间内的 rollout q value
-        """    
-        if self.is_multi_agent:
-            # rewards_list 是 {J1: [r1, r2, ...], J2: [r1, r2, ...] ...}
-            if not rewards_list:
-                return {tid: 0.0 for tid in self.tls_id}
-                
-            final_rewards = {tid: 0.0 for tid in self.tls_id}
-            for tid in self.tls_id:
-                q_val = 0.0
-                # 获取该路口的时间序列奖励
-                r_series = rewards_list.get(tid, [])
-                for i, r_t in enumerate(r_series):
-                    discount = gamma ** (i + 1)
-                    q_val += discount * r_t
-                final_rewards[tid] = q_val
-            return final_rewards
-
-        else:   
-            rollout_q_value = 0.0
-            if rewards_list:
-                for i, r_t in enumerate(rewards_list):
-                    # enumerate i 从 0 开始，对应时刻 t = i + 1
-                    if isinstance(r_t, dict):
-                        r_t = r_t.get(self.tls_id, 0)
-                    discount = gamma ** (i + 1)
-                    rollout_q_value += discount * r_t
-            return rollout_q_value
+        return state, {'step_time': 0}
 
     @staticmethod
     def _decode_action(action_input) -> tuple:
@@ -268,10 +299,6 @@ class TSCEnvWrapper(gym.Wrapper):
 
     def step(self, action: Union[int, Dict, Tuple]) -> Tuple[Any, SupportsFloat, bool, bool, Dict[str, Any]]:
         can_perform_action = False
-        if self.is_multi_agent:
-            rewards_list = {tid: [] for tid in self.tls_id}
-        else:
-            rewards_list = []
 
         # 将上层动作统一解码为底层可用格式
         # 多路口：{jid: action_input} → {jid: (phase_id, duration)}
@@ -282,33 +309,23 @@ class TSCEnvWrapper(gym.Wrapper):
             decoded_action = self._decode_action(action)
 
         # NOTE: can_perform_action 当前仿真时间 (sim_step) 等于 预定的下一次动作时间 (sim_step+delta_time) 时，该标志位变为 True。
+        # 内循环推进仿真直到下次决策时刻，不再逐步累积 reward
         while not can_perform_action:
             if self.is_multi_agent:
                 step_action = decoded_action
             else:
                 step_action = {self.tls_id: decoded_action}
-            
-            states, rewards, truncated, dones, infos, sensor_data = super().step(step_action) # 与环境交互
-            
-            # wrapper 处理
-            occupancy, can_perform_action = self.state_wrapper(state=states) 
-            
-            # 记录每一时刻的数据
-            self.occupancy.add_element(occupancy)
-            
-            if self.is_multi_agent:
-                for tid, r in rewards.items():
-                    if tid in rewards_list:
-                        rewards_list[tid].append(r)
-            else:
-                rewards_list.append(rewards)
-        
-        # 处理好的时序的 state
-        render_json = states.copy()
-        
 
+            states, _, truncated, dones, infos, sensor_data = super().step(step_action)
+
+            occupancy, can_perform_action = self.state_wrapper(state=states)
+            self.occupancy.add_element(occupancy)
+
+        # 循环结束 → can_perform_action=True 截面时刻，读取一次 e2 快照计算 reward
+        render_json = states.copy()
+
+        rewards = self.reward_wrapper(states)
         avg_occupancy = self.occupancy.calculate_average()
-        rewards = self.compute_rollout_q_value(rewards_list=rewards_list)
         infos = self.info_wrapper(infos, occupancy=avg_occupancy)
         infos['3d_data'] = sensor_data
         self.states.append(avg_occupancy)
