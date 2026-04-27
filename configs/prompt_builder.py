@@ -137,7 +137,7 @@ W: L1(S):<Level>, L2(S):<Level>, L3(S):<Level>''',
 
     "T_JUNCTION": '''
 N(Major): L1(S):<Level>
-S(Major): L1(L):<Level>, L2(S):<Level>
+S(Major): L2(S):<Level>
 W(Minor): L1(L):<Level>''',
 
     "SONGDO_5LANE_JUNCTION": '''
@@ -309,7 +309,7 @@ Apply traffic engineering knowledge to reason step-by-step:
 7. Output Format
 Thought: [
 A. Scene Understanding:
-- Lane Analysis (Queue Assessment):
+- Lane Analysis:
 {cot_lane_template}
 - Phase Mapping:
 Phase <ID> (<Direction>): OverallPressure: <Level> | CriticalQueue: <Level>
