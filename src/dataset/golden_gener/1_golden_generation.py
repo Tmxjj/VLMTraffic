@@ -13,6 +13,16 @@ Description: Golden 数据集生成脚本（适配联合动作空间 + VLM stude
 
 输出路径：data/sft_dataset/{scenario_name}/{route_stem}/01_dataset_raw.jsonl
 图像路径：data/sft_dataset/{scenario_name}/{route_stem}/{jid}/{sumo_step}/
+
+bug：libsumo 模式下，rollout_env 与 self.env 共享同一个 libsumo 实例（libsumo 不支持同进程内多实例）。因此：
+  - rollout_env.reset() 会关闭并重启 libsumo → 覆盖了主环境的SUMO 进程                                                 
+  - 每次 rollout_env.load_state() 回滚 SUMO 状态 →主环境的统计数据也被回滚                                   
+  - 最终 self.env.close() 时 SUMO                            
+  写出的统计数据，实际上是最后一次 load_state时的快照状态（接近仿真初始时刻），所以所有指标为 0         
+                                                    
+  这是 libsumo 单进程单实例限制导致的两个环境互相干扰的经典问题。解决方案是：要么改用traci（多进程），要么放弃双环境设计、用单环境 + load_state自我回滚。
+
+  暂不处理，gloden 生成阶段主要关注决策和数据质量，统计数据的准确性相对次要（且后续评估阶段会用单环境正常统计）。在使用和评估阶段，均使用单环境设计，不受此问题影响。                                        
 '''
 
 import os
@@ -44,6 +54,7 @@ from configs.scenairo_config import SCENARIO_CONFIGS
 from configs.env_config import TSHUB_ENV_CONFIG
 from configs.prompt_builder import PromptBuilder
 from src.inference.vlm_agent import VLMAgent
+from src.utils.event_bulletin import EventBulletin
 
 
 class GoldenGenerator:
@@ -213,6 +224,10 @@ class GoldenGenerator:
         except Exception as e:
             logger.critical(f"[GOLDEN] VLM Agent 初始化失败: {e}")
             raise
+
+        # --- 5. 初始化 EventBulletin（上下游协同广播板）---
+        topology = self.scenario_config.get("TOPOLOGY", {})
+        self.bulletin = EventBulletin(topology=topology)
 
         # 状态文件路径（SUMO checkpoint）
         self._state_file = os.path.join(self.output_dir, "_temp_state.xml")
@@ -423,17 +438,20 @@ class GoldenGenerator:
     # ------------------------------------------------------------------
 
     def _run_vlm_inference(
-        self, jid: str, image_paths: List[str], cur_phase: int
+        self, jid: str, image_paths: List[str], cur_phase: int,
+        coord_ctx: str = "",
     ) -> Tuple[str, dict, Optional[str]]:
         """
         对单个路口执行 VLM 推理，返回 (vlm_response, vlm_action_dict, vlm_raw_thought)。
         vlm_action_dict = {'phase_id': int, 'duration': int}
 
+        coord_ctx: 来自 EventBulletin 的上游协同上下文（可为空串）。
         若 VLM 推理失败或解析失败，返回 FixedTime 降级动作。
         """
         prompt = PromptBuilder.build_decision_prompt(
             current_phase_id=cur_phase,
             scenario_name=self.scenario_key,
+            neighbor_messages=coord_ctx,
         )
         default_action = {
             'phase_id': (cur_phase + 1) % self.num_phases,
@@ -558,6 +576,9 @@ class GoldenGenerator:
                 f"[GOLDEN] ══════ sumo_t={sumo_sim_step:.0f}s ══════"
             )
 
+            # 清理过期事件通知（基于 SUMO 时间，与 run_eval.py 保持一致）
+            self.bulletin.tick(sumo_sim_step)
+
             sensor_datas = infos.get('3d_data', {})
             sensor_imgs  = sensor_datas.get('image', {})
 
@@ -635,10 +656,26 @@ class GoldenGenerator:
                     logger.warning(f"[GOLDEN] {jid}: 无图像，VLM 推理跳过，使用 FixedTime")
                     continue
 
+                # 获取上游协同上下文（与 run_eval.py 保持一致）
+                coord_ctx = self.bulletin.get_context(jid, sumo_sim_step)
+                if coord_ctx:
+                    logger.info(
+                        f"[Bulletin][注入] {jid} | sumo_t={sumo_sim_step:.0f}s | 注入上游协同通知"
+                    )
+
                 vlm_response, vlm_action, vlm_thought = self._run_vlm_inference(
-                    jid, image_paths, cur_phase
+                    jid, image_paths, cur_phase, coord_ctx=coord_ctx
                 )
                 last_action[jid] = vlm_action
+
+                # 广播事件通知给邻居路口（多路口模式下才有意义）
+                if self.is_multi_agent and vlm_response not in ("ERROR", ""):
+                    self.bulletin.broadcast(
+                        from_jid=jid,
+                        vlm_response=vlm_response,
+                        green_duration=vlm_action['duration'],
+                        current_sumo_step=sumo_sim_step,
+                    )
 
                 # ── 阶段6：确定 best_action，写入样本 ────────────────────
                 metrics = all_rollout_rewards.get(jid, {})
@@ -653,22 +690,6 @@ class GoldenGenerator:
 
                 vlm_key = f"{vlm_action['phase_id']}_{vlm_action['duration']}"
                 label = "accepted" if vlm_key == best_key else "rejected"
-
-                # 获取 GT 排队数（e2 检测器）
-                gt_jam_counts = {}
-                if 'bev_lane_vehicle_counts' in sensor_datas:
-                    gt_jam_counts = sensor_datas['bev_lane_vehicle_counts'].get(
-                        f'aircraft_{jid}', {}
-                    )
-                # 也尝试从 render_json 中读取 jam_length_vehicle
-                jam_length_raw = (
-                    render_json.get('tls', {}).get(jid, {}).get('jam_length_vehicle', [])
-                )
-                movement_ids_raw = (
-                    render_json.get('tls', {}).get(jid, {}).get('movement_ids', [])
-                )
-                if jam_length_raw and movement_ids_raw:
-                    gt_jam_counts = dict(zip(movement_ids_raw, jam_length_raw))
 
                 sample = {
                     "scenario":              self.scenario_key,
@@ -687,7 +708,6 @@ class GoldenGenerator:
                     "best_reward":           float(best_reward),
                     "all_rollout_rewards":   {k: float(v) for k, v in metrics.items()},
                     "label":                 label,
-                    "gt_jam_counts":         gt_jam_counts,
                     "rollout_follow_steps":  self.rollout_follow_steps,
                 }
 
@@ -725,6 +745,8 @@ class GoldenGenerator:
             f"[GOLDEN] ════ 生成完成 | 共保存 {sample_count} 条样本 | "
             f"数据文件: {dataset_file} ════"
         )
+        if self.is_multi_agent:
+            self.bulletin.log_topology()
         self._cleanup()
 
     # ------------------------------------------------------------------
@@ -764,23 +786,23 @@ if __name__ == "__main__":
         description="Golden 数据集生成（联合动作空间 + VLM student 轨迹 + 多步 rollout）"
     )
     parser.add_argument(
-        "--scenario", "-sc", type=str, default="JiNan",
+        "--scenario", "-sc", type=str, default="Hongkong_YMT",
         help="场景键名 (e.g., JiNan, Hangzhou, Hongkong_YMT, SouthKorea_Songdo, France_Massy)"
     )
     parser.add_argument(
-        "--route_file", "-r", type=str, default=None,
+        "--route_file", "-r", type=str, default="YMT_emergy.rou.xml",
         help=".rou.xml 路由文件名（SUMO 将在 env/ 下查找）"
     )
     parser.add_argument(
-        "--max_sumo_seconds", "-n", type=int, default=3600,
+        "--max_sumo_seconds", "-n", type=int, default=800,
         help="最大 SUMO 仿真时间（秒），默认 3600s"
     )
     parser.add_argument(
-        "--warmup_seconds", "-w", type=int, default=300,
+        "--warmup_seconds", "-w", type=int, default=30,
         help="Warmup 阶段时长（秒），该时段仅 FixedTime 推进，不跑 VLM 也不保存数据，默认 300s"
     )
     parser.add_argument(
-        "--rollout_follow_steps", "-rfs", type=int, default=2,
+        "--rollout_follow_steps", "-rfs", type=int, default=0,
         help="候选动作之后额外执行的 FixedTime 步数（用于多步 rollout 评估），默认 2"
     )
     parser.add_argument(
