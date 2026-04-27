@@ -66,7 +66,7 @@ def generate_detectors(net_file, output_dir):
                         # Detector configuration
                         # Assuming detector length 45m, placed at the stop line
                         # pos is the start position of the detector relative to lane start
-                        det_length = 45.0
+                        det_length = 100 #检测器的覆盖范围有100m
                         pos = max(0, length - det_length) 
                         
                         # Determine direction suffix (r, s, l)
@@ -109,5 +109,5 @@ if __name__ == "__main__":
     
     generate_detectors(args.net, args.output)
     # python scripts/generate_detectors.py --net data/raw/Hangzhou/env/Hangzhou.net.xml --output data/raw/Hangzhou/add/
-    # python scripts/generate_detectors.py --net data/raw/JiNan/env/JiNan.net.xml --output data/raw/JiNan/add/
+    # python scripts/generate_detectors.py --net data/raw/JiNan/env/jinan.net.xml --output data/raw/JiNan/add/
     # python scripts/generate_detectors.py --net data/raw/NewYork/env/NewYork.net.xml --output data/raw/NewYork/add/
