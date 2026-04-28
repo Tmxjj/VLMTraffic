@@ -309,7 +309,6 @@ class TSCEnvWrapper(gym.Wrapper):
             decoded_action = self._decode_action(action)
 
         # NOTE: can_perform_action 当前仿真时间 (sim_step) 等于 预定的下一次动作时间 (sim_step+delta_time) 时，该标志位变为 True。
-        # 内循环推进仿真直到下次决策时刻，不再逐步累积 reward
         while not can_perform_action:
             if self.is_multi_agent:
                 step_action = decoded_action

@@ -155,8 +155,23 @@ class TSC3DEnvironment(gym.Env):
         self.tsc_env.tshub_env._save_state(state_file)
 
     def load_state(self, state_file: str) -> None:
-        """加载 SUMO 仿真状态"""
+        """加载 SUMO 仿真状态，并清理 3D 渲染器中的幽灵车辆节点。
+
+        libsumo loadState 会将 SUMO 状态回滚到 checkpoint，但 3D 渲染器的
+        _vehicle_elements 字典仍保留 checkpoint 之后新增的车辆节点（幽灵节点）。
+        此处在 SUMO 层回滚后，强制清空渲染器的车辆元素，下一次 step→_sync()
+        调用时会按回滚后的真实车辆列表重建，彻底消除幽灵车辆。
+        """
         self.tsc_env.tshub_env._load_state(state_file)
+        # 清理 3D 渲染器幽灵车辆节点（仅当渲染器已初始化时执行）
+        try:
+            renderer = getattr(self.tsc_env, 'tshub_render', None)
+            if renderer is not None and hasattr(renderer, 'scene_sync'):
+                renderer.scene_sync.remove_missing_elements(
+                    set(), renderer.scene_sync._vehicle_elements, 'vehicle'
+                )
+        except Exception:
+            pass
 
     def close(self) -> None:
         self.tsc_env.close()
