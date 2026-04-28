@@ -11,18 +11,22 @@ Description: Golden 数据集生成脚本（适配联合动作空间 + VLM stude
   5. 视觉输入：4张进口道停止线视图（{jid}_N/E/S/W），不含上游图
   6. 数据保存：JSONL，含 vlm_response / vlm_action / best_action / all_rollout_rewards 等字段
 
+Rollout 架构说明（单环境自我回滚）：
+  libsumo 单进程单实例，不支持同进程内多个独立 SUMO 实例。原双环境设计存在三个致命 bug：
+    Bug1: rollout_env.reset() 会杀死主环境 SUMO 进程并重启，导致两个 wrapper 共享同一实例，
+          信号灯 Python 对象状态与 SUMO 实际状态完全错位。
+    Bug2: rollout_env.load_state() 等价于对共享 SUMO 执行 loadState，反复回滚主环境仿真时钟，
+          车辆被 SUMO 删除但统计缓冲区仍有记录，导致大量"幽灵车辆"滞留路网。
+    Bug3: 每次 rollout 的 set_next_phases() 调用（setPhase/setPhaseDuration）直接作用于
+          共享信号灯，污染主环境 TLS Python 对象的 next_action_time 等字段。
+  修复：去掉 rollout_env，改为单环境自我 save/load：
+    rollout 前：self.env.save_state() + _save_wrapper_state()
+    rollout 中：self.env.load_state() + _restore_wrapper_state() → step() → 记录 reward
+    rollout 后：self.env.load_state() + _restore_wrapper_state() 恢复主轨迹
+    主轨迹继续用 VLM action 推进，统计数据完整连续，无幽灵车辆。
+
 输出路径：data/sft_dataset/{scenario_name}/{route_stem}/01_dataset_raw.jsonl
 图像路径：data/sft_dataset/{scenario_name}/{route_stem}/{jid}/{sumo_step}/
-
-bug：libsumo 模式下，rollout_env 与 self.env 共享同一个 libsumo 实例（libsumo 不支持同进程内多实例）。因此：
-  - rollout_env.reset() 会关闭并重启 libsumo → 覆盖了主环境的SUMO 进程                                                 
-  - 每次 rollout_env.load_state() 回滚 SUMO 状态 →主环境的统计数据也被回滚                                   
-  - 最终 self.env.close() 时 SUMO                            
-  写出的统计数据，实际上是最后一次 load_state时的快照状态（接近仿真初始时刻），所以所有指标为 0         
-                                                    
-  这是 libsumo 单进程单实例限制导致的两个环境互相干扰的经典问题。解决方案是：要么改用traci（多进程），要么放弃双环境设计、用单环境 + load_state自我回滚。
-
-  暂不处理，gloden 生成阶段主要关注决策和数据质量，统计数据的准确性相对次要（且后续评估阶段会用单环境正常统计）。在使用和评估阶段，均使用单环境设计，不受此问题影响。                                        
 '''
 
 import os
@@ -48,7 +52,7 @@ from add_lane_watermarks import add_lane_watermarks
 
 from tshub.utils.init_log import set_logger
 from src.utils.make_tsc_env import make_env
-from src.utils.tools import create_folder, append_response_to_file, convert_rgb_to_bgr
+from src.utils.tools import create_folder, append_response_to_file, convert_rgb_to_bgr, save_to_json
 from src.utils.tsc_env.tsc_wrapper import GREEN_DURATION_CANDIDATES, FIXED_TIME_GREEN_DURATION
 from configs.scenairo_config import SCENARIO_CONFIGS
 from configs.env_config import TSHUB_ENV_CONFIG
@@ -74,6 +78,7 @@ class GoldenGenerator:
         scenario_key: str = "JiNan",
         log_dir: str = "./log/golden_dataset",
         route_file: Optional[str] = None,
+        is_rollout: bool = True,
         rollout_follow_steps: int = 2,
         api_url: Optional[str] = None,
         model_name_override: Optional[str] = None,
@@ -185,31 +190,12 @@ class GoldenGenerator:
             'tshub_env_cfg':    TSHUB_ENV_CONFIG,
         }
 
-        # --- 3. 初始化仿真环境 ---
+        # --- 3. 初始化仿真环境（单环境，rollout 通过自我 save/load 实现）---
         logger.info(f"[GOLDEN] 初始化仿真环境: {self.scenario_name} ...")
         try:
             self.env = make_env(**self.env_params)()
         except Exception as e:
             logger.critical(f"[GOLDEN] 环境初始化失败: {e}")
-            raise
-
-        # rollout 用环境（禁用 3D 渲染以节省资源）
-        rollout_env_params = copy.deepcopy(self.env_params)
-        rollout_renderer_cfg = copy.deepcopy(self.env_params.get('renderer_cfg') or {})
-        rollout_renderer_cfg['is_render'] = False
-        rollout_env_params['renderer_cfg'] = rollout_renderer_cfg
-        rollout_env_params['sensor_cfg'] = None
-        # rollout 不需要记录统计文件，避免覆盖主环境输出
-        rollout_env_params['trip_info'] = None
-        rollout_env_params['statistic_output'] = None
-        rollout_env_params['summary'] = None
-        rollout_env_params['queue_output'] = None
-
-        logger.info("[GOLDEN] 初始化 rollout 环境（禁用渲染）...")
-        try:
-            self.rollout_env = make_env(**rollout_env_params)()
-        except Exception as e:
-            logger.critical(f"[GOLDEN] Rollout 环境初始化失败: {e}")
             raise
 
         # --- 4. 初始化 VLM Agent ---
@@ -238,14 +224,15 @@ class GoldenGenerator:
             f"候选数={self.num_phases * len(GREEN_DURATION_CANDIDATES)}"
         )
 
+        self.is_rollout = is_rollout
+
     def __del__(self):
-        for attr in ('env', 'rollout_env'):
-            env_obj = getattr(self, attr, None)
-            if env_obj is not None:
-                try:
-                    env_obj.close()
-                except Exception:
-                    pass
+        env_obj = getattr(self, 'env', None)
+        if env_obj is not None:
+            try:
+                env_obj.close()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # 辅助：图像采集
@@ -290,10 +277,38 @@ class GoldenGenerator:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _get_tls_builder(env):
+        """获取 TLS builder 的正确路径：
+        TSCEnvWrapper → TSC3DEnvironment → Tshub3DEnvironment → TshubEnvironment（有 scene_objects）
+        之前错误地访问 env.unwrapped.scene_objects，而 TSC3DEnvironment 没有该属性，
+        导致 AttributeError 被静默吞掉，tls_action 状态始终保存/恢复为空。
+        """
+        return env.unwrapped.tsc_env.tshub_env.scene_objects.get('tls')
+
+    @staticmethod
     def _save_wrapper_state(env) -> dict:
+        tls_action_states = {}
+        try:
+            tls_builder = GoldenGenerator._get_tls_builder(env)
+            if tls_builder is not None:
+                for jid, tl in tls_builder.traffic_lights.items():
+                    a = tl.tls_action
+                    tls_action_states[jid] = {
+                        "phase_index":               a.phase_index,
+                        "next_action_time":          a.next_action_time,
+                        "is_yellow":                 a.is_yellow,
+                        "yellow_end_time":           getattr(a, 'yellow_end_time', 0.0),
+                        "pending_green_duration":    getattr(a, '_pending_green_duration', a.delta_time),
+                        "can_perform_action":        tl.can_perform_action,
+                    }
+            if not tls_action_states:
+                logger.warning("[GOLDEN] _save_wrapper_state: tls_action_states 为空，TLS 状态未保存")
+        except Exception as e:
+            logger.warning(f"[GOLDEN] 保存 tls_action 状态失败: {e}")
         return {
             "states": list(env.states),
             "occupancy_elements": list(env.occupancy.elements),
+            "tls_action_states": tls_action_states,
         }
 
     @staticmethod
@@ -301,6 +316,24 @@ class GoldenGenerator:
         env.states = deque(saved["states"], maxlen=env.states.maxlen)
         env.occupancy.clear_elements()
         env.occupancy.elements = list(saved["occupancy_elements"])
+        tls_action_states = saved.get("tls_action_states", {})
+        if not tls_action_states:
+            logger.warning("[GOLDEN] _restore_wrapper_state: tls_action_states 为空，TLS 状态未恢复")
+            return
+        try:
+            tls_builder = GoldenGenerator._get_tls_builder(env)
+            if tls_builder is not None:
+                for jid, state in tls_action_states.items():
+                    tl = tls_builder.traffic_lights[jid]
+                    a = tl.tls_action
+                    a.phase_index               = state["phase_index"]
+                    a.next_action_time          = state["next_action_time"]
+                    a.is_yellow                 = state["is_yellow"]
+                    a.yellow_end_time           = state.get("yellow_end_time", 0.0)
+                    a._pending_green_duration   = state["pending_green_duration"]
+                    tl.can_perform_action       = state["can_perform_action"]
+        except Exception as e:
+            logger.warning(f"[GOLDEN] 恢复 tls_action 状态失败: {e}")
 
     # ------------------------------------------------------------------
     # 核心：多步 rollout（候选动作 + FixedTime 后续步）
@@ -313,24 +346,29 @@ class GoldenGenerator:
         candidate_action,
     ) -> float:
         """
-        从保存的 checkpoint 出发：
-          步骤1：执行 candidate_action（目标动作）
+        单环境自我回滚 rollout：从 checkpoint 出发执行候选动作，评估 reward 后恢复 checkpoint。
+          步骤1：从 checkpoint 恢复 → 执行 candidate_action
           步骤2~N：执行 FixedTime（相位+1，时长 FIXED_TIME_GREEN_DURATION）
-        返回累计折扣 reward（来自 env.step 内的 compute_rollout_q_value）。
+          结束：恢复 checkpoint，主轨迹不受影响
+        返回累计折扣 reward。
 
-        candidate_action 格式与 env.step 一致（单路口 dict / 多路口 dict of dict）。
+        rollout 期间关闭 3D 渲染（is_render=False），原因：
+          1. rollout 只需要 reward，无需图像；
+          2. 渲染会在 _vehicle_elements 中积累幽灵节点（rollout 阶段新增的车辆），
+             即使 load_state 后清空，但每次 rollout step 的 _sync() 仍会重建幽灵节点，
+             彻底关闭渲染才能根治幽灵车辆问题。
         """
-        # 关闭 rollout_env 渲染（已在 __init__ 禁用，此处双重保证）
-        try:
-            self.rollout_env.unwrapped.tsc_env.is_render = False
-        except AttributeError:
-            pass
+        # --- rollout 期间关闭 3D 渲染，避免幽灵车辆污染 ---
+        tsc_3d_env = self.env.unwrapped.tsc_env  # Tshub3DEnvironment
+        orig_is_render = tsc_3d_env.is_render
+        tsc_3d_env.is_render = False
 
-        # --- 加载 checkpoint ---
+        # --- 从 checkpoint 恢复（单环境自我回滚）---
         try:
-            self.rollout_env.unwrapped.load_state(state_file)
-            self._restore_wrapper_state(self.rollout_env, wrapper_state)
+            self.env.unwrapped.load_state(state_file)
+            self._restore_wrapper_state(self.env, wrapper_state)
         except Exception as e:
+            tsc_3d_env.is_render = orig_is_render
             logger.error(f"[ROLLOUT] 加载 state 失败: {e}")
             return float('-inf')
 
@@ -340,14 +378,12 @@ class GoldenGenerator:
 
         # --- 步骤 1：目标候选动作 ---
         try:
-            _, reward, truncated, dones, infos, render_json = self.rollout_env.step(candidate_action)
-            if isinstance(reward, dict):
-                step_r = sum(reward.values())
-            else:
-                step_r = float(reward)
+            _, reward, truncated, dones, infos, render_json = self.env.step(candidate_action)
+            step_r = sum(reward.values()) if isinstance(reward, dict) else float(reward)
             total_reward += discount * step_r
             discount *= gamma
         except Exception as e:
+            tsc_3d_env.is_render = orig_is_render
             logger.error(f"[ROLLOUT] 候选动作执行失败: {e}")
             return float('-inf')
 
@@ -355,13 +391,10 @@ class GoldenGenerator:
         for follow_i in range(self.rollout_follow_steps):
             if dones or truncated:
                 break
-            # FixedTime：相位顺序轮转
             if self.is_multi_agent:
                 fixed_action = {
                     jid: {
-                        'phase_id': (
-                            render_json.get('tls', {}).get(jid, {}).get('this_phase_index', 0) + 1
-                        ) % self.num_phases,
+                        'phase_id': (render_json.get('tls', {}).get(jid, {}).get('this_phase_index', 0) + 1) % self.num_phases,
                         'duration': FIXED_TIME_GREEN_DURATION,
                     }
                     for jid in self.junctions
@@ -373,17 +406,16 @@ class GoldenGenerator:
                     'duration': FIXED_TIME_GREEN_DURATION,
                 }
             try:
-                _, reward, truncated, dones, infos, render_json = self.rollout_env.step(fixed_action)
-                if isinstance(reward, dict):
-                    step_r = sum(reward.values())
-                else:
-                    step_r = float(reward)
+                _, reward, truncated, dones, infos, render_json = self.env.step(fixed_action)
+                step_r = sum(reward.values()) if isinstance(reward, dict) else float(reward)
                 total_reward += discount * step_r
                 discount *= gamma
             except Exception as e:
                 logger.warning(f"[ROLLOUT] FixedTime 步 {follow_i + 1} 失败: {e}")
                 break
 
+        # --- 恢复 3D 渲染标志 ---
+        tsc_3d_env.is_render = orig_is_render
         return total_reward
 
     # ------------------------------------------------------------------
@@ -512,20 +544,10 @@ class GoldenGenerator:
         dataset_file = os.path.join(self.output_dir, "01_dataset_raw.jsonl")
         sample_count = 0
 
-        # 重置主环境，获取初始状态
+        # 重置环境，获取初始状态（单环境，无需额外 rollout_env）
         self.env.reset()
         dones, truncated = False, False
         sumo_sim_step = 0.0
-
-        # rollout_env 也需要 reset 以建立 SUMO TraCI 连接，
-        # 后续每次 rollout 通过 load_state 恢复到检查点，而非 reset
-        logger.info("[GOLDEN] 初始化 rollout 环境 TraCI 连接（reset）...")
-        try:
-            self.rollout_env.reset()
-        except Exception as e:
-            logger.critical(f"[GOLDEN] rollout_env reset 失败: {e}")
-            self._cleanup()
-            return
 
         # 热身步
         logger.info("[GOLDEN] 执行热身步...")
@@ -625,21 +647,56 @@ class GoldenGenerator:
                 if not image_paths:
                     logger.warning(f"[GOLDEN] {jid}: 无可用图像，本步跳过")
 
-            # ── 阶段2：保存 SUMO checkpoint ──────────────────────────────
-            self.env.unwrapped.save_state(self._state_file)
-            main_wrapper_state = self._save_wrapper_state(self.env)
+            # ── 阶段3：保存 checkpoint + rollout 枚举 best_action ────────
+            # 诊断：记录 checkpoint 时刻的 SUMO 实际车辆数
+            try:
+                tshub_env_diag = self.env.unwrapped.tsc_env.tshub_env
+                veh_count_before = len(tshub_env_diag.sumo.vehicle.getIDList())
+                logger.info(
+                    f"[DIAG] rollout 前 SUMO 车辆数={veh_count_before}"
+                    f" | sumo_t={sumo_sim_step:.0f}s"
+                )
+            except Exception:
+                veh_count_before = -1
+            if self.is_rollout:
+                # 单环境自我回滚：rollout 完成后必须恢复 checkpoint，主轨迹才不受污染
+                self.env.unwrapped.save_state(self._state_file)
+                main_wrapper_state = self._save_wrapper_state(self.env)
 
-            # ── 阶段3：枚举 rollout，求 best_action ──────────────────────
-            current_phases_map = per_jid_cur_phase
-            all_rollout_rewards = self._evaluate_all_candidates(
-                self._state_file, main_wrapper_state, current_phases_map
-            )
+                all_rollout_rewards = self._evaluate_all_candidates(
+                    self._state_file, main_wrapper_state, per_jid_cur_phase
+                )
 
-            # ── 阶段4：恢复主环境 checkpoint（rollout 不影响主环境）────────
-            self.env.unwrapped.load_state(self._state_file)
-            self._restore_wrapper_state(self.env, main_wrapper_state)
+                # rollout 结束后恢复主环境 checkpoint（单环境设计的关键步骤）
+                self.env.unwrapped.load_state(self._state_file)
+                self._restore_wrapper_state(self.env, main_wrapper_state)
 
-            # ── 阶段5：VLM 推理 + 构建 student action ────────────────────
+            # 诊断：输出 loadState 后 SUMO 实际车辆数及 TLS 状态
+            try:
+                tshub_env = self.env.unwrapped.tsc_env.tshub_env
+                sumo_veh_ids = tshub_env.sumo.vehicle.getIDList()
+                logger.info(
+                    f"[DIAG] loadState 后 SUMO 车辆数={len(sumo_veh_ids)}"
+                    f" | checkpoint时刻: sumo_t={sumo_sim_step:.0f}s"
+                    f" | SUMO sim_step={tshub_env.sim_step}"
+                )
+                tls_builder = self.env.unwrapped.tsc_env.tshub_env.scene_objects.get('tls')
+                if tls_builder:
+                    for jid in self.junctions:
+                        tl = tls_builder.traffic_lights.get(jid)
+                        if tl:
+                            a = tl.tls_action
+                            sumo_phase = tshub_env.sumo.trafficlight.getPhase(jid)
+                            logger.info(
+                                f"[DIAG] TLS {jid}: Python next_action_time={a.next_action_time}"
+                                f" | phase_index={a.phase_index} | is_yellow={a.is_yellow}"
+                                f" | can_perform_action={tl.can_perform_action}"
+                                f" | SUMO实际phase={sumo_phase}"
+                            )
+            except Exception as _e:
+                logger.warning(f"[DIAG] 诊断失败: {_e}")
+
+            # ── 阶段4：VLM 推理 + 构建 student action ──────────────────────
             last_action: Dict[str, dict] = {}
 
             for jid in deciding_jids:
@@ -666,6 +723,13 @@ class GoldenGenerator:
                 vlm_response, vlm_action, vlm_thought = self._run_vlm_inference(
                     jid, image_paths, cur_phase, coord_ctx=coord_ctx
                 )
+                # vlm_action =  {
+                #     'phase_id': (cur_phase + 1) % self.num_phases,
+                #     'duration': 35,
+                # }
+                # vlm_response = 'Thought: [\nA. Scene Understanding:\n- Lane Analysis:\nN(Major): L1(S): Long (5+ vehicles stopped at stop line)\nS(Major): L2(S): Medium (4-7 vehicles stopped at stop line)\nW(Minor): L1(L): Short (1-3 vehicles stopped at stop line)\n- Phase Mapping:\nPhase 0 (Major Road): OverallPressure: High | CriticalQueue: Long\nTie-Breaker: None\n\nB. Scene Analysis:\n- Event Recognition: Public Bus (Transit) detected at South Approach L2, affects Phase 0\n- Neighboring Messages: Inactive\n- Condition Assessment: Special\n\nC. Adaptive Reasoning:\nImpact Analysis: The public bus, while a transit vehicle, is a large vehicle that requires more space and time to clear the intersection, increasing the discharge time for Phase 0. It does not represent an emergency or crash event, so it does not trigger emergency preemption or capacity reduction.\nPhase Reasoning: Although Phase 0 has the highest pressure, the presence of the bus necessitates a longer green duration to ensure safe and complete discharge. Phase 1 (Minor Road) has low pressure and is not affected by the bus, making it a secondary option. However, since Phase 0 is the major road and has a critical queue, it must be prioritized for the green phase.\nDuration Reasoning: The CriticalQueue for Phase 0 is Long, requiring a longer duration to ensure complete discharge. The bus further increases the discharge time, so a longer duration is justified.\nBroadcast Notice: Public Bus - Increased discharge time required for upstream major road\n]\nAction: {"phase": 0, "duration": 35}'
+                # vlm_thought = None
+                
                 last_action[jid] = vlm_action
 
                 # 广播事件通知给邻居路口（多路口模式下才有意义）
@@ -677,20 +741,27 @@ class GoldenGenerator:
                         current_sumo_step=sumo_sim_step,
                     )
 
-                # ── 阶段6：确定 best_action，写入样本 ────────────────────
-                metrics = all_rollout_rewards.get(jid, {})
-                if not metrics:
-                    logger.warning(f"[GOLDEN] {jid}: rollout metrics 为空，跳过样本保存")
-                    continue
+                # ── 阶段5b：确定 best_action，写入样本 ───────────────────
+                if self.is_rollout:
+                    metrics = all_rollout_rewards.get(jid, {})
+                    if not metrics:
+                        logger.warning(f"[GOLDEN] {jid}: rollout metrics 为空，跳过样本保存")
+                        continue
 
-                best_key = max(metrics, key=metrics.get)
-                best_reward = metrics[best_key]
-                best_phase_id, best_duration = map(int, best_key.split("_"))
-                best_action_dict = {'phase_id': best_phase_id, 'duration': best_duration}
+                    best_key = max(metrics, key=metrics.get)
+                    best_reward = metrics[best_key]
+                    best_phase_id, best_duration = map(int, best_key.split("_"))
+                    best_action_dict = {'phase_id': best_phase_id, 'duration': best_duration}
 
-                vlm_key = f"{vlm_action['phase_id']}_{vlm_action['duration']}"
-                label = "accepted" if vlm_key == best_key else "rejected"
-
+                    vlm_key = f"{vlm_action['phase_id']}_{vlm_action['duration']}"
+                    label = "accepted" if vlm_key == best_key else "rejected"
+                else:
+                    best_action_dict = vlm_action  # 无 rollout 时直接用 VLM action 作为 best_action
+                    best_reward = 0
+                    metrics = {}
+                    best_phase_id,best_duration = None,None
+                    label = "no rollout"  # 无 rollout 时默认 VLM action 即为 best
+                
                 sample = {
                     "scenario":              self.scenario_key,
                     "junction_id":           jid,
@@ -736,6 +807,13 @@ class GoldenGenerator:
             try:
                 obs, rewards, truncated, dones, infos, render_json = self.env.step(final_action)
                 sumo_sim_step = float(infos.get('step_time', sumo_sim_step))
+                # 诊断：记录主轨迹每步后的实际车辆数
+                try:
+                    _tenv = self.env.unwrapped.tsc_env.tshub_env
+                    _nveh = len(_tenv.sumo.vehicle.getIDList())
+                    logger.info(f"[DIAG] 主轨迹 env.step 后: sumo_t={sumo_sim_step:.0f}s | 车辆数={_nveh}")
+                except Exception:
+                    pass
             except Exception as e:
                 logger.error(f"[GOLDEN] env.step 失败 @ sumo_t={sumo_sim_step:.0f}s: {e}")
                 break
@@ -765,14 +843,13 @@ class GoldenGenerator:
                 logger.info(f"[GOLDEN] 已删除临时配置: {self.temp_cfg_path}")
             except OSError as e:
                 logger.warning(f"[GOLDEN] 删除临时配置失败: {e}")
-        for attr in ('env', 'rollout_env'):
-            env_obj = getattr(self, attr, None)
-            if env_obj is not None:
-                try:
-                    env_obj.close()
-                except Exception:
-                    pass
-                setattr(self, attr, None)
+        env_obj = getattr(self, 'env', None)
+        if env_obj is not None:
+            try:
+                env_obj.close()
+            except Exception:
+                pass
+            self.env = None
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -786,11 +863,11 @@ if __name__ == "__main__":
         description="Golden 数据集生成（联合动作空间 + VLM student 轨迹 + 多步 rollout）"
     )
     parser.add_argument(
-        "--scenario", "-sc", type=str, default="Hongkong_YMT",
+        "--scenario", "-sc", type=str, default="France_Massy",
         help="场景键名 (e.g., JiNan, Hangzhou, Hongkong_YMT, SouthKorea_Songdo, France_Massy)"
     )
     parser.add_argument(
-        "--route_file", "-r", type=str, default="YMT_emergy.rou.xml",
+        "--route_file", "-r", type=str, default="massy_bus.rou.xml",
         help=".rou.xml 路由文件名（SUMO 将在 env/ 下查找）"
     )
     parser.add_argument(
@@ -802,7 +879,11 @@ if __name__ == "__main__":
         help="Warmup 阶段时长（秒），该时段仅 FixedTime 推进，不跑 VLM 也不保存数据，默认 300s"
     )
     parser.add_argument(
-        "--rollout_follow_steps", "-rfs", type=int, default=0,
+        "--is_rollout",  type=bool, default=True,
+        help="是否执行 rollout 评估候选动作，默认 True（执行）"
+    )
+    parser.add_argument(
+        "--rollout_follow_steps", "-rfs", type=int, default=1,
         help="候选动作之后额外执行的 FixedTime 步数（用于多步 rollout 评估），默认 2"
     )
     parser.add_argument(
@@ -825,6 +906,7 @@ if __name__ == "__main__":
         log_dir=args.log_dir,
         route_file=args.route_file,
         rollout_follow_steps=args.rollout_follow_steps,
+        is_rollout=args.is_rollout,
         api_url=args.api_url,
         model_name_override=args.model_name,
     )
