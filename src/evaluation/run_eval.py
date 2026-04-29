@@ -268,10 +268,11 @@ class Evaluator:
     def _collect_images(self, jid: str, sensor_imgs: dict, step_dir: str,
                         approach_dirs: List[str]) -> List[str]:
         """采集路口 jid 的进口道图像，按 approach_dirs 指定的方向各采集一张。
-        图像写盘后叠加车道编号水印（add_lane_watermarks 原地覆写）。
+        保存加水印前后两版图像：
+          - {element_id}_no_watermark.png：原始图像（未加水印）
+          - {element_id}.png：加水印后的图像（输入模型）
 
-        图像命名格式：{element_id}.png
-        返回已成功保存的图像路径列表（不含 None），顺序为：
+        返回已成功保存的加水印后图像路径列表（不含 None），顺序为：
           各方向进口道停止线视图（按 approach_dirs 顺序）
         若全部方向均无图像数据则返回空列表。
         """
@@ -284,19 +285,29 @@ class Evaluator:
                 img_data = sensor_imgs[element_id].get('junction_front_all')
 
             if img_data is not None:
-                img_path = os.path.join(step_dir, f"{element_id}.png")
+                # 路径配置
+                img_path_no_watermark = os.path.join(step_dir, f"{element_id}_no_watermark.png")
+                img_path_with_watermark = os.path.join(step_dir, f"{element_id}.png")
+                
                 try:
-                    cv2.imwrite(img_path, convert_rgb_to_bgr(img_data))
-                    # 叠加车道编号水印（原地覆写同一路径）
+                    # 1. 保存原始图像（无水印）
+                    cv2.imwrite(img_path_no_watermark, convert_rgb_to_bgr(img_data))
+                    logger.debug(f"[EVAL] 原始图像已保存: {img_path_no_watermark}")
+                    
+                    # 2. 保存副本并添加水印
+                    cv2.imwrite(img_path_with_watermark, convert_rgb_to_bgr(img_data))
                     try:
                         add_lane_watermarks(
-                            input_path=img_path,
-                            output_path=img_path,
+                            input_path=img_path_with_watermark,
+                            output_path=img_path_with_watermark,
                             scenario_name=self.scenario_key,
                         )
+                        logger.debug(f"[EVAL] 水印叠加成功: {img_path_with_watermark}")
                     except Exception as wm_err:
                         logger.warning(f"[EVAL] 水印叠加失败 {element_id}: {wm_err}")
-                    image_paths.append(img_path)
+                    
+                    # 3. 将加水印后的图像路径加入返回列表（供模型输入）
+                    image_paths.append(img_path_with_watermark)
                 except Exception as e:
                     logger.warning(f"[EVAL] 图像保存失败 {element_id}: {e}")
             else:

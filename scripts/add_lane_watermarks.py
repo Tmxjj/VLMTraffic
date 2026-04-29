@@ -138,9 +138,9 @@ WATERMARK_CONFIGS = {
             "lane_w_ratio": 0.091,
             "x_offset_ratio": 0.00831024930747909,
             "y_offset_ratio": 0.18,
-            "text_rotation": 0,
-            "text_pos_x": 0.7731135734072023,
-            "text_pos_y": 0.14494459833795015,
+            "text_rotation": 5,
+            "text_pos_x": 0.5,
+            "text_pos_y": 0.882,
             "lane_font_size_ratio": 0.08,
             "text_font_size_ratio": 0.047
         },
@@ -543,12 +543,12 @@ def add_lane_watermarks(input_path: str, output_path: str = None, scenario_name:
 
 if __name__ == "__main__":
     input_data_dict ={
-        "JiNan":             "data/eval/JiNan/anon_3_4_jinan_real/qwen3-vl-4b/intersection_1_1/28/intersection_1_1_E.png",
-        "Hangzhou":          "data/eval/Hangzhou/anon_4_4_hangzhou_real/qwen3-vl-4b/intersection_1_3/28/upstream_intersection_1_3_E.png",
-        "NewYork":           "data/eval/Hangzhou/anon_4_4_hangzhou_real/qwen3-vl-4b/intersection_1_3/28/upstream_intersection_1_3_W.png",
-        "France_Massy":      "data/eval/France_Massy/massy/qwen3-vl-4b/INT1/28/INT1_N.png",
-        "SouthKorea_Songdo": "data/eval/SouthKorea_Songdo/songdo/qwen3-vl-4b/J2/28/J2_W.png",
-        "Hongkong_YMT":      "data/eval/Hongkong_YMT/YMT/qwen3-vl-4b/J1/54/J1_S.png",
+        # "JiNan":             "data/eval/JiNan/anon_3_4_jinan_real/qwen3-vl-4b/intersection_1_1/28/intersection_1_1_E.png",
+        # "Hangzhou":          "data/eval/Hangzhou/anon_4_4_hangzhou_real/qwen3-vl-4b/intersection_1_3/28/upstream_intersection_1_3_E.png",
+        # "NewYork":           "data/eval/Hangzhou/anon_4_4_hangzhou_real/qwen3-vl-4b/intersection_1_3/28/upstream_intersection_1_3_W.png",
+        "France_Massy":      "data/sft_dataset/France_Massy/massy_bus/INT1/53/INT1_S.png",
+    #     "SouthKorea_Songdo": "data/eval/SouthKorea_Songdo/songdo/qwen3-vl-4b/J2/28/J2_W.png",
+    #     "Hongkong_YMT":      "data/eval/Hongkong_YMT/YMT/qwen3-vl-4b/J1/54/J1_S.png",
     }
 
     for scenario, input_path in input_data_dict.items():
