@@ -3,25 +3,58 @@ Author: yufei Ji
 Date: 2026-04-21
 Description: 路口间异步事件广播板（EventBulletin）。
 
-设计原则：
-  - 拓扑静态配置：从 SCENARIO_CONFIGS["TOPOLOGY"] 读取，格式 {jid: [neighbor_jid, ...]}
-  - TTL 基于 SUMO 仿真时间（秒）：expires_at_sumo = current_sumo_step + green_duration
-  - 写入（broadcast）：路口 A 决策完成、检测到 Special 事件后调用
-  - 读取（get_context）：路口 B 构建 Prompt 前调用，获取未过期通知文本
-  - 过期清理（tick）：每次 env.step() 返回后，以当前 SUMO 时间为基准清理
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+一、调用时机（run_eval.py / golden_generation.py 主循环）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+每轮 env.step() 前后，按以下顺序调用三个接口：
 
-定向广播规则（仅 Jinan/Hangzhou/NewYork 场景，车道固定 L1(L)/L2(S)/L3(R)）：
-  - Emergency / Transit（影响下游）：
-      从 Event Recognition 解析进口道方向 + 受影响 Phase 的转向 → 推断出口方向邻居
-      Phase 转向映射（4 固定相位）：
-        Phase 0 (ETWT/East-West Straight)  → E进直行→W出, W进直行→E出
-        Phase 1 (NTST/North-South Straight) → N进直行→S出, S进直行→N出
-        Phase 2 (ELWL/East-West Left-Turn)  → E进左转→S出, W进左转→N出
-        Phase 3 (NLSL/North-South Left-Turn)→ N进左转→E出, S进左转→W出
-      最终找拓扑中位于出口方向的邻居路口。
-  - Crash / Obstruction（影响上游）：
-      进口道方向即来车方向 → 该方向的上游路口即受影响邻居。
-  - 解析失败（方向/Phase 缺失）：有事件前提下降级全播。
+  ① tick(sumo_t)          —— 每轮循环最先执行，清理 _board 中已过期通知
+  ② get_context(jid, t)   —— VLM 推理前，为当前路口拼接邻居通知文本注入 Prompt
+  ③ broadcast(jid, resp)  —— VLM 推理后，解析响应并向受影响邻居写入新通知
+
+  仅多路口模式（is_multi_agent=True）才调用 broadcast；
+  单路口评测跳过广播（邻居为空时 broadcast 静默返回）。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+二、广播触发条件（broadcast 内部逻辑）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+broadcast 从 VLM 响应中调用 _extract_events 解析，满足以下条件才触发：
+  1. VLM CoT 含 "Condition Assessment: Special"（正常场景直接返回，不广播）
+  2. Event Recognition 行非空且非 "None"
+  3. 当前路口有已配置的邻居（拓扑中存在）
+
+Event Recognition 支持多个交通事件并存（逗号分隔），_split_event_segments
+用正则逐一匹配 "XXX (XXX) detected at XXX, affects Phase N" 格式，
+每个事件独立解析、独立路由、独立写入通知板。
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+三、定向路由规则（_select_target_neighbors）
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+根据事件类型决定广播方向（仅适用于 Jinan/Hangzhou/NewYork 固定 4 相位场景）：
+
+  Emergency / Transit（车辆将驶入下游路口）：
+    进口道方向 + Phase ID → 查 _PHASE_EXIT_DIR → 出口方向 → 找该方向邻居
+      Phase 0 (ETWT): E进→W出, W进→E出
+      Phase 1 (NTST): N进→S出, S进→N出
+      Phase 2 (ELWL): E进左转→S出, W进左转→N出
+      Phase 3 (NLSL): N进左转→E出, S进左转→W出
+
+  Crash / Obstruction（堵塞将向上游溢出）：
+    进口道方向 = 来车来源方向 → 该方向的邻居即受影响的上游路口
+
+  解析失败（方向或 Phase 缺失、进口与 Phase 组合无出口映射、
+  出口方向在拓扑中无对应邻居，或事件类型无方向性）：
+    静默跳过，不广播任何邻居，记录 DEBUG 日志
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+四、TTL 与通知格式
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  过期时刻：expires_at_sumo = current_sumo_step + green_duration
+    即通知的有效期恰好覆盖发出路口的本次绿灯阶段，绿灯结束即失效。
+
+  注入文本格式（get_context 拼接后传入 Prompt B2 节）：
+    - Source: The intersection to the {North/South/East/West} (impact: {downstream/upstream})
+      Event: {原始事件描述，如 "Ambulance (Emergency) detected at East L1, affects Phase 0"}
 '''
 import re
 from typing import Dict, List, Optional, Tuple
@@ -132,50 +165,52 @@ class EventBulletin:
                   green_duration: int, current_sumo_step: float) -> None:
         """解析 VLM 响应，若存在 Special 事件则向受影响邻居路口定向广播。
 
+        支持 Event Recognition 中包含多个交通事件，每个事件独立广播。
         - Emergency/Transit：广播给下游出口方向的邻居。
         - Crash/Obstruction：广播给上游进口方向的邻居。
-        - 解析失败（有事件但方向/Phase 不明）：降级全播所有邻居。
+        - 解析失败（有事件但方向/Phase 不明）：跳过广播所有邻居。
         过期时刻 = current_sumo_step + green_duration（SUMO 仿真秒）。
         """
-        event_type, description, approach_dir, phase_id = self._extract_event(vlm_response)
-        if event_type is None:
-            return  # Normal 条件，无需广播
+        events = self._extract_events(vlm_response)
+        if not events:
+            return  # Normal 条件或无可解析事件，无需广播
 
         all_neighbors = self.get_neighbors(from_jid)
         if not all_neighbors:
             logger.debug(f"[Bulletin] {from_jid} 检测到事件但无已知邻居路口，跳过广播。")
             return
 
-        target_neighbors, impact_type, fallback = self._select_target_neighbors(
-            from_jid, all_neighbors, event_type, approach_dir, phase_id
-        )
-        if fallback:
-            logger.warning(
-                f"[Bulletin][降级全播] {from_jid} | 事件: {event_type} | "
-                f"进口: {approach_dir} | Phase: {phase_id} | 原因: 方向/Phase 解析不足，全播所有邻居"
-            )
-
         expires_at = current_sumo_step + green_duration
 
-        for neighbor_jid in target_neighbors:
-            from_direction = self._infer_direction(from_jid, neighbor_jid)
-            notice = EventNotice(
-                from_jid=from_jid,
-                from_direction=from_direction,
-                event_type=event_type,
-                description=description,
-                expires_at_sumo=expires_at,
-                impact_type=impact_type,
+        for event_type, description, approach_dir, phase_id in events:
+            target_neighbors, impact_type, fallback = self._select_target_neighbors(
+                from_jid, all_neighbors, event_type, approach_dir, phase_id
             )
-            self._board[neighbor_jid].append(notice)
-            logger.info(
-                f"[Bulletin][广播] {from_jid} → {neighbor_jid} | "
-                f"事件类型: {event_type} | 影响方向: {impact_type} | "
-                f"进口: {approach_dir} | Phase: {phase_id} | "
-                f"来源方向(邻居视角): {from_direction} | "
-                f"TTL: {green_duration}s (expires @ sumo_t={expires_at:.0f}s) | "
-                f"描述: {description[:80]}{'...' if len(description) > 80 else ''}"
-            )
+            if fallback:
+                logger.debug(
+                    f"[Bulletin][跳过] {from_jid} | 事件: {event_type} | "
+                    f"进口: {approach_dir} | Phase: {phase_id} | 原因: 方向/Phase 解析不足或拓扑无对应邻居"
+                )
+
+            for neighbor_jid in target_neighbors:
+                from_direction = self._infer_direction(from_jid, neighbor_jid)
+                notice = EventNotice(
+                    from_jid=from_jid,
+                    from_direction=from_direction,
+                    event_type=event_type,
+                    description=description,
+                    expires_at_sumo=expires_at,
+                    impact_type=impact_type,
+                )
+                self._board[neighbor_jid].append(notice)
+                logger.info(
+                    f"[Bulletin][广播] {from_jid} → {neighbor_jid} | "
+                    f"事件类型: {event_type} | 影响方向: {impact_type} | "
+                    f"进口: {approach_dir} | Phase: {phase_id} | "
+                    f"来源方向(邻居视角): {from_direction} | "
+                    f"TTL: {green_duration}s (expires @ sumo_t={expires_at:.0f}s) | "
+                    f"描述: {description[:80]}{'...' if len(description) > 80 else ''}"
+                )
 
     def get_context(self, jid: str, current_sumo_step: float) -> str:
         """获取路口 jid 当前所有有效通知，拼接为 prompt 注入文本。返回空串表示无通知。"""
@@ -185,11 +220,16 @@ class EventBulletin:
         ]
         if not active:
             return ""
+        _CARDINAL = {"North", "South", "East", "West"}
         lines = []
         for n in active:
+            # 用方向描述替代路口 ID，使单路口场景下的 VLM 也能理解事件来源位置
+            if n.from_direction in _CARDINAL:
+                source_label = f"The intersection to the {n.from_direction}"
+            else:
+                source_label = "A neighboring intersection"
             lines.append(
-                f"  - Source: Intersection {n.from_jid} "
-                f"(approaching from {n.from_direction} direction, impact: {n.impact_type})\n"
+                f"  - Source: {source_label} (impact: {n.impact_type})\n"
                 f"    Event: {n.description}"
             )
         return "\n".join(lines)
@@ -226,14 +266,14 @@ class EventBulletin:
 
         返回：(目标邻居列表, impact_type, is_fallback)
           - impact_type: "downstream" 或 "upstream"
-          - is_fallback: True 表示定向失败，已降级为全播
+          - is_fallback: True 表示定向失败，跳过广播（target 列表为空）
         """
         if event_type in ("emergency", "transit"):
             return self._select_downstream(from_jid, all_neighbors, approach_dir, phase_id)
         if event_type in ("crash", "obstruction"):
             return self._select_upstream(from_jid, all_neighbors, approach_dir)
-        # pedestrian / special_event 等：全播
-        return all_neighbors, "unclassified", True
+        # pedestrian / special_event 等无明确方向性：跳过广播
+        return [], "unclassified", True
 
     def _select_downstream(
         self,
@@ -242,24 +282,27 @@ class EventBulletin:
         approach_dir: Optional[str],
         phase_id: Optional[int],
     ) -> Tuple[List[str], str, bool]:
-        """Emergency/Transit：找事件车辆驶出方向对应的下游邻居路口。"""
+        """Emergency/Transit：找事件车辆驶出方向对应的下游邻居路口。解析失败则跳过广播。"""
         if approach_dir is None or phase_id is None:
-            return all_neighbors, "downstream", True
+            logger.debug(
+                f"[Bulletin] 定向下游：进口方向或 Phase 缺失，跳过广播"
+            )
+            return [], "downstream", True
 
         exit_dir = _PHASE_EXIT_DIR.get((approach_dir, phase_id))
         if exit_dir is None:
-            # 进口道方向与该 Phase 无关（如北进口 + Phase 0 东西直行）→ 降级全播
+            # 进口道方向与该 Phase 无关（如北进口 + Phase 0 东西直行）
             logger.debug(
-                f"[Bulletin] 定向下游：({approach_dir}, Phase {phase_id}) 无对应出口方向，降级全播"
+                f"[Bulletin] 定向下游：({approach_dir}, Phase {phase_id}) 无对应出口方向，跳过广播"
             )
-            return all_neighbors, "downstream", True
+            return [], "downstream", True
 
         target = self._neighbor_in_direction(from_jid, all_neighbors, exit_dir)
         if target is None:
             logger.debug(
-                f"[Bulletin] 定向下游：出口方向 {exit_dir} 无对应邻居，降级全播"
+                f"[Bulletin] 定向下游：出口方向 {exit_dir} 在拓扑中无对应邻居，跳过广播"
             )
-            return all_neighbors, "downstream", True
+            return [], "downstream", True
 
         return [target], "downstream", False
 
@@ -269,20 +312,26 @@ class EventBulletin:
         all_neighbors: List[str],
         approach_dir: Optional[str],
     ) -> Tuple[List[str], str, bool]:
-        """Crash/Obstruction：找进口道来车方向的上游邻居路口。"""
+        """Crash/Obstruction：找进口道来车方向的上游邻居路口。解析失败则跳过广播。"""
         if approach_dir is None:
-            return all_neighbors, "upstream", True
+            logger.debug(
+                f"[Bulletin] 定向上游：进口方向缺失，跳过广播"
+            )
+            return [], "upstream", True
 
         upstream_dir = _UPSTREAM_DIR.get(approach_dir)
         if upstream_dir is None:
-            return all_neighbors, "upstream", True
+            logger.debug(
+                f"[Bulletin] 定向上游：进口方向 {approach_dir} 无法映射上游方向，跳过广播"
+            )
+            return [], "upstream", True
 
         target = self._neighbor_in_direction(from_jid, all_neighbors, upstream_dir)
         if target is None:
             logger.debug(
-                f"[Bulletin] 定向上游：进口方向 {approach_dir} 无对应邻居，降级全播"
+                f"[Bulletin] 定向上游：进口方向 {approach_dir} 在拓扑中无对应邻居，跳过广播"
             )
-            return all_neighbors, "upstream", True
+            return [], "upstream", True
 
         return [target], "upstream", False
 
@@ -307,70 +356,82 @@ class EventBulletin:
 
     # ── 内部工具 ──────────────────────────────────────────────────────────────
     @staticmethod
-    def _extract_event(vlm_response: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[int]]:
-        """从 VLM CoT 输出中提取事件信息，返回四元组 (event_type, description, approach_dir, phase_id)。
+    def _split_event_segments(text: str) -> List[str]:
+        """将 Event Recognition 内容分割为单个事件描述字符串列表。
+
+        优先用正则匹配标准格式 "XXX (XXX) detected at XXX, affects Phase N"，
+        回退到分号/换行分割，最终回退为整体作为单个事件。
+        """
+        if not text or text.lower() == "none":
+            return []
+        # 匹配每个独立事件描述：类型 (类别) detected at 位置, affects Phase ID
+        _SINGLE_RE = re.compile(
+            r'[\w][\w\s]*\([^)]+\)\s+detected\s+at\s+[^,]+,\s*affects\s+Phase\s+\d+',
+            re.IGNORECASE
+        )
+        segments = _SINGLE_RE.findall(text)
+        if segments:
+            return [s.strip() for s in segments]
+        # 回退：按分号或换行分割
+        parts = re.split(r'[;\n]+', text)
+        filtered = [p.strip() for p in parts if p.strip() and 'detected' in p.lower()]
+        if filtered:
+            return filtered
+        return [text.strip()]
+
+    @staticmethod
+    def _extract_events(vlm_response: str) -> List[Tuple[Optional[str], str, Optional[str], Optional[int]]]:
+        """从 VLM CoT 输出中提取所有事件，返回列表，每项为 (event_type, description, approach_dir, phase_id)。
 
         解析逻辑：
-          1. 必须含 ``Condition Assessment: Special``，否则返回全 None。
-          2. description 优先从 ``Broadcast Notice`` 取，回退到 ``Event Recognition``。
-          3. approach_dir 和 phase_id 从 ``Event Recognition`` 原始行中解析：
-             - approach_dir: "North/South/East/West Approach" → 单字母缩写
-             - phase_id: "affects Phase N" → int；或从 Phase 关键词匹配 phase_id
+          1. 必须含 ``Condition Assessment: Special``，否则返回空列表。
+          2. 从 ``Event Recognition`` 行分割出各独立事件描述。
+          3. 对每个事件段：
+             - approach_dir: 优先 "detected at {dir}"，回退 "{dir} approach"
+             - phase_id: "affects Phase N" → int
         """
         if not vlm_response or "ERROR" in vlm_response:
-            return None, None, None, None
+            return []
         if not re.search(r"Condition Assessment\s*:\s*Special", vlm_response, re.IGNORECASE):
-            return None, None, None, None
+            return []
 
-        # ── 提取 description ──────────────────────────────────────────────────
-        description = None
-        notice_match = re.search(
-            r"Broadcast Notice\s*:\s*(.+?)(?:\n|$)", vlm_response, re.IGNORECASE
-        )
-        if notice_match:
-            text = notice_match.group(1).strip()
-            if text and text.lower() != "none":
-                description = text
-
-        event_recog_line = ""
         event_match = re.search(
             r"Event Recognition\s*:\s*(.+?)(?:\n|$)", vlm_response, re.IGNORECASE
         )
-        if event_match:
-            event_recog_line = event_match.group(1).strip()
-            if not description:
-                if event_recog_line and event_recog_line.lower() != "none":
-                    description = event_recog_line
+        if not event_match:
+            return []
+        event_recog_text = event_match.group(1).strip()
 
-        if not description:
-            return None, None, None, None
+        segments = EventBulletin._split_event_segments(event_recog_text)
+        if not segments:
+            return []
 
-        event_type = EventBulletin._map_event_type(description)
+        results = []
+        for seg in segments:
+            event_type = EventBulletin._map_event_type(seg)
 
-        # ── 解析进口道方向（从 Event Recognition 原始行）────────────────────
-        approach_dir: Optional[str] = None
-        if event_recog_line:
-            approach_match = re.search(
-                r"\b(north|south|east|west)\s+approach\b",
-                event_recog_line, re.IGNORECASE
+            # 进口道方向：优先 "detected at {dir}"，回退 "{dir} approach"
+            approach_dir: Optional[str] = None
+            det_match = re.search(
+                r"detected\s+at\s+(north|south|east|west)", seg, re.IGNORECASE
             )
-            if approach_match:
-                approach_dir = _APPROACH_ALIASES.get(approach_match.group(1).lower())
-
-        # ── 解析受影响 Phase ID（从 Event Recognition 原始行）───────────────
-        phase_id: Optional[int] = None
-        if event_recog_line:
-            # 优先匹配 "affects Phase N"
-            phase_num_match = re.search(
-                r"affects\s+Phase\s+(\d+)", event_recog_line, re.IGNORECASE
-            )
-            if phase_num_match:
-                phase_id = int(phase_num_match.group(1))
+            if det_match:
+                approach_dir = _APPROACH_ALIASES.get(det_match.group(1).lower())
             else:
-                # 回退：从括号内的 Phase 名称关键词推断
-                kw_match = re.search(
-                    r"\(([^)]+)\)", event_recog_line
+                appr_match = re.search(
+                    r"\b(north|south|east|west)\s+approach\b", seg, re.IGNORECASE
                 )
+                if appr_match:
+                    approach_dir = _APPROACH_ALIASES.get(appr_match.group(1).lower())
+
+            # Phase ID
+            phase_id: Optional[int] = None
+            phase_match = re.search(r"affects\s+Phase\s+(\d+)", seg, re.IGNORECASE)
+            if phase_match:
+                phase_id = int(phase_match.group(1))
+            else:
+                # 回退：从括号内 Phase 名称关键词推断
+                kw_match = re.search(r"\(([^)]+)\)", seg)
                 if kw_match:
                     kw = kw_match.group(1).lower()
                     for keyword, pid in _PHASE_KW.items():
@@ -378,7 +439,15 @@ class EventBulletin:
                             phase_id = pid
                             break
 
-        return event_type, description, approach_dir, phase_id
+            results.append((event_type, seg, approach_dir, phase_id))
+
+        return results
+
+    @staticmethod
+    def _extract_event(vlm_response: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[int]]:
+        """兼容接口（单事件）：调用 _extract_events 并返回第一个事件，无事件时返回全 None 四元组。"""
+        events = EventBulletin._extract_events(vlm_response)
+        return events[0] if events else (None, None, None, None)
 
     @staticmethod
     def _map_event_type(description: str) -> str:
@@ -479,7 +548,7 @@ Scene Analysis:
 ]
 Action: {"phase": 1, "duration": 20}"""
 
-    # Broadcast Notice 为 None，回退到 Event Recognition 解析（East Approach, Phase 2）
+    # Police Car：无 Broadcast Notice（East Approach, Phase 2）
     VLM_RESPONSE_NO_NOTICE = """Thought: [
 B. Scene Analysis:
 - Event Recognition: Police Car (Emergency) detected at East Approach L1, affects Phase 2
@@ -488,6 +557,16 @@ B. Scene Analysis:
 - Broadcast Notice: None
 ]
 Action: {"phase": 2, "duration": 25}"""
+
+    # 多事件：Fire Truck (East, Phase 2) + Ambulance (South, Phase 1)
+    VLM_RESPONSE_MULTI = """Thought: [
+B. Scene Analysis:
+- Event Recognition: Fire Truck (Emergency) detected at East L1, affects Phase 2. Ambulance (Emergency) detected at South L4, affects Phase 1
+- Neighboring Messages: Inactive
+- Condition Assessment: Special
+- Broadcast Notice: Multiple emergency vehicles detected - Fire Truck at East, Ambulance at South.
+]
+Action: {"phase": 1, "duration": 40}"""
 
     # ──────────────────────────────────────────────────────────────────────────
     # 构造 3×1 线形拓扑：intersection_0_0 ↔ intersection_1_0 ↔ intersection_2_0
@@ -503,7 +582,7 @@ Action: {"phase": 2, "duration": 25}"""
 
     # ──────────────────────────────────────────────────────────────────────────
     print("\n" + "=" * 70)
-    print("测试 1：_extract_event 四元组解析")
+    print("测试 1：_extract_events 多事件解析")
     print("=" * 70)
     cases = [
         ("救护车(Emergency, East, Phase0)", VLM_RESPONSE_EMERGENCY),
@@ -512,12 +591,14 @@ Action: {"phase": 2, "duration": 25}"""
         ("碰撞事故(Crash, West, Phase0)", VLM_RESPONSE_CRASH),
         ("Normal场景", VLM_RESPONSE_NORMAL),
         ("无Broadcast Notice回退", VLM_RESPONSE_NO_NOTICE),
+        ("多事件(FireTruck+Ambulance)", VLM_RESPONSE_MULTI),
     ]
     for label, resp in cases:
-        evt, desc, approach, phase = EventBulletin._extract_event(resp)
-        print(f"  [{label}]")
-        print(f"    event_type={evt!r}  approach_dir={approach!r}  phase_id={phase!r}")
-        print(f"    description={desc!r}")
+        events = EventBulletin._extract_events(resp)
+        print(f"  [{label}] → {len(events)} 个事件")
+        for evt, desc, approach, phase in events:
+            print(f"    event_type={evt!r}  approach_dir={approach!r}  phase_id={phase!r}")
+            print(f"    description={desc!r}")
 
     # ──────────────────────────────────────────────────────────────────────────
     print("\n" + "=" * 70)
@@ -528,7 +609,7 @@ Action: {"phase": 2, "duration": 25}"""
 
     print("\n" + "=" * 70)
     print("测试 3：定向广播 - 施工路障（Obstruction）")
-    print("  intersection_1_0 → North Approach → 上游 North → intersection_1_0 北侧无邻居 → 降级全播")
+    print("  intersection_1_0 → North Approach → 上游 North → intersection_1_0 北侧无邻居 → 跳过广播")
     print("=" * 70)
     bulletin.broadcast("intersection_1_0", VLM_RESPONSE_CONSTRUCTION, 25, 110)
 
@@ -556,31 +637,47 @@ Action: {"phase": 2, "duration": 25}"""
     print("\n" + "=" * 70)
     print("测试 7：Normal 场景不触发广播")
     print("=" * 70)
-    evt, *_ = EventBulletin._extract_event(VLM_RESPONSE_NORMAL)
-    print(f"  _extract_event event_type={evt!r}  （预期 None）")
+    events_normal = EventBulletin._extract_events(VLM_RESPONSE_NORMAL)
+    print(f"  _extract_events 返回事件数={len(events_normal)}  （预期 0）")
     bulletin.broadcast("intersection_1_0", VLM_RESPONSE_NORMAL, 20, 200)
     print("  （预期：无任何广播日志）")
 
     # ──────────────────────────────────────────────────────────────────────────
     print("\n" + "=" * 70)
-    print("测试 8：Broadcast Notice=None 回退 Event Recognition 解析")
+    print("测试 8：Broadcast Notice=None，仅依赖 Event Recognition 解析")
     print("  intersection_1_0 → East Approach, Phase 2(ELWL) → 出口 South")
-    print("  3×1 水平拓扑无南侧邻居 → 降级全播")
+    print("  3×1 水平拓扑无南侧邻居 → 跳过广播")
     print("=" * 70)
     bulletin.broadcast("intersection_1_0", VLM_RESPONSE_NO_NOTICE, 25, 210)
 
     # ──────────────────────────────────────────────────────────────────────────
     print("\n" + "=" * 70)
-    print("测试 9：无邻居路口（不在拓扑中）→ debug 日志跳过广播")
+    print("测试 9：多事件广播 - Fire Truck(East,Phase2) + Ambulance(South,Phase1)")
+    print("  Phase2(ELWL) East进左转→South出，3×1水平拓扑无南侧邻居→跳过广播")
+    print("  Phase1(NTST) South进直行→North出，3×1水平拓扑无北侧邻居→跳过广播")
+    print("=" * 70)
+    bulletin.broadcast("intersection_1_0", VLM_RESPONSE_MULTI, 40, 220)
+
+    # ──────────────────────────────────────────────────────────────────────────
+    print("\n" + "=" * 70)
+    print("测试 10：无邻居路口（不在拓扑中）→ debug 日志跳过广播")
     print("=" * 70)
     bulletin.broadcast("intersection_99_99", VLM_RESPONSE_EMERGENCY, 30, 300)
     print("  （预期：DEBUG 提示无已知邻居路口）")
 
     # ──────────────────────────────────────────────────────────────────────────
     print("\n" + "=" * 70)
-    print("测试 10：tick 过期清理 - sumo_t=166s（部分通知过期）")
+    print("测试 11：get_context - sumo_t=225s 各路口读取通知（含多事件广播结果）")
     print("=" * 70)
-    bulletin.tick(current_sumo_step=166)
     for jid in topology:
-        ctx = bulletin.get_context(jid, current_sumo_step=166)
+        ctx = bulletin.get_context(jid, current_sumo_step=225)
+        print(f"  [{jid}]\n{ctx if ctx else '  （无有效通知）'}\n")
+
+    # ──────────────────────────────────────────────────────────────────────────
+    print("\n" + "=" * 70)
+    print("测试 12：tick 过期清理 - sumo_t=266s（部分通知过期）")
+    print("=" * 70)
+    bulletin.tick(current_sumo_step=266)
+    for jid in topology:
+        ctx = bulletin.get_context(jid, current_sumo_step=266)
         print(f"  [{jid}]: {ctx.strip() if ctx else '（无有效通知）'}")
