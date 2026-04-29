@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-04-19
-LastEditTime: 2026-04-20 17:49:55
+LastEditTime: 2026-04-30 00:02:33
 Description: Traffic Accident 事件场景生成脚本。
              在各路口进口道 200m 范围内随机放置"碰撞残骸车辆"和"倒地行人"障碍物。
              采用与 src/utils/generate_events.py 相同的 trip+stop 物理阻塞 + param 渲染参数设计。
@@ -175,6 +175,7 @@ def generate_traffic_accident(
             trip1 = ET.Element("trip", id=event_id,
                                type="crash_vehicle_b",
                                depart=f"{depart_time:.1f}",
+                               departPos=f"{stop_pos:.2f}",
                                **{"from": edge.getID(), "to": edge.getID()})
             ET.SubElement(trip1, "stop", lane=lane2.getID(),
                           endPos=f"{stop_pos:.2f}",
@@ -193,6 +194,7 @@ def generate_traffic_accident(
             trip2 = ET.Element("trip", id=event_id + "_blocker1",
                                type="crash_vehicle_a",
                                depart=f"{depart_time:.1f}",
+                               departPos=f"{stop_pos:.2f}", 
                                **{"from": edge.getID(), "to": edge.getID()})
             ET.SubElement(trip2, "stop", lane=lane1.getID(),
                           endPos=f"{stop_pos:.2f}",
@@ -201,6 +203,7 @@ def generate_traffic_accident(
             trip3 = ET.Element("trip", id=event_id + "_blocker2",
                                type="crash_vehicle_a",
                                depart=f"{depart_time:.1f}",
+                            departPos=f"{stop_pos:.2f}",
                                **{"from": edge.getID(), "to": edge.getID()})
             ET.SubElement(trip3, "stop", lane=lane3.getID(),
                           endPos=f"{stop_pos:.2f}",
@@ -291,6 +294,7 @@ def generate_traffic_accident(
             trip_crash = ET.Element("trip", id=event_id,
                                     type=crash_model,
                                     depart=f"{depart_time:.1f}",
+                                    departPos=f"{stop_pos:.2f}",
                                     **{"from": edge.getID(), "to": edge.getID()})
             ET.SubElement(trip_crash, "stop", lane=lane.getID(),
                           endPos=f"{stop_pos:.2f}",
