@@ -168,8 +168,8 @@ W(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
 - Fire Truck: Large red emergency truck with roof lightbars.
 - Public Bus: Long, large, flat-front, white city passenger vehicle with a rectangular body.
 - School Bus: Long, large passenger vehicle with a protruding cowl-front hood.
-- Traffic Accident: Crashed vehicles with visible structural deformation, positioned abnormally (e.g., stopped diagonally across lanes).
-- Road Debris: Non-vehicle scattered objects (e.g., logs, fallen cargo) blocking the lane.
+- Traffic Accident: Crashed vehicles with visible structural deformation, positioned abnormally (e.g., stopped diagonally across lanes). A traffic accident affects only one lane.
+- Road Debris: Non-vehicle scattered objects (e.g., logs, fallen cargo) blocking the lane. Road debris affects only one lane.
 - Construction Barrier: Orange longitudinal roadblock with red/orange striped end-supports.
     '''
 
@@ -178,7 +178,7 @@ W(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
 - **Signal Starvation Prevention**: When queue levels are equal, prioritize the longest-waiting inactive phase to prevent any direction from being indefinitely delayed.
 - **Emergency Preemption**: Immediately grant and hold a green phase for approaching emergency vehicles(ambulance, fire truck, police car). This overrides ALL other rules.
 - **Transit Priority**: Prioritize detected buses and school buses due to their high passenger loads, secondary only to emergency preemption.
-- **Capacity Reduction**: A crash or road obstruction effectively removes one or more lanes from service. Avoid selecting a phase whose movement is blocked. If all phases are partially blocked, minimize green time on the most-blocked phase.
+- **Crash Clearance Priority**: If a crash or road obstruction causes severe abnormal congestion, you should prioritize the phase affected by the crash to prevent upstream spillback.
 - **Queue Discharge Rate**: A fully loaded lane (Long or Critical queue) requires significantly more green time to complete discharge compared to a Short or Medium queue.
 - **Minimum Green Time**: Assign a minimum green duration even for empty queues to allow safe reaction and start-up times.
    '''
@@ -268,9 +268,9 @@ Based on the **Approach Bird's-Eye Oblique Images**, current **Scenario Informat
 
 **A2. Phase Mapping**
 Map the observed lane densities to their respective Phase IDs. For each phase, aggregate the states of its governed lanes into the following metrics:
-- **OverallPressure**: A holistic synthesis of traffic demand for the phase. Output: [Low, Medium, High, or Severe]. *(Primary factor for Phase Selection)*
-- **CriticalQueue**: The MAX density level among the phase's constituent lanes. *(Primary factor for Duration Selection)*
-- **Tie-Breaker** *(Active ONLY if multiple phases share the same OverallPressure)*: Perform a direct visual comparison of the physical congestion and output the conclusion as: "Phase X queue appears longer than Phase Y". Otherwise, output "None".
+- **Pressure**: A holistic synthesis of traffic demand for the phase. Output: [Empty, Low, Medium, High, or Severe]. *(Primary factor for Phase Selection)*
+- **MaxQueue**: The MAX density level among the phase's constituent lanes. *(Primary factor for Duration Selection)*
+- **Tie-Breaker** *(Active ONLY if multiple phases share the same Pressure)*: Perform a direct visual comparison of the physical congestion and output the conclusion as: "Phase X queue appears longer than Phase Y". Otherwise, output "None".
 
 **B. Scene Analysis**
 
@@ -280,30 +280,32 @@ Scan ALL images for traffic events. Use the table below to identify Specific Typ
 {event_description}
 
 **Visual Localization:**
-- IF an event is detected: Specify [Specific Type], [Category], [Location: Approach & Lane ID], and [Directly Affected Phase ID].
+- IF one or more events are detected: Specify EACH event's [Specific Type], [Category], [Location: Approach & Lane ID], and [Directly Affected Phase ID].
+- Multiple traffic events may be present in the same scene; list all detected events separately.
+- If an event is located in an unrestricted lane that is not signal-controlled, its Directly Affected Phase ID must be `None`.
 - IF NO event is present: Strictly output `None`.
 
-**B2. Neighboring Messages**
+**B2. Neighbor Msgs**
 - Status: {neighbor_status}
 - Content: {neighbor_info}
 
-**B3. Condition Assessment**
-- Set to `SPECIAL` if an event is detected OR Neighboring Messages status is Active.
-- Otherwise, set to `NORMAL`.
+**B3. Condition**
+- Set to `Special` if an event is detected OR Neighbor Msgs status is Active.
+- Otherwise, set to `Normal`.
 
 **C. Adaptive Reasoning**
-Based on your Condition Assessment, you MUST follow ONLY ONE of the paths below:
+Based on your Condition, you MUST follow ONLY ONE of the paths below:
 
 **[Path 1] IF Condition == Normal:**
 Keep reasoning extremely concise (exactly ONE clear sentence per field).
-- Phase Reasoning: Select the Phase ID with the highest **OverallPressure** based on the observed visual queues.
-- Duration Reasoning: Scale duration based solely on the **CriticalQueue** level of the selected phase. Use longer durations for `Long`/`Critical` queues to ensure complete discharge.
+- Phase Reasoning: Select the Phase ID with the highest **Pressure** based on the observed visual queues.
+- Dur Reasoning: Scale duration based solely on the **MaxQueue** level of the selected phase. Use longer durations for `Long`/`Critical` queues to ensure complete discharge.
 
 **[Path 2] IF Condition == Special:**
 Apply traffic engineering knowledge to reason step-by-step:
-- Impact Analysis: Evaluate how the detected local event AND/OR the neighboring messages physically impact the current intersection's capacity and safety.
+- Impact Analysis: Evaluate how the detected local event AND/OR the Neighbor Msgs physically impact the current intersection's capacity and safety.
 - Phase Reasoning: Synthesize Impact Analysis and visible queue lengths, prioritizing event mitigation over traffic pressure, and select the appropriate phase.
-- Duration Reasoning: Synthesize Impact Analysis and visible queue lengths, prioritizing event mitigation over traffic pressure, and select the appropriate duration.
+- Dur Reasoning: Synthesize Impact Analysis and visible queue lengths, prioritizing event mitigation over traffic pressure, and select the appropriate duration.
 - Broadcast Notice: Format as "[Specific Type] - [Brief impact on upstream/downstream]" if an event is detected, else "None".
 
 7. Output Format
@@ -312,16 +314,16 @@ A. Scene Understanding:
 - Lane Analysis:
 {cot_lane_template}
 - Phase Mapping:
-Phase <ID> (<Direction>): OverallPressure: <Level> | CriticalQueue: <Level>
+Phase <ID> (<Direction>): Pressure: <Level> | MaxQueue: <Level>
 Tie-Breaker: <"None" OR "Phase X queue appears longer than Phase Y">
 
 B. Scene Analysis:
-- Event Recognition: <"None" OR "[Specific Type] ([Category]) detected at [Approach & Lane ID], affects Phase [ID]">
-- Neighboring Messages: <"Inactive" OR "Active">
-- Condition Assessment: <"Normal" OR "Special">
+- Event Recognition: <"None" OR one or more entries in the format "[Specific Type] ([Category]) detected at [Approach & Lane ID], affects Phase [ID/None]">
+- Neighbor Msgs: <"Inactive" OR "Active">
+- Condition: <"Normal" OR "Special">
 
 C. Adaptive Reasoning:
-Strictly follow [Path 1] OR [Path 2] formatting based on your Condition Assessment.
+Strictly follow [Path 1] OR [Path 2] formatting based on your Condition.
 ]
 Action: {{"phase": <ID>, "duration": <Duration>}}
 """
