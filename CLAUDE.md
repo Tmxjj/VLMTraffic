@@ -16,36 +16,24 @@
 
 为使上述核心机制在真实部署场景中可行，E2ELight 包含两个关键支撑决策：
 
-**(i) 多视角进口道图像输入。** E2ELight 不采用难以大规模部署的全局 BEV（其获取通常需要专用高架摄像头或多目重建设备）。我们将每个路口的视觉输入定义为**各进口道方向独立俯拍图像**的集合——即一个四进口道路口对应 4 张输入图像——这些图像可直接取自国内"天网 / 雪亮工程"已广泛部署的杆式摄像头，无需任何新增硬件。相比全景 BEV，多视角进口道输入具有三重优势：部署门槛显著降低、单视角拍摄距离近且目标密度较低（有效缓解多目标计数幻觉）、事件对象的关键视觉特征——紧急车辆警灯与警示标识、校车 / 公交车的车身涂装与尺寸、交通事故导致的车辆异常停驻与碰撞姿态、散落货物与路面占用物的几何轮廓、行人群体的密度与过街动线、施工围挡与锥桶的几何标识——在近距离视图下均更为清晰可辨，共同为慢思考路径中的事件识别子步骤提供了可靠的视觉证据。
+**(i) 多视角进口道图像输入。** E2ELight 不采用难以大规模部署的全局 BEV（其获取通常需要专用高架摄像头或多目重建设备）。我们将每个路口的视觉输入定义为**各进口道方向独立俯拍图像**的集合——即一个四进口道路口对应 4 张进口道停止线视图（N/E/S/W 各一张）——这些图像可直接取自国内"天网 / 雪亮工程"已广泛部署的杆式摄像头，无需任何新增硬件。相比全景 BEV，多视角进口道输入具有三重优势：部署门槛显著降低、单视角拍摄距离近且目标密度较低（有效缓解多目标计数幻觉）、事件对象的关键视觉特征——紧急车辆警灯与警示标识、校车 / 公交车的车身涂装与尺寸、交通事故导致的车辆异常停驻与碰撞姿态、散落货物与路面占用物的几何轮廓、行人群体的密度与过街动线、施工围挡与锥桶的几何标识——在近距离视图下均更为清晰可辨，共同为慢思考路径中的事件识别子步骤提供了可靠的视觉证据。
 
 **(ii) 仿真器反馈的闭环对齐。** 我们的对齐流水线采用 **SFT + 在线 RLVR** 两阶段设计：首先通过 SFT 建立基础任务对齐，使模型掌握快慢思考双 CoT 模板的正确格式与基本决策逻辑；进而引入基于仿真器**双路可验证奖励**的在线 RLVR——以 SUMO e2 检测器的真实排队车辆数作为**感知奖励**缓解计数幻觉，以 rollout 若干仿真步后的 ATT/AQL 变化量作为**效率奖励**直接量化决策质量——将物理交通效率作为终极监督信号直接作用于 LVLM 训练过程，实现感知准确性与决策质量在统一梯度下的同步约束。
 
 **本文的主要贡献总结如下：**
 
-- 我们提出了**首个真正端到端的 TSC LVLM 框架 E2ELight**——从多视角视觉输入到信号相位决策全程由单一微调 LVLM 的**单次前向推理**完成，无需任何前置检测器、中间文本描述、外部路由器或下游决策模块。在此端到端骨架之上，E2ELight 通过**单模型自适应快慢思考 CoT** 实现对常规与事件场景的统一应对：常规场景触发短路径快速决策，事件场景展开 `Event Recognition → Impact Reasoning → Selection Logic` 的长路径慢思考。相较 LLMLight、VLMLight 等多阶段多模块流水线方法，E2ELight 在架构简洁性、推理链路长度、部署可维护性以及 LVLM 固有推理能力的利用率等方面均具显著优势。
+- 我们提出了**首个真正端到端的 TSC LVLM 框架 E2ELight**——从 4 张进口道停止线视图到信号相位决策全程由单一微调 LVLM 的**单次前向推理**完成，无需任何前置检测器、中间文本描述、外部路由器或下游决策模块。在此端到端骨架之上，E2ELight 通过**单模型自适应快慢思考 CoT** 实现对常规与事件场景的统一应对：常规场景触发短路径快速决策，事件场景展开 `Event Recognition → Impact Reasoning → Selection Logic` 的长路径慢思考。相较 LLMLight、VLMLight 等多阶段多模块流水线方法，E2ELight 在架构简洁性、推理链路长度、部署可维护性以及 LVLM 固有推理能力的利用率等方面均具显著优势。
 
 - 我们提出了**面向视觉幻觉的双路可验证奖励在线 RLVR 对齐机制**。以 SUMO 仿真器作为终极裁判，对 LVLM 的每一次 CoT 输出即时给出两类硬标签奖励：感知奖励（e2 检测器排队车辆数 vs 模型预测值）与效率奖励（rollout 后的 ATT/AQL 变化量），通过 GRPO 范式完成在线强化学习微调。该机制将物理交通效率作为可验证奖励信号直接作用于 LVLM 训练过程，实现感知准确性与决策质量在统一梯度下的同步优化。这是交通领域首个基于**视觉-仿真闭环**的 RLVR 框架。
 
-- 进行了**覆盖多种动态交通事件的系统化评测**。在 JiNan / Hangzhou 真实监控数据基础上，进一步在 SouthKorea_Songdo（非对称 6 车道大型路口）、France_Massy（T 字路口）、Hongkong_YMT（左行特例）、NewYork（196 路口大规模路网）以及**六类交通事件注入场景**（紧急车辆、校车与公交车、交通事故、占道（施工、抛洒物）、行人过街）上验证模型的零样本泛化能力，同时覆盖**拓扑迁移、规模迁移、事件迁移**三个维度。这一评测体系直接针对 LLMLight 仅在常规路网验证、VLMLight 仅在单一 4 叉路口验证紧急车辆的短板，提供了当前 LLM-TSC 文献中最全面的泛化能力测试。实验结果表明 E2ELight 在所有场景下均显著优于固定配时、MaxPressure 以及现有 LLM 增强方法。
+- 进行了**覆盖多种动态交通事件的系统化评测**。在 JiNan / Hangzhou 真实监控数据基础上，进一步在 SouthKorea_Songdo（非对称 6 车道大型路口）、France_Massy（T 字路口）、Hongkong_YMT（左行特例）、NewYork（196 路口大规模路网）以及**四类交通事件注入场景**（紧急车辆+校车与公交车、交通事故+占道）上验证模型的零样本泛化能力，同时覆盖**拓扑迁移、规模迁移、事件迁移**三个维度。这一评测体系直接针对 LLMLight 仅在常规路网验证、VLMLight 仅在单一 4 叉路口验证紧急车辆的短板，提供了当前 LLM-TSC 文献中最全面的泛化能力测试。实验结果表明 E2ELight 在所有场景下均显著优于固定配时、MaxPressure 以及现有 LLM 增强方法。
 
----
-
-针对上述命题，本项目的两个核心贡献及后续待验证的优化方向具体展开如下：
-
-- **贡献 1：提出了真正端到端的 TSC LVLM 框架，实现单模型自适应快慢思考 CoT**
-  以**单路口各进口道方向的多视角俯拍图像**（4 进口道路口对应 4 张输入）作为视觉输入，使用微调后的 LVLM 通过**单次前向推理**直接输出 CoT 推理链与信号控制决策。整个系统中不存在 LVLM 之外的任何独立检测器、文本摘要模块、外部路由器或下游决策器。在此端到端骨架之上，E2ELight 通过**快慢思考双 CoT 模板**应对不同场景：常规场景触发**短路径** `Scene Understanding → Phase Selection`（快思考），事件场景触发**长路径** `Scene Understanding → Event Recognition → Impact Reasoning → Scene Analysis → Selection Logic → Phase`（慢思考），快慢切换完全由 LVLM 自身基于视觉观察在 CoT 生成过程中自适应决定，无需外部路由器或双分支架构。
-
-- **贡献 2：针对"多目标幻觉（Multi-object Hallucination）尤其是计数幻觉（Counting Hallucination）和位置幻觉（Positional Hallucination）"的问题，提出基于仿真器双路可验证奖励的 LVLM 在线强化学习 (Simulation-Grounded Dual-Verifiable RLVR for LVLM-TSC)**
-  - **目前痛点**：现有 LLM-TSC 工作在对齐阶段普遍依赖 SFT 或离线 DPO——前者信号单一、无法治愈视觉幻觉；后者需手工构造偏好对、信号稀疏、感知与决策孤立优化。而 SUMO 仿真器对每一次信号决策都能即时提供两类硬标签可验证信号，却完全未被利用：(1) e2 检测器提供每条 movement 的真实排队车辆数，可直接验证模型 Scene Understanding 的计数准确性；(2) rollout 若干仿真步后的 ATT/AQL 变化量，可直接量化信号决策的交通效率。
-  - **核心创新**：提出以 GRPO（Group Relative Policy Optimization）范式对 LVLM 进行在线强化学习微调，完全摆脱偏好对构造的依赖。定义双路可验证奖励：**感知奖励 $r_{\text{perc}}$**（SUMO `jam_length_vehicle` 与模型预测车辆数的归一化误差之负数，直接治愈计数幻觉）和 **效率奖励 $r_{\text{env}}$**（执行所选相位后 30 仿真步的 $\Delta \text{ATT}$，作为交通效率终极裁判）。联合奖励 $r = \alpha \cdot r_{\text{perc}} + \beta \cdot r_{\text{env}}$ 使感知正确性与控制决策质量得到统一梯度信号的同步约束。
-  - **GRPO 训练流程**：对同一组多视角进口道图像输入采样 $G=8$ 个完整 CoT 响应（可为短路径或长路径）；用双路奖励对每个响应打分；计算组内相对优势 $A_i = (r_i - \text{mean}(r)) / \text{std}(r)$；GRPO 梯度更新 LVLM，无需 Critic 网络和 Value Model。
-  - **相对其他对齐范式的优势**：相较于离线 DPO 的静态偏好信号，RLVR 为在线动态验证信号——不依赖人工标注、仿真器即裁判、模型可自发涌现精确计数与事件响应策略（类 DeepSeek-R1 "aha moment" 现象）。Traffic-R1（2025）已证明 RLVR 范式在纯文本 TSC 中的有效性，本方向将其首次扩展至**多视角进口道图像输入 + 快慢思考 CoT** 场景，是交通领域首个视觉-仿真闭环 RLVR 框架。
-  - **落地可行性**：e2 检测器（$r_{\text{perc}}$ 数据源）与 SUMO rollout（$r_{\text{env}}$ 数据源）均为项目现有基础设施，无需新增硬件；可在 SFT checkpoint 基础上直接开启 RLVR 训练，实施路径清晰。
 
 ## 二. 项目概览
-本项目实现了一个用于交通信号控制 (TSC) 的**真正端到端**视觉语言大模型 (LVLM) 框架。该框架以**单路口各进口道方向的多视角俯拍图像**（一个四进口道路口对应 4 张输入图像）+进口道上游道路的俯拍图像（一个进口道有一张）为视觉输入，由单一微调 LVLM 通过**单次前向推理**直接输出相位决策，系统中不存在 LVLM 之外的任何独立检测器、文本摘要模块、外部路由器或下游决策器。方法论核心为**单模型自适应快慢思考 CoT**：常规场景触发短路径 (`Scene Understanding → Phase Selection`)，事件场景触发长路径 (`Scene Understanding → Event Recognition → Impact Reasoning → Scene Analysis → Selection Logic → Phase`)。项目包含完整 Pipeline，涵盖基于 SUMO/TransSimHub 的仿真与多视角进口道图像生成、SFT 数据构建、SFT 训练、基于仿真器双路可验证奖励的在线 RLVR 微调，以及覆盖常规、拓扑迁移、规模迁移与事件迁移的端到端评估。
+本项目实现了一个用于交通信号控制 (TSC) 的**真正端到端**视觉语言大模型 (LVLM) 框架。该框架以**单路口各进口道方向的停止线俯拍图像**（一个四进口道路口对应 4 张输入图像，N/E/S/W 各一张）为视觉输入，由单一微调 LVLM 通过**单次前向推理**直接输出相位决策，系统中不存在 LVLM 之外的任何独立检测器、文本摘要模块、外部路由器或下游决策器。方法论核心为**单模型自适应快慢思考 CoT**：常规场景触发短路径 (`Scene Understanding → Phase Selection`)，事件场景触发长路径 (`Scene Understanding → Event Recognition → Impact Reasoning → Scene Analysis → Selection Logic → Phase`)。项目包含完整 Pipeline，涵盖基于 SUMO/TransSimHub 的仿真与多视角进口道图像生成、SFT 数据构建、SFT 训练、基于仿真器双路可验证奖励的在线 RLVR 微调，以及覆盖常规、拓扑迁移、规模迁移与事件迁移的端到端评估。
 
-相位空间选择：相位选择和相位时间的动态生成：考虑上游道路在绿灯期间预期到达车辆数，决定下一个相位以及该相位绿灯时间（绿灯时间为一个候选合集：10、15、20、25、30、35）（候选空间大小 n*m）
+相位空间选择：相位选择和相位时间的动态生成：基于停止线排队车辆状态决定下一个相位以及该相位绿灯时间（绿灯时间为一个候选合集：15、20、25、30、35、40）（候选空间大小 n*m）
+
 ## 三. 核心目录与模块
 - `data/`：存放原始仿真数据、生成的多视角进口道图像以及处理后的 SFT 数据集与 RLVR rollout 缓存。
 - `models/`：用于存储从 ModelScope 等下载的基础 LVLM 模型和训练后生成的 Checkpoints。
@@ -55,302 +43,277 @@
   - `inference/`：LVLM 模型推理与 Prompt 构建逻辑。
   - `training/`：SFT 与基于 GRPO 的在线 RLVR 训练核心模块。
   - `evaluation/`：端到端指标评估 (ATT, AQL, AWT 等)。
-- `configs/`：基于 YAML 的统一配置目录，管理仿真环境 (`env_config.yaml`)、模型与 Prompt (`model_config.yaml` / `prompt_builder*.py`) 以及训练参数 (`train_config.yaml`)。
+- `configs/`：基于 YAML 的统一配置目录，管理仿真环境 (`env_config.yaml`)、模型与 Prompt (`model_config.yaml` / `prompt_builder.py`) 以及训练参数 (`train_config.yaml`)。
 - `scripts/`：大量实用的辅助脚本，包括模型下载、仿真运行、评测任务投递 (`run_eval_gpu*.sh`) 等。
 - `TransSimHub/`：底层 3D 交通仿真环境基座（基于开源仓库做的二次深度开发集成）。
 
-## 四.数据集与场景介绍
+## 四. 数据集与场景介绍
 
-本研究用于训练和评测的数据集涵盖了全球多个城市不同类型的交通路口，包括真实监控数据和针对特定场景（如大规模路网、紧急车辆、特殊路口拓扑）的验证数据。
+本研究训练数据基于 4×4 的随机合成路网数据（syn-train）用于 RL 训练，用于评测的数据集涵盖了全球多个城市不同类型的交通路口，包括真实交通流量数据和针对特定场景（如大规模路网、紧急车辆、特殊路口拓扑）的验证数据。
 
-- 1 核心训练与测试数据集 (真实监控数据)
+**1 随机合成路网数据**
 
-这些数据集基于真实世界采集，并模拟了高峰流量等不同时段的交通状况，是模型基础训练和同源验证的基石。
+To simulate the multiintersection and multi-step dynamics of real-world traffic flow, we constructed a 4 × 4 simulated road network with 300-meter roads between each intersection. The 16 positions in the network represent most typical road scenarios encountered at real-world intersections.
 
-| 数据集/场景名称 | 简介与特点 | 交叉口数量 | 相位描述 (Action Space for Prompt) | 适用性与用途 | 车流特征摘要 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Jinan (China)** | 真实监控数据采集。包含3个时段采集的数据。基于真实采集数据，模拟了高峰流量数据和全天候数据（包含早晚高峰）。 | 12 | 原为9相位，**Prompt中简化为4相位：**<br>NTST (南北直行), NLSL (南北左转), ETWT (东西直行), ELWL (东西左转) | **数据生产、训练和测试** | - |
-| **Hangzhou (China)** | 真实监控数据。包含3个时段采集的数据。基于真实采集数据，模拟了高峰流量数据。 | 16 | 同 Jinan 数据 (4相位) | **数据生产、训练和测试** | - |
+**2 测试数据集（真实交通流量数据）**
 
-- 2 泛化性验证数据集 (拓扑与规模迁移)
-
-为了验证模型对复杂、罕见路口拓扑结构以及大规模城市级路网的自适应与协同控制能力，本研究引入了以下特定城市的测试场景（这些数据**不参与**模型的训练）。
-
-| 数据集/场景名称 | 简介与特点 | 交叉口数量 | 相位描述 (Action Space for Prompt) | 适用性与用途 | 车流特征摘要 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Songdo (South Korea)** | 新开发城区，大型交叉口。每个方向多达5车道，交通流量大。 | 1 | **4相位：** 东西/南北 直行/左转，右转无限制 | **泛化性（拓扑迁移验证）：** 验证模型能否适应复杂且庞大的路口拓扑。 | Total Vehicles: 598<br>Effective Duration: 6.98 min |
-| **Yau Ma Tei (Hong Kong)** | 稠密市中心，道路狭窄。包含特定的转向限制。只有南进口有右转，东进口有左转。 | 1 | 原始逻辑为四个进口道轮流放行。<br>➡️ **修改为3相位：** 东西/南北直行，南进口右转（东进口左转一直放行）。 | **泛化性（拓扑迁移验证）：** 验证模型能否适应复杂、受限的路口拓扑及左行特例。 | Total Vehicles: 267<br>Effective Duration: 417.88 s |
-| **Massy (France)** | 郊区 T字路口 (T-junction)。车道配置特殊，流量较小。 | 1 | **2相位：** 南北进口道放行，西进口道放行（右转无限制）。 | **泛化性（拓扑迁移验证）：** 验证模型能否适应异构路口拓扑。 | Total Vehicles: 207<br>Effective Duration: 6.98 min |
-| **New York (USA)** | 曼哈顿上东区，基于出租车轨迹数据。属于超大规模复杂路网。基于真实采集数据，模拟高峰流量数据。 | 196 | 同 Jinan 数据 (4相位) | **泛化性（规模迁移验证）：** 用于验证模型由单路口/小路网向大规模路网扩展时的协同控制与泛化能力。 | - |
-
-- 3 事件场景验证数据集
-
-
-| 数据集/场景名称 | 简介与特点 | 交叉口数量 | 相位描述 (Action Space for Prompt) | 适用性与用途 | 车流特征摘要 |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Emergency** | 基于 Jinan、Hangzhou 场景注入了消防车、救护车和警车等紧急车辆。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（紧急车辆迁移验证）：** 验证模型能否自适应紧急车辆场景，实现优先放行。 | - |
-| **School/City Bus** | 注入校车与城市公交车，触发优先通行响应。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（校车与公交车迁移验证）** | - |
-| **Traffic Accident** | 注入车辆碰撞与异常停驻，导致单向堵死。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（事故场景迁移验证）** | - |
-| **Road Debris** | 注入散落货物、道路施工和路面占用物。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（占道（施工、抛洒物）占用迁移验证）** | - |
-| **Pedestrian Crossing** | 注入大规模行人过街（如学校放学时段）。 | 1 | 同 Jinan/Hangzhou (4相位) | **泛化性（行人过街迁移验证）** | - |
-
-## 五. 目前已经完成的工作
-- **仿真环境打通与数据生成**：已成功集成底层 3D 交通仿真环境基座（TransSimHub / SUMO）。渲染输出已从全局 BEV 升级为**8张多视角图像**（4张进口道停止线视图 + 4张上游道路视图），具体架构见第八节。
-- **训练/评测基础设施搭建**：完成了基于 YAML 的系统级配置解耦 (`configs/`)，并编写了支持多 GPU 异步调度的批量评测自动化脚本 (`scripts/run_eval_gpu*.sh`)。
-- **泛化性验证场景测试基础设施**：
-  - 完成了 4 大泛化场景（SouthKorea_Songdo、France_Massy、Hongkong_YMT、NewYork）的评测基础设施搭建。
-  - 清理了泛化场景路由文件中混入的紧急车辆（France_Massy 5辆、Hongkong_YMT 6辆、SouthKorea_Songdo 8辆），替换为普通 background 车辆类型（`scripts/clean_emergency_vehicles.py`）。
-  - 针对各场景路口拓扑差异（T字路口、左行特例、非对称5/6车道路口、196路口大路网），在 BEV 图像上实现了分场景类别的车道数字水印叠加（`scripts/add_lane_watermarks.py`），并支持文字旋转以对齐停止线方向。
-  - 完成泛化性指标收集脚本（`src/evaluation/generalization_metrics.py`）及结果模板（`results/generalization_result.csv`），覆盖 ATT、AWT、AQL 三项指标，支持 FixedTime、MaxPressure 和 VLM 方法横向对比。
-  - 完成合并版批量评测脚本（`run_batch_generalization.sh`），支持 `--baseline-only`、`--port/--model_name`、`--with-baseline` 三种运行模式，并从路由文件动态计算 `max_sumo_seconds`（公式：`max_depart + 300s`，上下限 [300, 6000]），替代原有的 `max_steps` 参数，即直接以具体的 SUMO 仿真时间（秒）作为终止条件，因此 `max_sumo_seconds` 不再除以 30，而是直接传给环境以避免因为跳步而引起提前终止。
-- **事件场景测试基础设施（全部 5 类）**：所有五类事件场景（紧急车辆、校车与公交车、交通事故、占道/路面碎片、行人过街）的路由文件生成脚本与评测脚本均已完成。
-  - 使用 `scripts/event_scene_generation/` 下的脚本为全部 6 个数据集生成各类事件路由文件（`_emergy` / `_bus` / `_accident` / `_debris` / `_pedestrian` 后缀）；`batch_generate_all_scenes.sh` 一键批量生成。 **⚠️ 行人渲染效果较差，暂不考虑**
-  - `scripts/event_scene_generation/visualize_event_network.py` 为每个数据集生成标注各类事件位置的路网可视化图（暗色主题，彩色标记）。
-  - `src/bev_generation/online_bev_render.py` 通过 `RENDER_EVENT_TYPES` 列表支持 6 种事件类型（含 normal）的顺序渲染，输出到 `data/test/{SCENARIO}/{event_type}/{step}/`。
-  - TransSimHub `vehicle.py` MODEL_MAPPING 修复 `pedestrian` 键重复 bug，新增 `HIGH_POLY_ONLY` 集合（bus / school_bus / crash_vehicle / pedestrian_* 等仅存在于 high_poly 资产中的车型）。
-- **评测主脚本（`src/evaluation/run_eval.py`）**：从根目录 `vlm_decision.py` 重构迁入 `src/evaluation/`，保留 `--fixed_time`、`--max_pressure`、VLM 三种模式接口。**输出路径统一为 `data/eval/{dataset}/{route_file_name}/{method}/`**。                                                                                                                         
-  - **批量评测脚本**：         
-  - `scripts/run_batch_event_eval.sh`：事件场景批量评测，覆盖全部 5 类事件 × 6 个数据集；支持 `--event {type}` 单类过滤；调用 `src/evaluation/run_eval.py`。            
-  - `run_batch_eval.sh`、`run_batch_generalization.sh`：已更新为调用 `src/evaluation/run_eval.py` 并传入对应 `--scene_type`（JiNan/Hangzhou 为 `normal`，NewYork triple +变体为 `normal_triple`）。 
-  - **指标设计（各场景 5 项核心指标）**：
-    - 紧急车辆：ATT / AWT / AQL / **EATT** / **EAWT**（Emergency ATT/AWT，按 vType=emergency/police/fire_engine 过滤）
-    - 校车与公交车：ATT / AWT / AQL / **BATT** / **BAWT**（Bus ATT/AWT，按 vType=bus/school_bus 过滤）
-    - 交通事故：ATT / AWT / AQL / **MaxQL** / **TPT**（峰值排队长度 / 普通车辆通行数，过滤 accident_* 事件车辆）
-    - 占道行为：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 debris_* 事件车辆）
-    - 行人过街：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤 ped_* 事件车辆）                                                                                                      
-  - `src/evaluation/metrics.py` 扩展 `calculate_from_files()` 接口：新增 `event_id_prefixes` 参数、`MaxQL`（全程队列峰值）、`TPT`（到达普通车辆计数）、`special_vtypes` 可覆盖。 
-  - **统一指标收集脚本（`src/evaluation/collect_metrics.py`）**：替代 6 个独立 `*_metrics.py` 脚本，通过 `--type {generalization|emergency|bus|accident|debris|pedestrian|all}` 统一入口 ；`scene_to_cols` 以 `(scenario, route_file_name)` 为键映射 CSV 列；路径格式与 `run_eval.py` 输出一致（`data/eval/{dataset}/{route_file_name}/{method}/`）。                                       
-   - 结果模板：`results/bus_result.csv`、`accident_result.csv`、`debris_result.csv`、`pedestrian_result.csv`、`emergency_result.csv`、`generalization_result.csv`。     
-
-## 六. 3D 仿真渲染架构说明
-
-### 事件场景双线渲染机制
-
-TransSimHub 的 3D 渲染存在**两条完全独立的渲染通路**，不同事件类型走不同通路，不可混淆：
-
-| 事件类型 | SUMO 中的 vType | 渲染通路 | 负责模块 |
+| 数据集/场景名称 | 简介与特点 | 交叉口数量 | 相位描述 (Action Space for Prompt) |
 | :--- | :--- | :--- | :--- |
-| 紧急车辆（ambulance / police / fire_truck） | 真实运动车辆 | `scene_sync` → `Vehicle3DElement` | `SceneSync._manage_vehicle_element()` |
-| Bus / School Bus | 真实运动车辆 | `scene_sync` → `Vehicle3DElement` | `SceneSync._manage_vehicle_element()` |
-| 路障（barrier_A~E） | trip+stop 占位假车 | `EventManager` → `EmergencyManager3D` → `Emergency3DElement` | `tshub_env3d.emergency_renderer` |
-| 碰撞残骸（crash_vehicle） | trip+stop 占位假车 | `EventManager` → `EmergencyManager3D` → `Emergency3DElement` | `tshub_env3d.emergency_renderer` |
-| 倒地/过街行人（pedestrian_lying/crossing） | trip+stop 占位假车 | `EventManager` → `EmergencyManager3D` → `Emergency3DElement` | `tshub_env3d.emergency_renderer` |
-| 路障封闭区矩形（ClosureZone）归路障占道 | 无 SUMO 实体 | `EventManager` → `EmergencyManager3D` → `ClosureZone3DElement` | `tshub_env3d.emergency_renderer` |
+| **Jinan (China)** | 真实采集数据。包含3个时段采集的数据。基于真实采集数据，模拟了高峰流量数据和全天候数据（包含早晚高峰）。 | 12 | 4相位：NTST (南北直行), NLSL (南北左转), ETWT (东西直行), ELWL (东西左转) |
+| **Hangzhou (China)** | 真实采集数据。包含3个时段采集的数据。基于真实采集数据，模拟了高峰流量数据。 | 16 | 同 Jinan 数据 (4相位) |
+| **Songdo (South Korea)** | 新开发城区，大型交叉口。每个方向多达5车道，交通流量大。拓扑迁移验证。 | 1 | 4相位：东西/南北 直行/左转，右转无限制 |
+| **Yau Ma Tei (Hong Kong)** | 稠密市中心，道路狭窄。只有南进口有右转，东进口有左转。拓扑迁移验证（左行特例）。 | 1 | 3相位：东西/南北直行，南进口右转（东进口左转一直放行） |
+| **Massy (France)** | 郊区 T字路口 (T-junction)。车道配置特殊，流量较小。拓扑迁移验证。 | 1 | 2相位：南北进口道放行，西进口道放行（右转无限制） |
+| **New York (USA)** | 曼哈顿上东区，基于出租车轨迹数据。超大规模复杂路网。规模迁移验证。 | 196 | 同 Jinan 数据 (4相位) |
 
-**通路一（动态车辆）**：SUMO 每步返回实时位置/朝向 → `scene_sync` 创建/更新 `Vehicle3DElement`。
-**通路二（静态障碍物）**：`__init__` 时一次性解析路由文件 `<param>` 标签获取固定坐标 → 每步按时间窗口过滤活跃事件 → `EmergencyManager3D.update()` 增删 3D 节点。
+相关数据集流量分布见 `results/traffic_flow_stats.csv`。
 
-**关键过滤器**：`scene_sync._is_event_vehicle()` 识别 trip+stop 假车并跳过，防止在 SUMO stop 位置产生幽灵背景车辆。匹配规则：精确匹配 `_EVENT_VTYPE_EXACT` 集合（`crash_vehicle`、`pedestrian_*`、`barrier_A~E`、`tree_branch_*`）或前缀匹配 `barrier_`、`tree_branch_`（兼容带长度后缀的变体如 `barrier_A_5.00`）。
+**3 事件场景验证数据集**
 
+每类场景生成 2 个混合事件路由文件（减少独立评测次数）：
 
-## 七. 常用指令与开发规范
-**⚠️ 注意：执行所有命令前，请务必确保已激活名为 `VLMTraffic` 的虚拟环境！**
-- 
-- 代码风格：严格遵循 PEP-8，添加详细的中文注释。
-- 模型训练和场景验证部分在远程服务器上进行，因此涉及到模型训练和场景验证的模块不需要运行代码，只需要提供运行代码即可
+| 事件路由文件 | 包含事件类型 | 核心评测指标 |
+| :--- | :--- | :--- |
+| `*_emergy_bus.xml` | 紧急车辆（消防车/救护车/警车）+ 校车与公交车 | EATT、EAWT（紧急车辆）；BATT、BAWT（公交车） |
+| `*_accident_debris.xml` | 车辆碰撞/异常停驻 + 散落货物/施工占道 | MaxQL（峰值排队长度）；TPT（普通车辆通行数） |
 
----
+事件路由文件基于 Jinan×2 + Hangzhou×2 + SouthKorea_Songdo×1 + France_Massy×1 + Hongkong_YMT×1 共 7 个场景生成，通过 `scripts/event_scene_generation/` 下批量脚本一键生成。
 
-## 八. 模型输入输出与动作空间定义（已实现）
+## 五. 工程实现参考
 
-### 8.0 异步决策框架（已实现）
+**⚠️ 注意：执行所有命令前，请务必确保已激活名为 `VLMTraffic` 的虚拟环境！代码风格严格遵循 PEP-8，添加详细的中文注释。模型训练和场景验证部分在远程服务器上进行，涉及训练和场景验证的模块只需提供可运行代码，不需要本地执行。**
 
-**核心机制**：每次 `env.step()` 返回时（`tsc_wrapper` 保证至少一个路口 `can_perform_action=True`），仅对 `can_perform_action=True` 的路口进行 VLM 推理和图像渲染；其余路口沿用上一次动作，由 TransSimHub `choose_next_phase_with_duration` 内部处理相位计时。
+### 5.1 动作空间：联合（相位 × 绿灯时长）
 
-**`tsc_wrapper.state_wrapper` 变更**：多路口模式由原 AND 逻辑（所有路口均就绪才返回）改为 **OR 逻辑**（任一路口就绪即返回），使上层 `run_eval.py` 能精确识别哪些路口需要决策。
+动作格式为 `{'phase_id': int, 'duration': int}`。绿灯时长常量定义在 `src/utils/tsc_env/tsc_wrapper.py`：
 
-```
-while not (dones or truncated) and sumo_t < max_sumo_seconds:
-    deciding_jids = [jid for jid in all_junctions
-                     if render_json['tls'][jid]['can_perform_action']]
-    # 仅对 deciding_jids 渲染图像 + 构建 Prompt + 执行 VLM 推理
-    # 非 deciding_jids 维持 last_action 不变
-    env.step(last_action)   # 传入全量字典，非决策路口由底层忽略
-```
-
-**图像输出路径**（异步后，以路口 ID + SUMO 时间戳为目录层级）：
-```
-data/eval/{scenario_key}/{route_stem}/{model_name}/{intersection_id}/{sumo_step}/
-  ├── {jid}_N.png / {jid}_E.png / {jid}_S.png / {jid}_W.png   # 进口道视图
-  ├── upstream_{jid}_N.png / ...                                # 上游视图
-  └── response.txt                                              # VLM 推理响应
-```
-
-**终止条件**：`sumo_sim_step >= max_sumo_seconds`（SUMO 仿真秒数），CLI 参数 `--max_sumo_seconds` 单位为秒，默认 3600s（1 小时）。
-
----
-
-### 8.1 视觉输入：8张多视角图像
-
-每个路口在需要决策的仿真时刻提供 **8张图像**（仅 `can_perform_action=True` 时渲染），顺序固定：
-
-| 序号 | 类型 | 内容描述 | 传感器命名（element_id） |
-| :--- | :--- | :--- | :--- |
-| Image 1 | 进口道停止线视图 | North 进口，车辆朝南排队 | `{jid}_N` |
-| Image 2 | 进口道停止线视图 | East 进口，车辆朝西排队 | `{jid}_E` |
-| Image 3 | 进口道停止线视图 | South 进口，车辆朝北排队 | `{jid}_S` |
-| Image 4 | 进口道停止线视图 | West 进口，车辆朝东排队 | `{jid}_W` |
-| Image 5 | 上游道路视图 | North 上游来车（预计绿灯期间到达） | `upstream_{jid}_N` |
-| Image 6 | 上游道路视图 | East 上游来车 | `upstream_{jid}_E` |
-| Image 7 | 上游道路视图 | South 上游来车 | `upstream_{jid}_S` |
-| Image 8 | 上游道路视图 | West 上游来车 | `upstream_{jid}_W` |
-
-**进口道摄像头**：安装在停止线处，俯拍进口道排队车辆（对应现有 `junction_front_all` 传感器，已有基础设施）。  
-**上游摄像头**：安装在进口道来车方向的上游路段（即上游路口的出口车道处），拍摄正在驶来的车辆。摄像机位置取自 `BaseTLS.in_road_upstream_point`（车道形状的起始点 `shape[0]`），方向与车辆行驶方向一致。
-
-**方向索引约定**：N=0，E=1，S=2，W=3（顺时针）。方向由 SUMO 车头朝向推算：`approach_bearing = (heading + 180°) % 360°`，再映射到最近的 N/E/S/W 象限。
-
-**传感器图像 key 格式**（`sensor_imgs` 字典）：
-```
-进口道：sensor_imgs["{jid}_{dir}"]["junction_front_all"]
-上游：  sensor_imgs["upstream_{jid}_{dir}"]["junction_front_all"]
-```
-
-**图像采集函数**：`Evaluator._collect_8_images(jid, sensor_imgs, step_dir)` → `List[str | None]`（有序8条路径，缺失为None）。
-
----
-
-### 8.2 动作空间：联合（相位 × 绿灯时长）
-
-动作空间从"单相位选择"升级为**联合动作空间**：
-
-```
-action = {
-    'phase_id': int   ∈ [0, num_phases)    # 下一个绿灯相位编号
-    'duration': int                         # 实际绿灯时长（秒），VLM 模式取自候选集
-}
-```
-
-**绿灯时长常量定义**（`src/utils/tsc_env/tsc_wrapper.py`，所有模块统一引用）：
 ```python
-GREEN_DURATION_CANDIDATES = [15, 20, 25, 30, 35，40]  # VLM 可选绿灯时长（秒）
+GREEN_DURATION_CANDIDATES = [15, 20, 25, 30, 35, 40]  # VLM 可选绿灯时长（秒）
 FIXED_TIME_GREEN_DURATION = 27  # FixedTime / MaxPressure 专用：27s + 3s 黄灯 = 30s 整步
 ```
 
-**时长选择依据**（VLM 模式）：
-- Images 1-4（停止线排队）→ 当前相位的实际压力
-- Images 5-8（上游来车）→ 绿灯期间的预期到达量
-- 排队长 / 上游车多 → 选择较长时长；轻流量 → 选择较短时长
+VLM 输出校验：解析 `Action: phase=X, duration=Y` → 吸附到最近合法候选值 → 传入环境。`TSCEnvWrapper._decode_action` 同时兼容字典、元组、int 三种格式。
 
-**VLM 输出校验流程**（`run_eval.py`）：
-1. 解析 `Action: phase=X, duration=Y` 得到 `raw_dur`
-2. 吸附：`actual_dur = min(GREEN_DURATION_CANDIDATES, key=λ x: |x - raw_dur|)`
-3. 若 `raw_dur ∉ GREEN_DURATION_CANDIDATES`，记录 WARNING 日志
-4. 防御性 `assert actual_dur in GREEN_DURATION_CANDIDATES`（保证最终合法）
-5. 传入 `{'phase_id': p_id, 'duration': actual_dur}` 给环境
+### 5.2 视觉输入：4张多视角图像
 
-**底层执行格式**（TransSimHub / SUMO 层）：`(phase_id: int, green_duration: int)`，即实际秒数元组。
+每次决策提供 4 张图像（4 张进口道停止线视图），方向顺序固定为 N/E/S/W（顺时针，N=0）。传感器命名：`{jid}_{dir}`（如 `J1_N`）。方向由 SUMO 车头朝向推算：`approach_bearing = (heading + 180°) % 360°`，映射到最近象限。图像由 `Evaluator._collect_4_images()` 采集，缺失方向返回 None。
 
-**格式兼容性**（`TSCEnvWrapper._decode_action`）：
-| 传入格式 | 说明 |
-| :--- | :--- |
-| `{'phase_id': X, 'duration': Y}` | **推荐格式**，直接使用实际绿灯秒数 |
-| `{'phase_id': X, 'duration_idx': Y}` | 索引格式，向后兼容旧代码 |
-| `(phase_id, green_duration_seconds)` | 元组格式（TransSimHub 内部） |
-| `int` | 旧格式兼容（duration 取 FIXED_TIME_GREEN_DURATION=27s） |
+图像输出路径：`data/eval/{dataset}/{route_file_name}/{method}/{jid}/{sumo_step}/`，包含 `{jid}_N.png`、`{jid}_E.png`、`{jid}_S.png`、`{jid}_W.png` 四张图像及 `response.txt`。
 
----
+### 5.3 Prompt 与 CoT 输出格式
 
-### 8.3 Prompt 输出格式
+CoT 模板：常规场景走 `Scene Understanding → Phase Selection` 短路径；事件场景走包含 `Event Recognition → Impact Reasoning → Scene Analysis → Selection Logic` 的长路径。输出末行固定为：
 
 ```
 Action: phase=<phase_id>, duration=<seconds>
 ```
 
-示例：`Action: phase=1, duration=25`
+`configs/prompt_builder.py` 负责 4 图描述、Duration Selection CoT 块、`coordination_context` 协同章节动态注入。`src/inference/vlm_agent.py` 的 `_parse_action()` 返回 `(phase_id, duration)` 元组，duration 不在候选集时自动吸附。
 
-**CoT 模板结构（标准输出）**：
-```
-Thought: [
-Scene Understanding:
-- Lane Analysis (Mandatory): <各进口道各车道排队数>
-- Phase Mapping: Phase ID (<方向>): <拥堵等级> | <原因>
-Scene Analysis:
-- Emergency Check: <None 或 事件描述>
-- Final Condition: <Normal / Special>
-Selection Logic:
-- Rule Identification: <规则名>
-- Reasoning: <一句话原因>
-- Conclusion: Phase <ID>
-Duration Selection:
-- Stop-line queue pressure (Images 1-4): <简要评估>
-- Upstream arrival estimate (Images 5-8): <简要评估>
-- Selected Duration: <X> seconds | Reasoning: <一句话>
-]
+### 5.4 异步决策与评测主循环
 
-Action: phase=<phase_id>, duration=<seconds>
-```
+`src/utils/tsc_env/tsc_wrapper.py` 的 `state_wrapper` 采用 OR 逻辑（任一路口就绪即返回）。`src/evaluation/run_eval.py` 主循环仅对 `can_perform_action=True` 的路口渲染图像并执行 VLM 推理，其余路口维持上一次动作。
 
-**VLMAgent 解析逻辑**（`_parse_action`）：优先匹配新格式 `phase=X, duration=Y`；duration 若不在候选集则吸附到最近合法值；兼容旧格式 `Action: X`（duration 默认 25s）。
+终止条件为 `sumo_t >= max_sumo_seconds`（CLI 参数 `--max_sumo_seconds`，单位秒，从路由文件动态计算：`max_depart + 300s`，上下限 [300, 6000]）。
 
----
+评测模式：`--fixed_time`、`--max_pressure`、VLM 三种。批量评测脚本：`run_batch_eval.sh`（常规）、`run_batch_generalization.sh`（泛化）、`scripts/run_batch_event_eval.sh`（事件，支持 `--event {type}` 单类过滤）。
 
-### 8.4 上下游协同机制：EventBulletin（已实现）
+### 5.5 指标体系
 
-路口间异步事件广播板，使检测到交通事件的路口能将影响告知邻居路口，从而在 Prompt 层面实现协同决策。
+`src/evaluation/metrics.py` 的 `calculate_from_files()` 支持 `event_id_prefixes`、`MaxQL`（峰值排队长度）、`TPT`（普通车辆通行数）、`special_vtypes` 参数。各场景 5 项核心指标：
 
-#### 设计原则
+- 紧急车辆：ATT / AWT / AQL / **EATT** / **EAWT**（按 vType=emergency/police/fire_engine 过滤）
+- 校车与公交车：ATT / AWT / AQL / **BATT** / **BAWT**（按 vType=bus/school_bus 过滤）
+- 交通事故 / 占道：ATT / AWT / AQL / **MaxQL** / **TPT**（过滤对应事件车辆）
 
-| 维度 | 设计决策 |
-| :--- | :--- |
-| **架构层次** | 纯 Prompt 层协同，不修改仿真底层（TransSimHub/SUMO）和任何 RL/VLM 权重 |
-| **通信时序** | 异步——路口 A 决策完才广播，路口 B 在其下一次决策时读到，符合现实通信延迟 |
-| **拓扑来源** | 静态配置，由 `configs/scenairo_config.py` 的 `TOPOLOGY` 字段注入（规则路网用 `_generate_grid_topology` 自动生成） |
-| **过期机制** | TTL = `green_duration` 秒（SUMO 仿真时间），`expires_at_sumo = current_sumo_step + green_duration+3s' |
-| **触发条件** | VLM CoT 输出中 `Final Condition: Special`，且 `Emergency Check` 行非 None |
+`src/evaluation/collect_metrics.py` 提供统一收集入口：`--type {generalization|emergency|bus|accident|debris|all}`。结果模板位于 `results/` 目录下。
 
-#### 数据流
+### 5.6 上下游协同机制：EventBulletin
 
-```
-[路口 A VLM 推理，sumo_t=100s，green_duration=25s]
-    ↓ CoT 输出 "Final Condition: Special"
-EventBulletin.broadcast(from_jid=A, green_duration=25, current_sumo_step=100)
-    ↓ 解析事件类型 + 描述
-    ↓ get_neighbors(A) → [B, C]（来自 TOPOLOGY 静态配置）
-    ↓ 写入 _board[B], _board[C]，expires_at_sumo = 100 + 25 = 125s
-    ↓ logger.info 记录广播日志（来源、目标、事件类型、TTL）
+`configs/event_bulletin.py` 实现路口间异步事件广播（纯 Prompt 层，不修改仿真底层）。当 VLM CoT 输出 `Final Condition: Special` 时触发广播，TTL = `green_duration + 3s`（SUMO 秒）。拓扑来源于 `configs/scenairo_config.py` 的 `TOPOLOGY` 静态配置（规则路网由 `_generate_grid_topology` 自动生成）。`configs/prompt_builder.py` 在 `coordination_context` 非空时于 Prompt 末节插入 `Upstream Coordination Context [ACTIVE]`。
 
-[路口 B 下一次决策，sumo_t=115s]
-EventBulletin.get_context(jid=B, current_sumo_step=115)
-    ↓ 115 < 125，通知仍有效，返回文本摘要
-PromptBuilder.build_decision_prompt(..., coordination_context=ctx)
-    ↓ 若 ctx 非空，在 Prompt 第 6 节插入 "Upstream Coordination Context [ACTIVE]"
-```
+### 5.7 3D 渲染双通路
 
-#### 日志体系
-
-| 日志级别 | 触发场景 | 示例内容 |
-| :--- | :--- | :--- |
-| `INFO` | 广播成功 | `[Bulletin][广播] J1 → J3 \| 事件类型: emergency_vehicle \| TTL: 25s (expires @ sumo_t=125s)` |
-| `INFO` | Prompt 注入 | `[Bulletin][注入] J3 \| sumo_t=115s \| 注入上游协同通知` |
-| `INFO` | 过期清理（批量） | `[Bulletin][过期清理] 本步共清除 2 条过期通知 (sumo_t=130s)` |
-| `INFO` | 评测结束拓扑汇总 | 全局静态路口拓扑快照 |
-| `DEBUG` | 无邻居路口时跳过 | `[Bulletin] J1 检测到事件但无已知邻居路口` |
-| `DEBUG` | 单条过期清理 | `[Bulletin][过期清理] J3 清除 1 条过期通知` |
-
-#### 核心文件修改清单
-
-| 文件 | 修改内容 |
-| :--- | :--- |
-| `TransSimHub/.../tls_type/choose_next_phase_with_duration.py` | **新增** TLS 动作类型，支持联合相位+时长决策，实现异步决策 |
-| `TransSimHub/.../traffic_light_action_type.py` | 新增枚举值 `ChooseNextPhaseWithDuration` |
-| `TransSimHub/.../traffic_light.py` | 注册新动作类型；新增 `in_road_upstream_point`；`control_traffic_light()` 支持元组动作 |
-| `TransSimHub/.../tls_type/base_tls.py` | 新增 `in_road_upstream_point` 计算（lane shape[0]） |
-| `TransSimHub/.../scene_sync.py` | 方向映射；element_id 改为 `{jid}_{dir_short}`；新增 upstream 摄像机 |
-| `configs/scenairo_config.py` | 新增 `TOPOLOGY` 字段（静态拓扑配置）；`_generate_grid_topology()` 函数 |
-| `configs/env_config.py` | `tls_action_type` → `choose_next_phase_with_duration` |
-| `configs/prompt_builder.py` | 8图描述；Duration Selection CoT 块；`coordination_context` 参数；协同章节动态注入 |
-| `src/utils/tsc_env/tsc_wrapper.py` | `GREEN_DURATION_CANDIDATES`；`FIXED_TIME_GREEN_DURATION`；`state_wrapper` 改为 OR 逻辑；`_decode_action()` 支持 `duration` 直接秒数 |
-| `src/utils/event_bulletin.py` | **独立模块**：EventNotice + EventBulletin，TTL 以 SUMO 秒为单位，静态拓扑 |
-| `src/inference/vlm_agent.py` | 多图输入；`_parse_action()` 返回 `(phase_id, duration)` 元组 |
-| `src/evaluation/run_eval.py` | 异步决策主循环；图片路径 `{jid}/{sumo_step}/`；`max_sumo_seconds` 终止条件 |
-| `tests/test_upgrade.py` | 升级验证测试（PromptBuilder / _parse_action / _decode_action / 候选集一致性） |
+TransSimHub 存在两条独立渲染通路：**通路一（动态车辆）** 由 `scene_sync` → `Vehicle3DElement` 处理真实运动车辆（紧急车辆、Bus/School Bus）；**通路二（静态障碍物）** 由 `EventManager` → `EmergencyManager3D` 处理 trip+stop 占位假车（路障 barrier_A~E、碰撞残骸 crash_vehicle）及无 SUMO 实体的 ClosureZone。`scene_sync._is_event_vehicle()` 过滤器防止假车产生幽灵背景车辆，精确匹配 `crash_vehicle`、`barrier_A~E`、`tree_branch_*`，并兼容带长度后缀的变体（如 `barrier_A_5.00`）。
 
 ---
 
-## 九、关于相关研究文献汇总
+## 六. 实验设计
 
-### 1.VLLM幻觉
+### 6.1 主实验：常规场景性能对比
+
+**目标**：在真实交通流量场景下，与经典 RL 方法和最新 LLM-TSC 方法进行全面对比，验证 E2ELight 在常规场景下的控制效率。
+
+**数据集**：Jinan（3个时段）× Hangzhou（2个时段），共 5 个评测场景，每个场景对应 1 条路由文件。
+
+**对比方法（13种）**：
+- 规则基线：FixedTime、MaxPressure
+- 经典 RL 方法：IntelliLight、FRAP、PressLight、MetaLight、MPLight、DynamicLight
+- 大规模协同 RL：UniTSA
+- LLM/VLM 增强方法：LLMLight、VLMLight（兼做端到端架构消融基线）
+
+**核心指标**：ATT（平均行程时间）、AWT（平均等待时间）、AQL（平均排队长度）
+
+**实验规模**：5 场景 × 13 方法 = 65 次评测
+
+---
+
+### 6.2 泛化性实验
+
+#### 6.2.1 拓扑迁移验证
+
+**目标**：验证 E2ELight 在 Jinan/Hangzhou 之外的异构拓扑路口的零样本适应能力。
+
+**数据集**：SouthKorea_Songdo（非对称 5/6 车道）、France_Massy（T 字路口）、Hongkong_YMT（左行特例）
+
+**对比方法**：FixedTime、MaxPressure、LLMLight、VLMLight、E2ELight（5种）
+
+**指标**：ATT、AWT、AQL
+
+**实验规模**：3 场景 × 5 方法 = 15 次评测
+
+#### 6.2.2 规模迁移验证
+
+**目标**：验证 E2ELight 在 196 路口超大规模路网下的协同控制能力。
+
+**数据集**：New York（196路口，全量）
+
+**对比方法**：FixedTime、MaxPressure、LLMLight、VLMLight、E2ELight（5种）
+
+**指标**：ATT、AWT、AQL
+
+**实验规模**：1 场景 × 5 方法 = 5 次评测
+
+#### 6.2.3 事件迁移验证
+
+**目标**：验证 E2ELight 对动态交通事件的识别与响应能力，覆盖紧急车辆优先通行和占道事故两大类。
+
+**数据集**：基于 Jinan × 3 + Hangzhou × 2 + SouthKorea_Songdo × 1 + France_Massy × 1 + Hongkong_YMT × 1 共 8 个场景，各生成 2 个混合事件路由文件：
+- `*_emergy_bus.xml`：紧急车辆 + 校车/公交车
+- `*_accident_debris.xml`：交通事故 + 路面占道
+
+**对比方法**：FixedTime、MaxPressure、LLMLight、VLMLight、E2ELight（5种）
+
+**指标**：
+- `*_emergy_bus` 场景：ATT / AWT / AQL / EATT（紧急车辆平均行程时间）/ EAWT（紧急车辆平均等待时间）/ BATT / BAWT
+- `*_accident_debris` 场景：ATT / AWT / AQL / MaxQL / TPT
+
+**实验规模**：8 场景 × 2 文件 × 5 方法 = 80 次评测
+
+---
+
+### 6.3 消融实验
+
+#### 6.3.1 训练阶段消融
+
+**目标**：验证 SFT 和 RLVR 各阶段对最终性能的贡献。
+
+**数据集**：Jinan × 3 + Hangzhou × 2（代表性子集）
+
+**消融变体（3种）**：
+| 变体 | 描述 |
+| :--- | :--- |
+| Zero-shot | 预训练 LVLM，无任何微调 |
+| SFT only | 仅 SFT，无 RLVR |
+| **E2ELight (full)** | SFT + RLVR（完整模型） |
+
+**指标**：ATT、AWT、AQL，以及感知准确率（车辆计数误差）
+
+**实验规模**：5 场景 × 3 变体 = 15 次评测
+
+#### 6.3.2 动作空间消融
+
+**目标**：验证联合动作空间（相位 + 绿灯时长）相比仅选相位的必要性。
+
+**数据集**：Jinan × 3 + Hangzhou × 2
+
+**消融变体（2种）**：
+| 变体 | 描述 |
+| :--- | :--- |
+| Phase-only | 仅选择相位，绿灯时长固定为 27s |
+| **Phase + Duration** | 联合选择相位与时长（候选集 [15,20,25,30,35,40]s） |
+
+**指标**：ATT、AWT、AQL
+
+**实验规模**：5 场景 × 2 变体 = 10 次评测
+
+#### 6.3.3 快慢思考 CoT 自适应切换消融
+
+**目标**：验证自适应快慢思考切换机制的有效性，以及慢思考路径各推理步骤的必要性。
+
+**数据集**：事件场景（Jinan × 3 + Hangzhou × 2，`*_emergy_bus.xml`）
+
+**消融变体（3种）**：
+| 变体 | 描述 |
+| :--- | :--- |
+| Fast-only | 所有场景强制使用短路径（无 Event Recognition 等步骤） |
+| Slow-only | 所有场景强制使用长路径 |
+| **Adaptive (E2ELight)** | LVLM 自适应决定快慢路径（完整模型） |
+
+**指标**：ATT、AWT、AQL、EATT、EAWT，以及事件识别准确率
+
+**实验规模**：5 场景 × 3 变体 = 15 次评测
+
+#### 6.3.4 路口间事件广播机制消融
+
+**目标**：验证 EventBulletin 定向广播机制对路网级协同控制的贡献，量化上下游路口预警信息注入的有效性。
+
+**背景**：E2ELight 实现了纯 Prompt 层的路口间异步事件广播（`src/utils/event_bulletin.py`）——当某路口 VLM CoT 输出 `Condition: Special` 时，系统根据事件类型定向路由：Emergency/Transit 广播给下游出口方向邻居（车辆将驶入），Crash/Obstruction 广播给上游进口方向邻居（拥堵将向上游溢出）；通知以 Prompt 片段形式注入邻居路口的 `Upstream Coordination Context`，TTL 绑定当前绿灯时长。该机制无需修改仿真底层，完全在语言层面实现跨路口协同。
+
+**数据集**：事件场景（Jinan × 3 + Hangzhou × 2，`*_emergy_bus.xml` + `*_accident_debris.xml` 各一）
+
+**消融变体（3种）**：
+| 变体 | 描述 |
+| :--- | :--- |
+| No Bulletin | 关闭广播，所有路口独立决策，无邻居事件通知注入 |
+| Broadcast All | 广播给所有邻居（无定向路由，全部邻居均收到通知） |
+| **Directed Bulletin (E2ELight)** | 定向广播：Emergency/Transit → 下游邻居；Crash/Obstruction → 上游邻居 |
+
+**指标**：ATT / AWT / AQL / EATT / EAWT（emergy_bus 场景）；ATT / AWT / AQL / MaxQL（accident_debris 场景）
+
+**实验规模**：5 场景 × 2 事件文件 × 3 变体 = 30 次评测
+
+---
+
+### 6.4 补充实验
+
+#### 6.4.1 推理效率分析
+
+**目标**：衡量 E2ELight 的实际部署可行性，与 VLMLight（多模块流水线）进行延迟对比。
+
+**测量指标**：
+- 单次推理延迟（ms/决策）：E2ELight vs VLMLight（分模块计时）
+- 显存占用（GB）
+- 推理延迟与绿灯最短时长（15s）的对比，验证实时可行性
+
+#### 6.4.2 幻觉分析
+
+**目标**：量化 E2ELight 在车辆计数任务上的幻觉程度，以及 RLVR 感知奖励的缓解效果。
+
+**测量指标**：
+- 车辆计数 MAE（CoT 中 Lane Analysis 预测值 vs SUMO e2 检测器真值）
+- 训练前后的计数误差对比（Zero-shot vs SFT vs Full RLVR）
+
+#### 6.4.3 事件识别准确率分析
+
+**目标**：单独评估 E2ELight 在 CoT Event Recognition 步骤的分类准确性。
+
+**测量指标**：事件类型分类准确率（normal / emergency / bus / accident / debris），基于事件场景的所有决策步骤统计。
+
+#### 6.4.4 Case Study
+
+**目标**：通过典型案例展示 E2ELight 慢思考路径的推理质量。
+
+**案例设计**：
+- 紧急车辆场景：展示 Event Recognition → 优先放行决策的完整 CoT
+- 交通事故场景：展示 Impact Reasoning 对阻塞方向的绕行推理
+- 正常高峰场景：展示短路径快速决策的 CoT 格式
+
+---
+
+## 七. 相关研究文献汇总
+
+### 1. VLLM 幻觉
 
 | 论文简称 / 核心亮点 | 论文完整名称 | arXiv 链接 | GitHub 开源代码 |
 | :--- | :--- | :--- | :--- |
@@ -368,31 +331,26 @@ PromptBuilder.build_decision_prompt(..., coordination_context=ctx)
 | **CAP**<br>*(约束感知提示缓解空间幻觉)* | Mitigating Hallucinations in Multimodal Spatial Relations through Constraint-Aware Prompting | [ArXiv 检索](https://arxiv.org/search/?query=Mitigating+Hallucinations+in+Multimodal+Spatial+Relations+through+Constraint-Aware+Prompting&searchtype=title) | [见 Awesome 仓库](https://github.com/showlab/Awesome-MLLM-Hallucination) |
 | **MASH-VLM**<br>*(时空解耦防幻觉)* | Mitigating Action-Scene Hallucination in Video-LLMs through Disentangled Spatial-Temporal Representations (CVPR 2025) | [ArXiv 检索](https://arxiv.org/search/?query=Mitigating+Action-Scene+Hallucination+in+Video-LLMs+through+Disentangled+Spatial-Temporal+Representations&searchtype=title) |[见 Awesome 仓库](https://github.com/showlab/Awesome-MLLM-Hallucination) |
 
-### 2.LLM for traffic signal control
+### 2. LLM for Traffic Signal Control
 
-
-
-
-这里为您将提供的“大语言模型用于交通信号控制（LLM for TSC）”相关文献整理成您所要求的标准 Markdown 表格格式，并**新增了“论文的详细介绍”这一列**，对每篇论文的方法论和技术细节进行了更深度的拆解与补充，方便您进行横向对比和文献综述。
-
-| 论文名称及链接 | 期刊/时间 | 概述 | 论文的详细介绍 (新增) | 评论 / 优缺点分析 | 控制策略 (输入与动作) |
+| 论文名称及链接 | 期刊/时间 | 概述 | 论文的详细介绍 | 评论 / 优缺点分析 | 控制策略 (输入与动作) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **VLMLight**: Safety-Critical Traffic Signal Control via Vision-Language Meta-Control and Dual-Branch Reasoning Architecture<br>🔗[Arxiv 2505](https://arxiv.org/pdf/2505.19486) | 2025<br>arXiv | 提出了融合 VLM、LLM 和 RL 的交通信号控制框架。构建了多视角图像仿真平台，VLM 提取结构化文本，LLM 作元控制器，实现“常规用 RL，紧急用 LLM”的双分支策略，显著降低紧急车辆等待时间。 | **1. 感知层**：利用 Qwen2.5-VL 将路口原始多视角图像转化为结构化文本（如拥堵度、特种车辆）。<br>**2. 元控制层**：LLM 充当“路由器”，根据文本描述判断当前是 Normal 还是 Special 场景。<br>**3. 执行层**：正常场景直接调用 PPO 模型（快分支）；紧急场景激活 Agent 多步推理（慢分支）让出特权绿灯。<br>整体思路是用 LLM/VLM 解决长尾紧急场景，用 RL 保证常规效率。 | **缺点**：<br>1. **推理延迟/功能冗余**：VLM 提取信息 + LLM 分发意图导致链路过长。<br>2. **仿真局限**：自研视觉器缺乏天气、光照变化，影响 sim-to-real 泛化。<br>3. **模型过重无微调**：使用了32B/72B超大模型且未做SFT，极易产生视觉幻觉。建议改用小参数 VLM 结合图像-文本问答对进行 SFT。<br>4. **冗余验证**：验证动作是否合法意义不大，模型可通过约束生成直接控制。 | **感知输入**：多视角 BEV 图像。<br>**控制逻辑**：<br>- 特殊场景：优先放行救护车/消防车。<br>- 常规场景：基于 PPO 历史状态选择动作。<br>- 仿真循环：首步用预训练 PPO 决策并渲染，后续步获取图像 $\rightarrow$ VLM 场景理解 $\rightarrow$ LLM 快慢分支判断 $\rightarrow$ 输出 Phase。 |
-| **Traffic-R1**: Reinforced LLMs Bring Human-Like Reasoning to Traffic Signal Control Systems<br>🔗[Arxiv 2508](https://arxiv.org/abs/2508.02344) | 2025<br>arXiv | 提出基于强化学习训练的 3B 参数 LLM（致敬 DeepSeek-R1 范式）。通过两阶段 RL 训练，具备零样本泛化能力，支持边缘设备部署及异步多路口协调，已在真实世界落地管理10个路口。 | **1. 训练范式革命**：放弃传统的 SFT，直接采用“离线专家指导 RL” + “在线开放世界 RL”两阶段训练，赋予模型类人推理（Thinking）能力。<br>**2. 工程落地**：在极小参数量（3B）下实现了边缘设备实时推理，并通过异步通信网络解决了多路口协同的延迟问题。<br>**3. 真实部署**：是少数真正走到线下部署（日均5.5万驾驶员）并验证能降低 9.3% 排队长度的工作。 | **特点**：<br>1. LLM 的输入是纯结构化**文本描述**（提取自雷达或视觉传感器），而非原始图像数据。<br>2. 重点在于“强化学习微调 LLM”在交通领域的落地，证明了小模型+RL的巨大潜力。 | **感知输入**：场景结构化文本描述。<br>**控制逻辑**：模型内部生成长程 CoT 推理，最终输出下一步的最优红绿灯相位（Action）。支持相邻路口的异步状态共享。 |
-| **LLM-assisted light**: Leveraging LLM capabilities for human-mimetic TSC in complex urban environments<br>🔗[Arxiv 2403](https://arxiv.org/abs/2403.08337) | 2024<br>arXiv | 提出 LA-Light 框架，将 LLM 作为决策中心“大脑/指挥官”。LLM 通过调用工具（Tools）感知环境，并将现有的 RL 算法作为“顾问”辅助决策，最终输出可解释的方案。 | **典型的 Agent（智能体）架构**：<br>不强求 LLM 自己算出最优解，而是让 LLM 充当调度枢纽。框架包含：<br>- **记忆模块**：记录历史交通状态。<br>- **工具调用**：调用摄像头 API 获取排队长度，调用 RL 算法获取“建议动作”。<br>- **推理决策**：LLM 综合“自己看到的”和“RL 建议的”，做最终拍板。 | **特点**：<br>架构设计非常符合 Agent 哲学，包含了需求理解、工具调用、反馈循环。但同样面临大模型 API 调用带来的高延迟问题，且对 RL “顾问”的依赖度较高。 | **感知输入**：通过调用 Tool 获取的环境状态文本。<br>**控制逻辑**：综合推理后，输出指定的 Phase 控制命令。 |
-| **LLMLight**: Large Language Models as Traffic Signal Control Agents<br>🔗[KDD 2025](https://dl.acm.org/doi/abs/10.1145/3690624.3709379) | 2025<br>KDD | 基于 Qwen2-14B 的三阶段对齐训练：GPT-4 收集轨迹 $\rightarrow$ LoRA 模仿微调 $\rightarrow$ Critic 引导的排序损失 (RBC Loss) 后对齐，使小模型具备强大的零样本控制能力。 | **非常经典的对齐（Alignment）管线**：<br>**Stage 1**：利用高级模型（GPT-4）生成含有思维链的决策轨迹，并用预训练的 RL（Advanced-CoLight）作为 Critic 剔除烂数据。<br>**Stage 2**：用筛选后的优质数据对 14B 模型进行 SFT。<br>**Stage 3**：用 Critic 的 Q 值作为奖励信号，通过 RBC Loss 让模型进一步对齐交通效率最大化目标。 | **缺点/反思**：<br>1. **信息压缩过度**：输入给 LLM 的仅是各车道排队长度，丢失了路口几何拓扑、车道数等核心物理信息。<br>2. **为了 LLM 而 LLM**：训练重度依赖 Advanced-CoLight（一个RL模型）来当裁判。这说明 LLM 只是在“拟合”一个性能优异的 RL 模型，但 LLM 的加入确实弥补了纯 RL 在可解释性和跨路口泛化上的短板。 | **感知输入**：文本化排队长度。<br>**控制逻辑**：端到端输出推理过程和动作（下一个绿灯相位）。 |
-| **Prompt to Transfer**: Sim-to-Real Transfer for Traffic Signal Control with Prompt Learning<br>🔗[AAAI 2024] | 2024<br>AAAI | 利用 LLM 作为世界模型知识库（World Model KB），通过 Prompt Learning 辅助传统 RL 算法适应系统动力学差异，解决 Sim-to-Real 鸿沟。 | **解决仿真到现实的痛点**：<br>RL在仿真器（如 SUMO）中训练得很好，但到了真实世界（雨雪天、刹车距离变长）就崩溃。本文不让 LLM 直接控灯，而是让 LLM 提供“常识”（例如：下雪天车速会变慢10%），用这些常识去动态修正 RL 模型的输入状态或 Reward 函数。 | **特点**：<br>典型的应用型论文，切入点很巧。针对仿真场景中**缺乏恶劣环境真实数据**的痛点，用 LLM 的内部先验知识来做“软补偿”。 | **感知输入**：环境描述（天气、路况）。<br>**控制逻辑**：LLM 输出环境动态调整参数 $\rightarrow$ 传统 RL 结合参数输出具体 Phase。 |
-| **The Crossroads of LLM and Traffic Control**: A Study on LLMs in Adaptive TSC<br>🔗[IEEE TITS 25] | 2025<br>TITS | 提出通用能力智能体（GCA），结合 Zero-Shot CoT 与 Actor-Critic 机制，让 GPT-3.5 像人类调度员一样逻辑推理，并根据文本反馈自我修正，效率超越传统感应控制。 | **免微调范式（Zero-shot + Reflection）**：<br>完全没有训练过程。直接把交通状态塞给 GPT-3.5，利用大模型强大的原生推理能力配时。如果配得不好（比如下一秒某个方向排队更长了），Critic 会生成一段“批评文本”，让 GPT-3.5 在下一轮“反思”并调整策略。 | **缺点**：<br>1. **感知极度理想化**：前提是 LLM 能拿到无噪声的完美文本（如“精确的5辆车”），但在真实世界，传感器和 CV 模型不可能100%准。LLM 对感知误差的容忍度存疑。<br>2. **API 延迟**：严重限制实时毫秒级调度。 | **感知输入**：理想化的结构化交通文本。<br>**控制逻辑**：<br>不仅输出选择的 **相位 (Phase)**，还直接输出该相位的 **具体持续时长 (Duration)**。（相比只选相位的模型进了一大步） |
-| **LLM-Driven Urban Traffic Signal Control**<br>🔗[ANZCC 2024] | 2024<br>ANZCC | 提出基于 ACP 方法的框架，将 LLM 定位为人类与底层算法的”翻译官”。设计了自主、反馈、人工接管三种模式，强调可解释性与安全性。 | **概念性系统架构**：<br>系统不信任 LLM 算读秒，而是让 LLM 充当”操作员接口”。人类用自然语言下达宏观指令（如”优先疏散东向拥堵”），LLM 负责把这句话翻译成底层算法的代码或参数；同时，把底层的执行结果翻译成人话汇报给操作员。 | **致命缺点**：<br>1. **空洞无物**：通篇只有流程图，没有任何仿真实验、对比基线和具体的 Case Study。<br>2. **大材小用**：LLM 沦为了纯粹的 NLP 翻译机，其最强大的因果推理和时空规划能力在控制环节完全缺席。 | **感知输入**：人类自然语言指令 / 宏观交通报告。<br>**控制逻辑**：翻译为规则/RL 算法的运行参数。 |
+| **VLMLight**: Safety-Critical Traffic Signal Control via Vision-Language Meta-Control and Dual-Branch Reasoning Architecture<br>🔗[Arxiv 2505](https://arxiv.org/pdf/2505.19486) | 2025<br>arXiv | 提出了融合 VLM、LLM 和 RL 的交通信号控制框架。构建了多视角图像仿真平台，VLM 提取结构化文本，LLM 作元控制器，实现"常规用 RL，紧急用 LLM"的双分支策略，显著降低紧急车辆等待时间。 | **1. 感知层**：利用 Qwen2.5-VL 将路口原始多视角图像转化为结构化文本（如拥堵度、特种车辆）。<br>**2. 元控制层**：LLM 充当"路由器"，根据文本描述判断当前是 Normal 还是 Special 场景。<br>**3. 执行层**：正常场景直接调用 PPO 模型（快分支）；紧急场景激活 Agent 多步推理（慢分支）让出特权绿灯。<br>整体思路是用 LLM/VLM 解决长尾紧急场景，用 RL 保证常规效率。 | **缺点**：<br>1. **推理延迟/功能冗余**：VLM 提取信息 + LLM 分发意图导致链路过长。<br>2. **仿真局限**：自研视觉器缺乏天气、光照变化，影响 sim-to-real 泛化。<br>3. **模型过重无微调**：使用了32B/72B超大模型且未做SFT，极易产生视觉幻觉。建议改用小参数 VLM 结合图像-文本问答对进行 SFT。<br>4. **冗余验证**：验证动作是否合法意义不大，模型可通过约束生成直接控制。 | **感知输入**：多视角 BEV 图像。<br>**控制逻辑**：<br>- 特殊场景：优先放行救护车/消防车。<br>- 常规场景：基于 PPO 历史状态选择动作。<br>- 仿真循环：首步用预训练 PPO 决策并渲染，后续步获取图像 $\rightarrow$ VLM 场景理解 $\rightarrow$ LLM 快慢分支判断 $\rightarrow$ 输出 Phase。 |
+| **Traffic-R1**: Reinforced LLMs Bring Human-Like Reasoning to Traffic Signal Control Systems<br>🔗[Arxiv 2508](https://arxiv.org/abs/2508.02344) | 2025<br>arXiv | 提出基于强化学习训练的 3B 参数 LLM（致敬 DeepSeek-R1 范式）。通过两阶段 RL 训练，具备零样本泛化能力，支持边缘设备部署及异步多路口协调，已在真实世界落地管理10个路口。 | **1. 训练范式革命**：放弃传统的 SFT，直接采用"离线专家指导 RL" + "在线开放世界 RL"两阶段训练，赋予模型类人推理（Thinking）能力。<br>**2. 工程落地**：在极小参数量（3B）下实现了边缘设备实时推理，并通过异步通信网络解决了多路口协同的延迟问题。<br>**3. 真实部署**：是少数真正走到线下部署（日均5.5万驾驶员）并验证能降低 9.3% 排队长度的工作。 | **特点**：<br>1. LLM 的输入是纯结构化**文本描述**（提取自雷达或视觉传感器），而非原始图像数据。<br>2. 重点在于"强化学习微调 LLM"在交通领域的落地，证明了小模型+RL的巨大潜力。 | **感知输入**：场景结构化文本描述。<br>**控制逻辑**：模型内部生成长程 CoT 推理，最终输出下一步的最优红绿灯相位（Action）。支持相邻路口的异步状态共享。 |
+| **LLM-assisted light**: Leveraging LLM capabilities for human-mimetic TSC in complex urban environments<br>🔗[Arxiv 2403](https://arxiv.org/abs/2403.08337) | 2024<br>arXiv | 提出 LA-Light 框架，将 LLM 作为决策中心"大脑/指挥官"。LLM 通过调用工具（Tools）感知环境，并将现有的 RL 算法作为"顾问"辅助决策，最终输出可解释的方案。 | **典型的 Agent（智能体）架构**：<br>不强求 LLM 自己算出最优解，而是让 LLM 充当调度枢纽。框架包含：<br>- **记忆模块**：记录历史交通状态。<br>- **工具调用**：调用摄像头 API 获取排队长度，调用 RL 算法获取"建议动作"。<br>- **推理决策**：LLM 综合"自己看到的"和"RL 建议的"，做最终拍板。 | **特点**：<br>架构设计非常符合 Agent 哲学，包含了需求理解、工具调用、反馈循环。但同样面临大模型 API 调用带来的高延迟问题，且对 RL "顾问"的依赖度较高。 | **感知输入**：通过调用 Tool 获取的环境状态文本。<br>**控制逻辑**：综合推理后，输出指定的 Phase 控制命令。 |
+| **LLMLight**: Large Language Models as Traffic Signal Control Agents<br>🔗[KDD 2025](https://dl.acm.org/doi/abs/10.1145/3690624.3709379) | 2025<br>KDD | 基于 Qwen2-14B 的三阶段对齐训练：GPT-4 收集轨迹 $\rightarrow$ LoRA 模仿微调 $\rightarrow$ Critic 引导的排序损失 (RBC Loss) 后对齐，使小模型具备强大的零样本控制能力。 | **非常经典的对齐（Alignment）管线**：<br>**Stage 1**：利用高级模型（GPT-4）生成含有思维链的决策轨迹，并用预训练的 RL（Advanced-CoLight）作为 Critic 剔除烂数据。<br>**Stage 2**：用筛选后的优质数据对 14B 模型进行 SFT。<br>**Stage 3**：用 Critic 的 Q 值作为奖励信号，通过 RBC Loss 让模型进一步对齐交通效率最大化目标。 | **缺点/反思**：<br>1. **信息压缩过度**：输入给 LLM 的仅是各车道排队长度，丢失了路口几何拓扑、车道数等核心物理信息。<br>2. **为了 LLM 而 LLM**：训练重度依赖 Advanced-CoLight（一个RL模型）来当裁判。这说明 LLM 只是在"拟合"一个性能优异的 RL 模型，但 LLM 的加入确实弥补了纯 RL 在可解释性和跨路口泛化上的短板。 | **感知输入**：文本化排队长度。<br>**控制逻辑**：端到端输出推理过程和动作（下一个绿灯相位）。 |
+| **Prompt to Transfer**: Sim-to-Real Transfer for Traffic Signal Control with Prompt Learning<br>🔗[AAAI 2024] | 2024<br>AAAI | 利用 LLM 作为世界模型知识库（World Model KB），通过 Prompt Learning 辅助传统 RL 算法适应系统动力学差异，解决 Sim-to-Real 鸿沟。 | **解决仿真到现实的痛点**：<br>RL在仿真器（如 SUMO）中训练得很好，但到了真实世界（雨雪天、刹车距离变长）就崩溃。本文不让 LLM 直接控灯，而是让 LLM 提供"常识"（例如：下雪天车速会变慢10%），用这些常识去动态修正 RL 模型的输入状态或 Reward 函数。 | **特点**：<br>典型的应用型论文，切入点很巧。针对仿真场景中**缺乏恶劣环境真实数据**的痛点，用 LLM 的内部先验知识来做"软补偿"。 | **感知输入**：环境描述（天气、路况）。<br>**控制逻辑**：LLM 输出环境动态调整参数 $\rightarrow$ 传统 RL 结合参数输出具体 Phase。 |
+| **The Crossroads of LLM and Traffic Control**: A Study on LLMs in Adaptive TSC<br>🔗[IEEE TITS 25] | 2025<br>TITS | 提出通用能力智能体（GCA），结合 Zero-Shot CoT 与 Actor-Critic 机制，让 GPT-3.5 像人类调度员一样逻辑推理，并根据文本反馈自我修正，效率超越传统感应控制。 | **免微调范式（Zero-shot + Reflection）**：<br>完全没有训练过程。直接把交通状态塞给 GPT-3.5，利用大模型强大的原生推理能力配时。如果配得不好（比如下一秒某个方向排队更长了），Critic 会生成一段"批评文本"，让 GPT-3.5 在下一轮"反思"并调整策略。 | **缺点**：<br>1. **感知极度理想化**：前提是 LLM 能拿到无噪声的完美文本（如"精确的5辆车"），但在真实世界，传感器和 CV 模型不可能100%准。LLM 对感知误差的容忍度存疑。<br>2. **API 延迟**：严重限制实时毫秒级调度。 | **感知输入**：理想化的结构化交通文本。<br>**控制逻辑**：<br>不仅输出选择的 **相位 (Phase)**，还直接输出该相位的 **具体持续时长 (Duration)**。（相比只选相位的模型进了一大步） |
+| **LLM-Driven Urban Traffic Signal Control**<br>🔗[ANZCC 2024] | 2024<br>ANZCC | 提出基于 ACP 方法的框架，将 LLM 定位为人类与底层算法的"翻译官"。设计了自主、反馈、人工接管三种模式，强调可解释性与安全性。 | **概念性系统架构**：<br>系统不信任 LLM 算读秒，而是让 LLM 充当"操作员接口"。人类用自然语言下达宏观指令（如"优先疏散东向拥堵"），LLM 负责把这句话翻译成底层算法的代码或参数；同时，把底层的执行结果翻译成人话汇报给操作员。 | **致命缺点**：<br>1. **空洞无物**：通篇只有流程图，没有任何仿真实验、对比基线和具体的 Case Study。<br>2. **大材小用**：LLM 沦为了纯粹的 NLP 翻译机，其最强大的因果推理和时空规划能力在控制环节完全缺席。 | **感知输入**：人类自然语言指令 / 宏观交通报告。<br>**控制逻辑**：翻译为规则/RL 算法的运行参数。 |
 
 ### 3. RLVR（Reinforcement Learning with Verifiable Rewards）
 
-RLVR 是以”无需人工偏好标注、用确定性验证器直接给出奖励”为核心的 RL 范式。以下文献从基础算法 → VLM 视觉推理扩展 → 交通仿真应用三个层次覆盖本项目所需背景。
+RLVR 是以"无需人工偏好标注、用确定性验证器直接给出奖励"为核心的 RL 范式。以下文献从基础算法 → VLM 视觉推理扩展 → 交通仿真应用三个层次覆盖本项目所需背景。
 
 | 论文简称 / 核心亮点 | 论文完整名称 | arXiv 链接 | GitHub 开源代码 |
 | :--- | :--- | :--- | :--- |
 | **DeepSeek-R1**<br>*(RLVR+GRPO 范式奠基作)* | DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning (2025) | [2501.12948](https://arxiv.org/abs/2501.12948) | [deepseek-ai/DeepSeek-R1](https://github.com/deepseek-ai/DeepSeek-R1) |
-| **R1-V**<br>*(VLM 视觉计数 RLVR，$3 成本触发计数”aha moment”)* | R1-V: Reinforcing Super Generalization Ability in Vision Language Models with Less Than $3 | [GitHub Only](https://github.com/Deep-Agent/R1-V) | [Deep-Agent/R1-V](https://github.com/Deep-Agent/R1-V) |
+| **R1-V**<br>*(VLM 视觉计数 RLVR，$3 成本触发计数"aha moment")* | R1-V: Reinforcing Super Generalization Ability in Vision Language Models with Less Than $3 | [GitHub Only](https://github.com/Deep-Agent/R1-V) | [Deep-Agent/R1-V](https://github.com/Deep-Agent/R1-V) |
 | **VLM-R1**<br>*(稳定可泛化的 R1 风格 VLM)* | VLM-R1: A Stable and Generalizable R1-style Large Vision-Language Model | [2504.07615](https://arxiv.org/abs/2504.07615) | [om-ai-lab/VLM-R1](https://github.com/om-ai-lab/VLM-R1) |
 | **CrowdVLM-R1**<br>*(模糊 GRPO 奖励解决人群计数)* | CrowdVLM-R1: Expanding R1 Ability to VLM for Crowd Counting using Fuzzy Group Relative Policy Reward | [2504.03724](https://arxiv.org/abs/2504.03724) | — |
 | **PEARL**<br>*(感知证据锚定 RL，防止视觉幻觉与奖励 Hacking)* | Perceptual-Evidence Anchored Reinforced Learning for Multimodal Reasoning | [2511.18437](https://arxiv.org/abs/2511.18437) | — |
@@ -401,4 +359,4 @@ RLVR 是以”无需人工偏好标注、用确定性验证器直接给出奖励
 | **R1Sim**<br>*(R1 风格 GRPO + 安全奖励用于交通轨迹仿真)* | Learning Rollout from Sampling: An R1-Style Tokenized Traffic Simulation Model | [2603.24989](https://arxiv.org/abs/2603.24989) | — |
 | **LaViPlan**<br>*(RLVR 用于语言引导视觉路径规划，ICCV 2025W)* | LaViPlan: Language-Guided Visual Path Planning with RLVR | [ICCV2025W](https://openaccess.thecvf.com/content/ICCV2025W/2COOOL/papers/Oh_LaViPlan__Language-Guided_Visual_Path_Planning_with_RLVR_ICCVW_2025_paper.pdf) | — |
 | **Traffic-R1**<br>*(见 §2，RLVR 文本 TSC 落地，含真实部署验证)* | Traffic-R1: Reinforced LLMs Bring Human-Like Reasoning to Traffic Signal Control | [2508.02344](https://arxiv.org/abs/2508.02344) | — |
-| **CoLLMLight**: Cooperative LLM Agents for Network-Wide TSC<br>🔗[ICLR 2026在投] | 2026<br>ICLR | 将控制范围扩展至**全路网**。引入结构化时空图谱和**复杂度感知推理**（动态调整推理深度），并通过**自定义物理价值函数**构建数据集，进行两阶段 SFT+自监督微调。 | **路网级协同与微调创新**：<br>**1. 动态算力分配**：基于路口繁忙度，决定使用【无协调、简单协调、复杂协调】。复杂时会预测邻近路口的未来状态。<br>**2. 自定义物理价值标签**：没有用 RL 跑数据，而是直接用公式 `V(动作) = 排队时间成本 + 行驶时间成本` 穷举算出一个最大值。把这个物理最优动作作为标签，让模型进行 SFT 和自监督纠错学习。 | **评论/优缺点**：<br>1. **延迟危机**：多路口时空提示词极其复杂，长文本推理必然导致严重延迟。唯一的解法是：保证“推理时间 < 绿灯相位持续时间”，用滞后一个时间步的状态提前做决策。<br>2. 核心亮点在于**放弃了 RL 框架，直接用物理公式造数据集**，降低了工程门槛。 | **感知输入**：当前路口 + 上下游车道状态（占用率、排队时间）。<br>**控制逻辑**：<br>基于动态推理深度，评估未来所有可行 Phase 的综合成本，选择最优 Phase。 |
+| **CoLLMLight**: Cooperative LLM Agents for Network-Wide TSC<br>🔗[ICLR 2026在投] | 2026<br>ICLR | 将控制范围扩展至**全路网**。引入结构化时空图谱和**复杂度感知推理**（动态调整推理深度），并通过**自定义物理价值函数**构建数据集，进行两阶段 SFT+自监督微调。 | **路网级协同与微调创新**：<br>**1. 动态算力分配**：基于路口繁忙度，决定使用【无协调、简单协调、复杂协调】。复杂时会预测邻近路口的未来状态。<br>**2. 自定义物理价值标签**：没有用 RL 跑数据，而是直接用公式 `V(动作) = 排队时间成本 + 行驶时间成本` 穷举算出一个最大值。把这个物理最优动作作为标签，让模型进行 SFT 和自监督纠错学习。 | **评论/优缺点**：<br>1. **延迟危机**：多路口时空提示词极其复杂，长文本推理必然导致严重延迟。唯一的解法是：保证"推理时间 < 绿灯相位持续时间"，用滞后一个时间步的状态提前做决策。<br>2. 核心亮点在于**放弃了 RL 框架，直接用物理公式造数据集**，降低了工程门槛。 | **感知输入**：当前路口 + 上下游车道状态（占用率、排队时间）。<br>**控制逻辑**：<br>基于动态推理深度，评估未来所有可行 Phase 的综合成本，选择最优 Phase。 |

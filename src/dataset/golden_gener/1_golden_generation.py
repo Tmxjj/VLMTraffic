@@ -108,7 +108,7 @@ def _save_wrapper_state_for_env(env) -> dict:
         if tls_builder is not None:
             for jid, tl in tls_builder.traffic_lights.items():
                 a = tl.tls_action
-                [jid] = {
+                tls_action_states[jid] = {
                     "phase_index":             a.phase_index,
                     "next_action_time":        a.next_action_time,
                     "is_yellow":               a.is_yellow,
@@ -406,7 +406,7 @@ class GoldenGenerator:
 
         # 输出目录（图像 + JSONL）
         self.output_dir = os.path.join(
-            _PROJECT_ROOT, "data", "sft_dataset", self.scenario_name, route_stem
+            _PROJECT_ROOT, "data", "test", self.scenario_name, route_stem
         )
         create_folder(self.output_dir)
         logger.info(f"[GOLDEN] 数据输出目录: {self.output_dir}")
@@ -822,6 +822,7 @@ class GoldenGenerator:
             try:
                 obs, rewards, truncated, dones, infos, render_json = self.env.step(warmup_action)
                 sumo_sim_step = float(infos.get('step_time', sumo_sim_step))
+                logger.info(f"[GOLDEN]主轨迹 reward值为 {rewards}")
             except Exception as e:
                 logger.error(f"[GOLDEN] Warmup 阶段 env.step 失败: {e}")
                 self._cleanup()
@@ -862,6 +863,7 @@ class GoldenGenerator:
                     )
                     obs, rewards, truncated, dones, infos, render_json = self.env.step(final_action)
                     sumo_sim_step = float(infos.get('step_time', sumo_sim_step))
+                   
                 except Exception as e:
                     logger.error(f"[GOLDEN] env.step 失败: {e}")
                     break
@@ -932,17 +934,17 @@ class GoldenGenerator:
                         f"[Bulletin][注入] {jid} | sumo_t={sumo_sim_step:.0f}s | 注入上游协同通知"
                     )
 
-                vlm_response, vlm_action, vlm_thought = self._run_vlm_inference(
-                    jid, image_paths, cur_phase, coord_ctx=coord_ctx
-                )
+                # vlm_response, vlm_action, vlm_thought = self._run_vlm_inference(
+                #     jid, image_paths, cur_phase, coord_ctx=coord_ctx
+                # )
 
                 # fixed time
-                # vlm_action =  {
-                #     'phase_id': (cur_phase + 1) % self.num_phases,
-                #     'duration': 35,
-                # }
-                # vlm_response = 'Thought: [\nA. Scene Understanding:\n- Lane Analysis:\nN(Major): L1(S): Long (5+ vehicles stopped at stop line)\nS(Major): L2(S): Medium (4-7 vehicles stopped at stop line)\nW(Minor): L1(L): Short (1-3 vehicles stopped at stop line)\n- Phase Mapping:\nPhase 0 (Major Road): OverallPressure: High | CriticalQueue: Long\nTie-Breaker: None\n\nB. Scene Analysis:\n- Event Recognition: Public Bus (Transit) detected at South Approach L2, affects Phase 0\n- Neighboring Messages: Inactive\n- Condition Assessment: Special\n\nC. Adaptive Reasoning:\nImpact Analysis: The public bus, while a transit vehicle, is a large vehicle that requires more space and time to clear the intersection, increasing the discharge time for Phase 0. It does not represent an emergency or crash event, so it does not trigger emergency preemption or capacity reduction.\nPhase Reasoning: Although Phase 0 has the highest pressure, the presence of the bus necessitates a longer green duration to ensure safe and complete discharge. Phase 1 (Minor Road) has low pressure and is not affected by the bus, making it a secondary option. However, since Phase 0 is the major road and has a critical queue, it must be prioritized for the green phase.\nDuration Reasoning: The CriticalQueue for Phase 0 is Long, requiring a longer duration to ensure complete discharge. The bus further increases the discharge time, so a longer duration is justified.\nBroadcast Notice: Public Bus - Increased discharge time required for upstream major road\n]\nAction: {"phase": 0, "duration": 35}'
-                # vlm_thought = None
+                vlm_action =  {
+                    'phase_id': (cur_phase + 1) % self.num_phases,
+                    'duration': 35,
+                }
+                vlm_response = 'Thought: [\nA. Scene Understanding:\n- Lane Analysis:\nN(Major): L1(S): Long (5+ vehicles stopped at stop line)\nS(Major): L2(S): Medium (4-7 vehicles stopped at stop line)\nW(Minor): L1(L): Short (1-3 vehicles stopped at stop line)\n- Phase Mapping:\nPhase 0 (Major Road): OverallPressure: High | CriticalQueue: Long\nTie-Breaker: None\n\nB. Scene Analysis:\n- Event Recognition: Public Bus (Transit) detected at South Approach L2, affects Phase 0\n- Neighboring Messages: Inactive\n- Condition Assessment: Special\n\nC. Adaptive Reasoning:\nImpact Analysis: The public bus, while a transit vehicle, is a large vehicle that requires more space and time to clear the intersection, increasing the discharge time for Phase 0. It does not represent an emergency or crash event, so it does not trigger emergency preemption or capacity reduction.\nPhase Reasoning: Although Phase 0 has the highest pressure, the presence of the bus necessitates a longer green duration to ensure safe and complete discharge. Phase 1 (Minor Road) has low pressure and is not affected by the bus, making it a secondary option. However, since Phase 0 is the major road and has a critical queue, it must be prioritized for the green phase.\nDuration Reasoning: The CriticalQueue for Phase 0 is Long, requiring a longer duration to ensure complete discharge. The bus further increases the discharge time, so a longer duration is justified.\nBroadcast Notice: Public Bus - Increased discharge time required for upstream major road\n]\nAction: {"phase": 0, "duration": 35}'
+                vlm_thought = None
                 
                 last_action[jid] = vlm_action
 
@@ -1018,6 +1020,7 @@ class GoldenGenerator:
             try:
                 obs, rewards, truncated, dones, infos, render_json = self.env.step(final_action)
                 sumo_sim_step = float(infos.get('step_time', sumo_sim_step))
+                logger.info(f"[GOLDEN] 主轨迹 reward值为 {rewards}")
                 # 诊断：记录主轨迹每步后的实际车辆数
                 try:
                     _tenv = self.env.unwrapped.tsc_env.tshub_env
@@ -1080,11 +1083,11 @@ if __name__ == "__main__":
         description="Golden 数据集生成（联合动作空间 + VLM student 轨迹 + 多步 rollout）"
     )
     parser.add_argument(
-        "--scenario", "-sc", type=str, default="France_Massy",
+        "--scenario", "-sc", type=str, default="Hongkong_YMT",
         help="场景键名 (e.g., JiNan, Hangzhou, Hongkong_YMT, SouthKorea_Songdo, France_Massy)"
     )
     parser.add_argument(
-        "--route_file", "-r", type=str, default="data/raw/France_Massy/env/massy_accident_test.rou.xml",
+        "--route_file", "-r", type=str, default="data/raw/Hongkong_YMT/env/YMT.rou.xml",
         help=".rou.xml 路由文件名（SUMO 将在 env/ 下查找）"
     )
     parser.add_argument(
@@ -1096,7 +1099,7 @@ if __name__ == "__main__":
         help="Warmup 阶段时长（秒），该时段仅 FixedTime 推进，不跑 VLM 也不保存数据，默认 300s"
     )
     parser.add_argument(
-        "--is_rollout",  type=bool, default=False,
+        "--is_rollout",  type=bool, default=True,
         help="是否执行 rollout 评估候选动作，默认 True（执行）"
     )
     parser.add_argument(

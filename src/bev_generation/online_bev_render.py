@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 16:48:24
-LastEditTime: 2026-04-24 22:23:28
+LastEditTime: 2026-05-02 22:41:20
 Description: 在线 BEV 渲染脚本。
              支持一次性循环渲染多种交通事件类型（共 6 种：normal / emergency / bus /
              accident / debris / pedestrian），每种事件类型独立运行一次仿真。
@@ -32,7 +32,7 @@ from utils.tools import save_to_json, create_folder
 # ──────────────────────────────────────────────────────────────────────────────
 # ① 全局场景配置
 # ──────────────────────────────────────────────────────────────────────────────
-scenario_key = "Hongkong_YMT"  # 可选: Hongkong_YMT, France_Massy, SouthKorea_Songdo,
+scenario_key = "Syn-Train"  # 可选: Hongkong_YMT, France_Massy, SouthKorea_Songdo,
                                 #       Hangzhou, NewYork, JiNan
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -46,11 +46,11 @@ scenario_key = "Hongkong_YMT"  # 可选: Hongkong_YMT, France_Massy, SouthKorea_
 #      'pedestrian' - 行人过街
 # ──────────────────────────────────────────────────────────────────────────────
 RENDER_EVENT_TYPES = [
-    # 'normal',
+    'normal',
     # 'emergency',
     # 'bus',
     # 'accident',
-    'debris',
+    # 'debris',
     # 'pedestrian',
 ]
 

@@ -1,7 +1,7 @@
 '''
 Author: Maonan Wang
 Date: 2025-04-21 19:12:20
-LastEditTime: 2026-04-12 19:35:34
+LastEditTime: 2026-05-02 22:20:26
 LastEditors: Please set LastEditors
 Description: 将 SUMO Net 转换为 3D 场景
 '''
@@ -15,7 +15,7 @@ path_convert = get_abs_path(__file__)
 
 if __name__ == '__main__':
     print(f"Converting SUMO Net:  to 3D assets...")
-    netxml = path_convert("../data/raw/SouthKorea_Songdo/env/songdo.net.xml")
+    netxml = path_convert("../data/raw/Syn-Train/env/roadnet_4_4.net.xml")
     print(f"Converting SUMO Net: {netxml} to 3D assets...")
     sumonet_to_3d = SumoNet3D(net_file=netxml)
-    sumonet_to_3d.to_glb(glb_dir=path_convert(f"../data/raw/SouthKorea_Songdo/3d_assets/"))
+    sumonet_to_3d.to_glb(glb_dir=path_convert(f"../data/raw/Syn-Train/3d_assets/"))

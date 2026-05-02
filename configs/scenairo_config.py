@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-01-12 17:09:21
-LastEditTime: 2026-04-23 21:37:58
+LastEditTime: 2026-05-02 22:43:14
 Description: 各场景配置。
     SENSOR_CFG 格式说明：
       - tls: {tls_id: {sensor_types, tls_camera_height}}   进口道摄像头（停止线处俯拍）
@@ -17,7 +17,8 @@ _JINAN_JUNCTIONS  = [f"intersection_{i}_{j}" for i in range(1, 5) for j in range
 _HANGZHOU_JUNCTIONS = [f"intersection_{i}_{j}" for i in range(1, 5) for j in range(1, 5)]
 # NewYork 路口 ID 列表（7×28=196 个路口）
 _NEWYORK_JUNCTIONS = [f"intersection_{i}_{j}" for i in range(1, 8) for j in range(1, 29)]
-
+# Syn-Train 路口 ID 列表（4×4=16 个路口）
+_SYNTRAIN_JUNCTIONS = [f"intersection_{i}_{j}" for i in range(1, 5) for j in range(1, 5)]
 # 通用进口道/上游摄像头参数
 _APPROACH_CAM_CFG = {"sensor_types": ["junction_front_all"], "tls_camera_height": 15}
 
@@ -159,6 +160,32 @@ SCENARIO_CONFIGS = {
             # "aircraft": {"sensor_types": ["aircraft_all"], "height": 60.0}
         },
         "TOPOLOGY": _generate_grid_topology(m=4, n=3)  # JiNan 是 4x3 路网，排除虚拟路口
+    },
+
+    "Syn-Train": {
+        "SCENARIO_NAME": "Syn-Train",
+        "NETFILE": "roadnet_4_4",
+        "JUNCTION_NAME": _SYNTRAIN_JUNCTIONS,
+        "PHASE_NUMBER": 4,
+        "APPROACH_DIRS": ["N", "E", "S", "W"],
+        "CENTER_COORDINATES": (173, 244, 100),
+        "SENSOR_INDEX_2_PHASE_INDEX": {0:2, 1:3, 2:1, 3:0},
+        "RENDERER_CFG": {
+            "preset": "SQUARE_720",
+            "resolution": 0.85,
+            "vehicle_model": "high",
+            "render_mode": "offscreen",
+            "should_count_vehicles": True,
+            "debuger_print_node": False,
+            "debuger_spin_camera": False,
+            "is_render": True,
+            "is_every_frame": False
+        },
+        "SENSOR_CFG": {
+            "tls": _tls_sensor_cfg(_HANGZHOU_JUNCTIONS),
+            # "upstream": _tls_sensor_cfg(_HANGZHOU_JUNCTIONS),     
+        },
+        "TOPOLOGY": _generate_grid_topology(m=4, n=4)  # Syn-Train 是 4x4 路网网络
     },
 
     "NewYork": {

@@ -1,0 +1,11 @@
+Dataset,Structure,Intersections,Vehicles,Arrival_Rate_Mean,Arrival_Rate_Std,Arrival_Rate_Max,Arrival_Rate_Min
+JiNan (peak),3x4 grid,12,6295,524.58,98.53,672,256
+JiNan (2500veh),3x4 grid,12,5494,457.83,46.22,544,363
+JiNan (2000veh),3x4 grid,12,4365,363.75,74.66,493,237
+Hangzhou (5816veh),4x4 grid,16,6984,582.0,318.52,1146,203
+Hangzhou (peak),4x4 grid,16,2983,248.58,40.45,333,212
+France Massy,T-junction,1,207,103.5,45.5,149,58
+Hong Kong YMT,single,1,267,133.5,58.5,192,75
+New York,28x7 grid,196,11058,850.62,174.2,965,383
+South Korea Songdo,single,1,598,299.0,132.0,431,167
+Syn-Train (8000veh),4x4 grid,16,8000,666.67,32.17,735,621

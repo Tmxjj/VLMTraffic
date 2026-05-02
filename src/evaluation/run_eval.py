@@ -49,10 +49,15 @@ from src.utils.tsc_env.tsc_wrapper import GREEN_DURATION_CANDIDATES, FIXED_TIME_
 sys.path.insert(0, os.path.join(_PROJECT_ROOT, "scripts"))
 from add_lane_watermarks import add_lane_watermarks
 
-# 合法 scene_type 列表（normal_triple 用于 NewYork 高密度流量变体）
+# 合法 scene_type 列表
+# emergy_bus      : 紧急车辆 + 公交/校车混合路由（*_emergy_bus.rou.xml）
+# accident_debris : 交通事故 + 路面碎片混合路由（*_accident_debris.rou.xml）
+# normal_triple   : NewYork 高密度流量变体
 VALID_SCENE_TYPES = [
-    "normal", "emergency", "bus", "accident", "debris", "pedestrian", "normal_triple"
+    "normal", "emergency", "bus", "accident", "debris", "pedestrian",
+    "emergy_bus", "accident_debris", "normal_triple",
 ]
+NORMAL_SCENE_TYPES = {"normal", "normal_triple"}
 
 
 class Evaluator:
@@ -76,6 +81,7 @@ class Evaluator:
         self.api_url = api_url
         self.model_name_override = model_name_override
         self.scene_type = scene_type
+        self.enable_event_bulletin = self.scene_type not in NORMAL_SCENE_TYPES
         self.temperature = temperature
         self.max_new_tokens = max_new_tokens
 
@@ -157,6 +163,10 @@ class Evaluator:
         create_folder(self.logger_path)
         set_logger(self.logger_path, terminal_log_level='INFO')
         logger.info(f"[EVAL] Log dir: {self.logger_path}")
+        logger.info(
+            f"[EVAL] Scene type: {self.scene_type} | "
+            f"event_bulletin={'enabled' if self.enable_event_bulletin else 'disabled'}"
+        )
 
         # 输出根目录：data/eval/{scenario_key}/{route_stem}/{model_name}/
         # 图像将存储在：{output_folder}/{intersection_id}/{sumo_step}/
@@ -246,7 +256,7 @@ class Evaluator:
                 raise
 
         # 上下游协同广播板（拓扑由场景配置静态注入）
-        topology = self.scenario_config.get("TOPOLOGY", {})
+        topology = self.scenario_config.get("TOPOLOGY", {}) if self.enable_event_bulletin else {}
         self.bulletin = EventBulletin(topology=topology)
 
     def __del__(self):
@@ -404,8 +414,9 @@ class Evaluator:
         # ── 主循环 ────────────────────────────────────────────────────────────
         while not (dones or truncated) and sumo_sim_step < max_sumo_seconds:
 
-            # 清理过期事件通知（基于 SUMO 时间）
-            self.bulletin.tick(sumo_sim_step)
+            # 清理过期事件通知（基于 SUMO 时间）；常规场景不启用事件协同。
+            if self.enable_event_bulletin:
+                self.bulletin.tick(sumo_sim_step)
 
             sensor_datas = infos.get('3d_data', {})
             sensor_imgs  = sensor_datas.get('image', {})
@@ -473,7 +484,11 @@ class Evaluator:
 
                 # ── VLM 模式 ──
                 cur_phase = render_json.get('tls', {}).get(jid, {}).get('this_phase_index', 0)
-                coord_ctx = self.bulletin.get_context(jid, sumo_sim_step)
+                coord_ctx = (
+                    self.bulletin.get_context(jid, sumo_sim_step)
+                    if self.enable_event_bulletin
+                    else ""
+                )
                 if coord_ctx:
                     logger.info(
                         f"[Bulletin][注入] {jid} | sumo_t={sumo_sim_step:.0f}s | 注入上游协同通知"
@@ -514,10 +529,6 @@ class Evaluator:
                         resp_content = vlm_resp
                         if thought:
                             resp_content += f"\n\n[Thinking Process]\n{thought}"
-                        resp_content += (
-                            f"\n\n[GT Vehicle Counts]\n"
-                            f"{json.dumps(gt_counts, ensure_ascii=False, indent=4)}"
-                        )
                         write_response_to_file(
                             file_path=os.path.join(step_dir, "response.txt"),
                             content=resp_content
@@ -552,7 +563,7 @@ class Evaluator:
                                     f"latency={latency:.2f}s | sumo_t={sumo_sim_step:.0f}s"
                                 )
                                 # 广播事件通知给邻居路口
-                                if is_multi_agent:
+                                if self.enable_event_bulletin and is_multi_agent:
                                     self.bulletin.broadcast(
                                         from_jid=jid,
                                         vlm_response=vlm_resp,
@@ -583,7 +594,7 @@ class Evaluator:
                 break
 
         # ── 评测结束 ──
-        if is_multi_agent:
+        if self.enable_event_bulletin and is_multi_agent:
             self.bulletin.log_topology()
 
         wall_elapsed = time.time() - wall_time_start
