@@ -22,7 +22,9 @@ import os
 import re
 import sys
 from collections import Counter, defaultdict
-from typing import Dict, Generator, List, Optional, Tuple
+from collections import deque
+from typing import Deque, Dict, Generator, List, Optional, Tuple
+import random
 
 
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -87,8 +89,8 @@ PROMPT_TEXT_REPLACEMENTS = [
         "- **Capacity Reduction**: A crash or road obstruction effectively removes one or more lanes from service. "
         "Avoid selecting a phase whose movement is blocked. If all phases are partially blocked, minimize green time "
         "on the most-blocked phase.",
-        "- **Crash Clearance Priority**: If a crash or road obstruction causes severe abnormal congestion, you should "
-        "prioritize the phase affected by the crash to prevent upstream spillback.",
+        "- **Accident-Aware Capacity Reduction**: If an accident partially blocks a movement, prioritize the affected phase when abnormal congestion or upstream spillback risk exists."
+        " If the movement is completely blocked, avoid serving that phase and allocate green time to other phases with longer queues or higher discharge potential.",
     ),
     (
         "- **Pressure**: A holistic synthesis of traffic demand for the phase. "
@@ -115,6 +117,13 @@ PROMPT_TEXT_REPLACEMENTS = [
         '- Event Recognition: <"None" OR one or more entries in the format '
         '"[Specific Type] ([Category]) detected at [Approach & Lane ID], affects Phase [ID/None]">',
     ),
+    (
+        '- Broadcast Notice: Format as "[Specific Type] - [Brief impact on upstream/downstream]" '
+        'if an event is detected, else "None".',
+        '- Broadcast Notice: If `Event Recognition` contains one or more locally detected events, output each notice '
+        'as "[Specific Type] - [Brief impact on upstream/downstream]"; otherwise output "None". Received broadcast '
+        'information in `Neighbor Msgs` must NOT be re-broadcast.',
+    ),
 ]
 
 
@@ -123,10 +132,10 @@ TRAFFIC_ACCIDENT_CUE_OLD = (
     "(e.g., stopped diagonally across lanes)."
 )
 TRAFFIC_ACCIDENT_CUE_NEW = (
-    TRAFFIC_ACCIDENT_CUE_OLD + " A traffic accident affects only one lane."
+    TRAFFIC_ACCIDENT_CUE_OLD + " A traffic incident occurs on only one lane."
 )
 ROAD_DEBRIS_CUE_OLD = "- Road Debris: Non-vehicle scattered objects (e.g., logs, fallen cargo) blocking the lane."
-ROAD_DEBRIS_CUE_NEW = ROAD_DEBRIS_CUE_OLD + " Road debris affects only one lane."
+ROAD_DEBRIS_CUE_NEW = ROAD_DEBRIS_CUE_OLD + " Road debris occurs on only one lane."
 
 
 FIELD_LABELS = [
@@ -276,6 +285,8 @@ def apply_prompt_updates(prompt: str) -> str:
     updated = updated.replace("Condition Assessment", "Condition")
     updated = updated.replace("Neighboring messages", "Neighbor Msgs")
     updated = updated.replace("neighboring messages", "Neighbor Msgs")
+    updated = updated.replace('Otherwise, output "N/A".', 'Otherwise, output "None".')
+    updated = updated.replace('Tie-Breaker: <"N/A" OR', 'Tie-Breaker: <"None" OR')
     return trim_trailing_spaces(updated)
 
 
@@ -498,7 +509,20 @@ def normalize_phase_mapping(raw_phase_mapping: str) -> str:
         phase_mapping,
         flags=re.IGNORECASE,
     )
+    # 部分历史样本把 Phase 标题和 Pressure/MaxQueue 拆成两行，训练输出统一写在同一行。
+    phase_mapping = re.sub(
+        r"(Phase\s+\d+\s*\([^)]+\):)[ \t]*\n[ \t]*(?=Pressure\s*:)",
+        r"\1 ",
+        phase_mapping,
+    )
     phase_mapping = re.sub(r"\bTie-Breaker\s*:\s*", "Tie-Breaker: ", phase_mapping)
+    # 历史样本中少量 Tie-Breaker 写成 "N/A"，训练格式统一收敛为 None。
+    phase_mapping = re.sub(
+        r"(Tie-Breaker:\s*)(?:[\"']?[ \t]*N[ \t]*/?[ \t]*A[ \t]*[\"']?)(?=[ \t]*(?:\n|$))",
+        r"\1None",
+        phase_mapping,
+        flags=re.IGNORECASE,
+    )
 
     if "Phase " not in phase_mapping:
         raise NormalizeError("phase_mapping_no_phase")
@@ -790,6 +814,11 @@ def normalize_golden_response(golden_response: str) -> Tuple[str, List[str], Dic
     broadcast_notice = normalize_free_text(extract_field(response, "Broadcast Notice", required=False))
     action = parse_action(response)
 
+    # Broadcast Notice 只允许广播本路口本帧检测到的事件。
+    # 当 Event Recognition 为 None 时，即使 Neighbor Msgs 为 Active，也不能把收到的广播再次输出。
+    if event_recognition == "None" and (neighbor_msgs == "Active" or broadcast_notice):
+        broadcast_notice = "None"
+
     lines: List[str] = [
         "Thought: [",
         "A. Scene Understanding:",
@@ -1005,6 +1034,85 @@ def counter_to_dict(counter: Counter) -> Dict[str, int]:
     return {key: counter[key] for key in sorted(counter)}
 
 
+def build_shuffle_key(scenario: str, event_types: List[str]) -> str:
+    """
+    构造用于均匀打乱的分桶键。
+
+    输入：
+    - scenario: 场景名，例如 JiNan / France_Massy / Hongkong_YMT。
+    - event_types: 当前样本解析出的事件类型列表。
+
+    输出：
+    - str: 分桶键，格式为 `scenario|event_type`；如果存在多个事件类型，则按字母序拼接为
+      `scenario|type_a+type_b`；如果没有事件，则为 `scenario|None`。
+
+    设计目的：
+    - 让不同场景、不同事件类型的样本分布尽量均匀，避免输出顺序集中在同一类样本上。
+    """
+    if not event_types:
+        return f"{scenario}|None"
+    unique_types = sorted(set(event_types))
+    return f"{scenario}|{'+'.join(unique_types)}"
+
+
+def stratified_round_robin_shuffle(
+    records: List[Dict],
+    shuffle_keys: List[str],
+    seed: int = 42,
+) -> List[Dict]:
+    """
+    对正式 SFT 样本做分层轮转打乱。
+
+    输入：
+    - records: 待打乱的样本列表。
+    - shuffle_keys: 与 records 等长的分桶键列表，每个键通常是 `scenario|event_type`。
+    - seed: 随机种子，用于保证打乱结果可复现。
+
+    输出：
+    - List[Dict]: 打乱后的样本列表。
+
+    打乱策略：
+    - 先按分桶键分组；
+    - 每个桶内部做一次随机打散；
+    - 再按“轮转抽取”的方式从各桶中每次取 1 条，直到所有桶为空；
+    - 每一轮会对活跃桶顺序做一次随机扰动，减少固定顺序带来的偏置。
+
+    说明：
+    - 该逻辑只作用于正式 SFT 数据，不改变样本内容和统计信息。
+    """
+    if len(records) != len(shuffle_keys):
+        raise ValueError("records and shuffle_keys must have the same length")
+    if not records:
+        return []
+
+    rng = random.Random(seed)
+    buckets: Dict[str, Deque[Dict]] = defaultdict(deque)
+    for record, key in zip(records, shuffle_keys):
+        buckets[key].append(record)
+
+    for key in list(buckets.keys()):
+        bucket_items = list(buckets[key])
+        rng.shuffle(bucket_items)
+        buckets[key] = deque(bucket_items)
+
+    active_keys = list(buckets.keys())
+    rng.shuffle(active_keys)
+
+    shuffled: List[Dict] = []
+    while active_keys:
+        rng.shuffle(active_keys)
+        next_active_keys: List[str] = []
+        for key in active_keys:
+            bucket = buckets[key]
+            if not bucket:
+                continue
+            shuffled.append(bucket.popleft())
+            if bucket:
+                next_active_keys.append(key)
+        active_keys = next_active_keys
+    return shuffled
+
+
 def build_sft_dataset(args: argparse.Namespace) -> Tuple[List[Dict], List[Dict], Dict]:
     """
     构建正式 SFT 数据、失败样本数据和统计报告。
@@ -1036,6 +1144,7 @@ def build_sft_dataset(args: argparse.Namespace) -> Tuple[List[Dict], List[Dict],
         raise RuntimeError("未找到任何 03_final_dataset.jsonl: " + args.input_root)
 
     sft_records: List[Dict] = []
+    sft_shuffle_keys: List[str] = []
     failed_records: List[Dict] = []
     seen_ids = set()
 
@@ -1068,7 +1177,7 @@ def build_sft_dataset(args: argparse.Namespace) -> Tuple[List[Dict], List[Dict],
 
             sample_id = None
             try:
-                sample_id, _, _ = build_sample_id(sample, source_file)
+                sample_id, scenario_name, _ = build_sample_id(sample, source_file)
 
                 if sample.get("filter_decision") == "discard":
                     raise NormalizeError("filter_decision_discard")
@@ -1092,6 +1201,7 @@ def build_sft_dataset(args: argparse.Namespace) -> Tuple[List[Dict], List[Dict],
                     ],
                 }
                 sft_records.append(sft_record)
+                sft_shuffle_keys.append(build_shuffle_key(scenario_name, event_types))
                 seen_ids.add(sample_id)
 
                 route_stats[route_key]["sft_count"] += 1
@@ -1132,6 +1242,13 @@ def build_sft_dataset(args: argparse.Namespace) -> Tuple[List[Dict], List[Dict],
             "event_occurrence_counts": counter_to_dict(stats["event_occurrence_counts"]),
         }
 
+    # 只打乱正式 SFT 数据，failed 样本保留原始顺序，方便人工排查和回溯。
+    sft_records = stratified_round_robin_shuffle(
+        sft_records,
+        sft_shuffle_keys,
+        seed=args.shuffle_seed,
+    )
+
     # 汇总全局统计，便于快速核对输入规模、输出规模、失败原因和事件分布。
     stats_json = {
         # 本次递归扫描的数据根目录，相对项目根目录保存，避免不同机器上的绝对路径不一致。
@@ -1164,6 +1281,9 @@ def build_sft_dataset(args: argparse.Namespace) -> Tuple[List[Dict], List[Dict],
         "failed_reason_counts": counter_to_dict(failed_reason_counts),
         # route 级统计，包含每个 route 的样本量、失败量和事件类型分布。
         "route_stats": route_stats_json,
+        # 正式 SFT 输出的打乱策略与随机种子，便于复现。
+        "shuffle_strategy": "stratified_round_robin_by_scenario_and_event_type",
+        "shuffle_seed": args.shuffle_seed,
     }
     return sft_records, failed_records, stats_json
 
@@ -1214,6 +1334,12 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=DEFAULT_REMOTE_IMAGE_ROOT,
         help="训练环境中替换后的图片根目录",
+    )
+    parser.add_argument(
+        "--shuffle_seed",
+        type=int,
+        default=42,
+        help="正式 SFT 数据分层轮转打乱的随机种子",
     )
     return parser.parse_args()
 

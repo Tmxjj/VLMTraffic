@@ -108,7 +108,7 @@ def _save_wrapper_state_for_env(env) -> dict:
         if tls_builder is not None:
             for jid, tl in tls_builder.traffic_lights.items():
                 a = tl.tls_action
-                tls_action_states[jid] = {
+                [jid] = {
                     "phase_index":             a.phase_index,
                     "next_action_time":        a.next_action_time,
                     "is_yellow":               a.is_yellow,
@@ -982,9 +982,12 @@ class GoldenGenerator:
                     "sumo_step":             int(sumo_sim_step),
                     "current_phase_id":      int(cur_phase),
                     "image_paths":           [os.path.abspath(p) for p in image_paths],
+                    # 将上游协同广播内容也写入样本，便于离线复现当时的 prompt 注入信息
+                    "neighbor_messages":     coord_ctx,
                     "prompt":                PromptBuilder.build_decision_prompt(
                         current_phase_id=cur_phase,
                         scenario_name=self.scenario_key,
+                        neighbor_messages=coord_ctx,
                     ),
                     "vlm_response":          vlm_response,
                     "vlm_action":            vlm_action,
@@ -1077,11 +1080,11 @@ if __name__ == "__main__":
         description="Golden 数据集生成（联合动作空间 + VLM student 轨迹 + 多步 rollout）"
     )
     parser.add_argument(
-        "--scenario", "-sc", type=str, default="Hongkong_YMT",
+        "--scenario", "-sc", type=str, default="France_Massy",
         help="场景键名 (e.g., JiNan, Hangzhou, Hongkong_YMT, SouthKorea_Songdo, France_Massy)"
     )
     parser.add_argument(
-        "--route_file", "-r", type=str, default="data/raw/Hongkong_YMT/env/YMT_bus.rou.xml",
+        "--route_file", "-r", type=str, default="data/raw/France_Massy/env/massy_accident_test.rou.xml",
         help=".rou.xml 路由文件名（SUMO 将在 env/ 下查找）"
     )
     parser.add_argument(
@@ -1093,12 +1096,12 @@ if __name__ == "__main__":
         help="Warmup 阶段时长（秒），该时段仅 FixedTime 推进，不跑 VLM 也不保存数据，默认 300s"
     )
     parser.add_argument(
-        "--is_rollout",  type=bool, default=True,
+        "--is_rollout",  type=bool, default=False,
         help="是否执行 rollout 评估候选动作，默认 True（执行）"
     )
     parser.add_argument(
         "--rollout_follow_steps", "-rfs", type=int, default=1,
-        help="候选动作之后额外执行的 FixedTime 步数（用于多步 rollout 评估），默认 2"
+        help="候选动作之后额外执行的 FixedTime 步数（用于多步 rollout 评估），默认 1"
     )
     parser.add_argument(
         "--rollout_num_workers", "-rnw", type=int, default=None,

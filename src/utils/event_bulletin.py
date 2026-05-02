@@ -19,12 +19,12 @@ Description: 路口间异步事件广播板（EventBulletin）。
 二、广播触发条件（broadcast 内部逻辑）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 broadcast 从 VLM 响应中调用 _extract_events 解析，满足以下条件才触发：
-  1. VLM CoT 含 "Condition Assessment: Special"（正常场景直接返回，不广播）
+  1. VLM CoT 含 "Condition: Special" 或 "Condition Assessment: Special"（正常场景直接返回，不广播）
   2. Event Recognition 行非空且非 "None"
   3. 当前路口有已配置的邻居（拓扑中存在）
 
-Event Recognition 支持多个交通事件并存（逗号分隔），_split_event_segments
-用正则逐一匹配 "XXX (XXX) detected at XXX, affects Phase N" 格式，
+Event Recognition 支持多个交通事件并存，_split_event_segments
+用正则逐一匹配 "[Type] ([Category]) detected at [Location], affects Phase [N/None]" 格式，
 每个事件独立解析、独立路由、独立写入通知板。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -49,8 +49,10 @@ Event Recognition 支持多个交通事件并存（逗号分隔），_split_even
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 四、TTL 与通知格式
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  过期时刻：expires_at_sumo = current_sumo_step + green_duration
-    即通知的有效期恰好覆盖发出路口的本次绿灯阶段，绿灯结束即失效。
+  可见时刻：Emergency / Transit 延迟 15s（DURATION_OPTIONS 最小值）后生效；
+    其他事件立即生效。
+  过期时刻：expires_at_sumo = available_at_sumo + green_duration
+    即通知从实际广播生效时刻开始，持续覆盖一个绿灯阶段。
 
   注入文本格式（get_context 拼接后传入 Prompt B2 节）：
     - Source: The intersection to the {North/South/East/West} (impact: {downstream/upstream})
@@ -61,6 +63,7 @@ from typing import Dict, List, Optional, Tuple
 from collections import defaultdict
 from dataclasses import dataclass
 from loguru import logger
+from configs.prompt_builder import PromptBuilder
 
 
 # ── Phase 转向映射表 ──────────────────────────────────────────────────────────
@@ -114,6 +117,10 @@ _PHASE_KW: Dict[str, int] = {
     "nlsl": 3, "north-south left": 3, "north south left": 3,
 }
 
+# Emergency / Transit 车辆到达下游路口前延迟一个最小绿灯时长再广播。
+_DELAYED_BROADCAST_EVENT_TYPES = {"emergency", "transit"}
+_DELAYED_BROADCAST_AFTER_S = min(PromptBuilder.DURATION_OPTIONS)
+
 
 @dataclass
 class EventNotice:
@@ -122,6 +129,7 @@ class EventNotice:
     from_direction: str     # 下游路口视角下，事件来自哪个方向（N/E/S/W/Unknown）
     event_type: str         # 事件类型（emergency/transit/crash/obstruction/pedestrian/special_event）
     description: str        # VLM 原始事件描述文本（直接注入 prompt）
+    available_at_sumo: float  # 通知开始可见的 SUMO 仿真时刻（秒），inclusive
     expires_at_sumo: float  # 通知过期的 SUMO 仿真时刻（秒），inclusive
     impact_type: str        # "downstream"（Emergency/Transit）或 "upstream"（Crash/Obstruction）
 
@@ -169,7 +177,8 @@ class EventBulletin:
         - Emergency/Transit：广播给下游出口方向的邻居。
         - Crash/Obstruction：广播给上游进口方向的邻居。
         - 解析失败（有事件但方向/Phase 不明）：跳过广播所有邻居。
-        过期时刻 = current_sumo_step + green_duration（SUMO 仿真秒）。
+        Emergency/Transit 延迟 15s 后可见；其他事件立即可见。
+        过期时刻 = available_at_sumo + green_duration（SUMO 仿真秒）。
         """
         events = self._extract_events(vlm_response)
         if not events:
@@ -179,8 +188,6 @@ class EventBulletin:
         if not all_neighbors:
             logger.debug(f"[Bulletin] {from_jid} 检测到事件但无已知邻居路口，跳过广播。")
             return
-
-        expires_at = current_sumo_step + green_duration
 
         for event_type, description, approach_dir, phase_id in events:
             target_neighbors, impact_type, fallback = self._select_target_neighbors(
@@ -193,21 +200,32 @@ class EventBulletin:
                 )
 
             for neighbor_jid in target_neighbors:
+                delay_s = (
+                    _DELAYED_BROADCAST_AFTER_S
+                    if event_type in _DELAYED_BROADCAST_EVENT_TYPES
+                    else 0
+                )
+                available_at = current_sumo_step + delay_s
+                expires_at = available_at + green_duration
                 from_direction = self._infer_direction(from_jid, neighbor_jid)
                 notice = EventNotice(
                     from_jid=from_jid,
                     from_direction=from_direction,
                     event_type=event_type,
                     description=description,
+                    available_at_sumo=available_at,
                     expires_at_sumo=expires_at,
                     impact_type=impact_type,
                 )
                 self._board[neighbor_jid].append(notice)
+                log_prefix = "[Bulletin][延迟广播]" if delay_s else "[Bulletin][广播]"
                 logger.info(
-                    f"[Bulletin][广播] {from_jid} → {neighbor_jid} | "
+                    f"{log_prefix} {from_jid} → {neighbor_jid} | "
                     f"事件类型: {event_type} | 影响方向: {impact_type} | "
                     f"进口: {approach_dir} | Phase: {phase_id} | "
                     f"来源方向(邻居视角): {from_direction} | "
+                    f"delay: {delay_s}s | "
+                    f"visible @ sumo_t={available_at:.0f}s | "
                     f"TTL: {green_duration}s (expires @ sumo_t={expires_at:.0f}s) | "
                     f"描述: {description[:80]}{'...' if len(description) > 80 else ''}"
                 )
@@ -216,7 +234,7 @@ class EventBulletin:
         """获取路口 jid 当前所有有效通知，拼接为 prompt 注入文本。返回空串表示无通知。"""
         active = [
             n for n in self._board.get(jid, [])
-            if n.expires_at_sumo >= current_sumo_step
+            if n.available_at_sumo <= current_sumo_step <= n.expires_at_sumo
         ]
         if not active:
             return ""
@@ -364,9 +382,10 @@ class EventBulletin:
         """
         if not text or text.lower() == "none":
             return []
-        # 匹配每个独立事件描述：类型 (类别) detected at 位置, affects Phase ID
+        # 匹配每个独立事件描述：类型 (类别) detected at 位置, affects Phase ID/None
+        # affects Phase None 是合法输出（表示事件在非管控车道），用 (?:\d+|None) 兼容
         _SINGLE_RE = re.compile(
-            r'[\w][\w\s]*\([^)]+\)\s+detected\s+at\s+[^,]+,\s*affects\s+Phase\s+\d+',
+            r'[\w][\w\s]*\([^)]+\)\s+detected\s+at\s+[^,]+,\s*affects\s+Phase\s+(?:\d+|None)',
             re.IGNORECASE
         )
         segments = _SINGLE_RE.findall(text)
@@ -384,15 +403,15 @@ class EventBulletin:
         """从 VLM CoT 输出中提取所有事件，返回列表，每项为 (event_type, description, approach_dir, phase_id)。
 
         解析逻辑：
-          1. 必须含 ``Condition Assessment: Special``，否则返回空列表。
+          1. 必须含 ``Condition: Special`` 或 ``Condition Assessment: Special``，否则返回空列表。
           2. 从 ``Event Recognition`` 行分割出各独立事件描述。
           3. 对每个事件段：
              - approach_dir: 优先 "detected at {dir}"，回退 "{dir} approach"
-             - phase_id: "affects Phase N" → int
+             - phase_id: "affects Phase N" → int；"affects Phase None" → None（非管控车道，跳过回退推断）
         """
         if not vlm_response or "ERROR" in vlm_response:
             return []
-        if not re.search(r"Condition Assessment\s*:\s*Special", vlm_response, re.IGNORECASE):
+        if not re.search(r"Condition(?:\s+Assessment)?\s*:\s*Special", vlm_response, re.IGNORECASE):
             return []
 
         event_match = re.search(
@@ -425,19 +444,23 @@ class EventBulletin:
                     approach_dir = _APPROACH_ALIASES.get(appr_match.group(1).lower())
 
             # Phase ID
+            # "affects Phase None" 是 prompt 合法输出（非管控车道），此时 phase_id 保持 None
             phase_id: Optional[int] = None
-            phase_match = re.search(r"affects\s+Phase\s+(\d+)", seg, re.IGNORECASE)
-            if phase_match:
-                phase_id = int(phase_match.group(1))
+            if re.search(r"affects\s+Phase\s+None", seg, re.IGNORECASE):
+                phase_id = None  # 明确标记为无 Phase，跳过回退推断
             else:
-                # 回退：从括号内 Phase 名称关键词推断
-                kw_match = re.search(r"\(([^)]+)\)", seg)
-                if kw_match:
-                    kw = kw_match.group(1).lower()
-                    for keyword, pid in _PHASE_KW.items():
-                        if keyword in kw:
-                            phase_id = pid
-                            break
+                phase_match = re.search(r"affects\s+Phase\s+(\d+)", seg, re.IGNORECASE)
+                if phase_match:
+                    phase_id = int(phase_match.group(1))
+                else:
+                    # 回退：从括号内 Phase 名称关键词推断
+                    kw_match = re.search(r"\(([^)]+)\)", seg)
+                    if kw_match:
+                        kw = kw_match.group(1).lower()
+                        for keyword, pid in _PHASE_KW.items():
+                            if keyword in kw:
+                                phase_id = pid
+                                break
 
             results.append((event_type, seg, approach_dir, phase_id))
 
@@ -503,7 +526,7 @@ if __name__ == "__main__":
     # 救护车：East Approach，affects Phase 0（ETWT）→ 出口方向 West → 广播西侧邻居
     VLM_RESPONSE_EMERGENCY = """Thought: [
 B. Scene Analysis:
-- Event Recognition: Ambulance (Emergency) detected at East Approach L2, affects Phase 0
+- Event Recognition: Ambulance (Emergency) detected at East Approach L2(S), affects Phase 0
 - Neighboring Messages: Inactive
 - Condition Assessment: Special
 - Broadcast Notice: Ambulance - High Priority Passage required for East-West Straight.
@@ -513,7 +536,7 @@ Action: {"phase": 0, "duration": 40}"""
     # 施工路障：North Approach，affects Phase 1（NTST）→ Obstruction → 上游方向 North → 广播北侧邻居
     VLM_RESPONSE_CONSTRUCTION = """Thought: [
 2.Scene Analysis:
-- Event Recognition: Construction Barrier detected at North Approach Lane 3, affects Phase 1
+- Event Recognition: Construction Barrier detected at North Approach & Lane 3, affects Phase 1
 - Neighboring Messages: Inactive
 - Condition Assessment: Special
 - Broadcast Notice: Construction Barrier - Reduces capacity on North approach right-turn lane.

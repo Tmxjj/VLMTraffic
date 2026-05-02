@@ -1,3 +1,9 @@
 {
-    "claudeCode.useTerminal": true
+    "claudeCode.useTerminal": true,
+    "chat.tools.terminal.autoApprove": {
+        "/^echo \"=== 各文件的行数和 junction_id 出现次数 ===\" && find data/sft_dataset -name \"03_final_dataset\\.jsonl\" -type f \\| sort \\| while read f; do lines=\\$\\(wc -l < \"\\$f\"\\); junctions=\\$\\(grep -c '\"junction_id\"' \"\\$f\"\\); echo \"\\$f: \\$lines lines, \\$junctions junctions\"; done$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
 }

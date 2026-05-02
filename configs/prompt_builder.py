@@ -168,8 +168,8 @@ W(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
 - Fire Truck: Large red emergency truck with roof lightbars.
 - Public Bus: Long, large, flat-front, white city passenger vehicle with a rectangular body.
 - School Bus: Long, large passenger vehicle with a protruding cowl-front hood.
-- Traffic Accident: Crashed vehicles with visible structural deformation, positioned abnormally (e.g., stopped diagonally across lanes). A traffic accident affects only one lane.
-- Road Debris: Non-vehicle scattered objects (e.g., logs, fallen cargo) blocking the lane. Road debris affects only one lane.
+- Traffic Accident: Crashed vehicles with visible structural deformation, positioned abnormally (e.g., stopped diagonally across lanes). A traffic incident occurs on only one lane.
+- Road Debris: Non-vehicle scattered objects (e.g., logs, fallen cargo) blocking the lane. Road debris occurs on only one lane.
 - Construction Barrier: Orange longitudinal roadblock with red/orange striped end-supports.
     '''
 
@@ -178,7 +178,7 @@ W(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
 - **Signal Starvation Prevention**: When queue levels are equal, prioritize the longest-waiting inactive phase to prevent any direction from being indefinitely delayed.
 - **Emergency Preemption**: Immediately grant and hold a green phase for approaching emergency vehicles(ambulance, fire truck, police car). This overrides ALL other rules.
 - **Transit Priority**: Prioritize detected buses and school buses due to their high passenger loads, secondary only to emergency preemption.
-- **Crash Clearance Priority**: If a crash or road obstruction causes severe abnormal congestion, you should prioritize the phase affected by the crash to prevent upstream spillback.
+- **Accident-Aware Capacity Reduction**: If an accident partially blocks a movement, prioritize the affected phase when abnormal congestion or upstream spillback risk exists. If the movement is completely blocked, avoid serving that phase and allocate green time to other phases with longer queues or higher discharge potential.
 - **Queue Discharge Rate**: A fully loaded lane (Long or Critical queue) requires significantly more green time to complete discharge compared to a Short or Medium queue.
 - **Minimum Green Time**: Assign a minimum green duration even for empty queues to allow safe reaction and start-up times.
    '''
@@ -306,7 +306,7 @@ Apply traffic engineering knowledge to reason step-by-step:
 - Impact Analysis: Evaluate how the detected local event AND/OR the Neighbor Msgs physically impact the current intersection's capacity and safety.
 - Phase Reasoning: Synthesize Impact Analysis and visible queue lengths, prioritizing event mitigation over traffic pressure, and select the appropriate phase.
 - Dur Reasoning: Synthesize Impact Analysis and visible queue lengths, prioritizing event mitigation over traffic pressure, and select the appropriate duration.
-- Broadcast Notice: Format as "[Specific Type] - [Brief impact on upstream/downstream]" if an event is detected, else "None".
+- Broadcast Notice: If `Event Recognition` contains one or more locally detected events, output each notice as "[Specific Type] - [Brief impact on upstream/downstream]"; otherwise output "None". Received broadcast information in `Neighbor Msgs` must NOT be re-broadcast.
 
 7. Output Format
 Thought: [
