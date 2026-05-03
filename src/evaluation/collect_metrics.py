@@ -9,22 +9,26 @@ Description: 统一评估指标收集入口。
   │                       Jinan×3 + Hangzhou×2，13 种方法              │
   │                       输出：results/main_result.csv                 │
   ├─────────────────────────────────────────────────────────────────────┤
-  │  模块二（generalize） 泛化性实验，三个子任务：                       │
+  │  模块二（generalize） 泛化性实验，四个子任务：                       │
   │    gen_topology       拓扑迁移：Songdo / Massy / YMT               │
   │    gen_scale          规模迁移：NewYork（196路口）                  │
-  │    gen_event          事件迁移：Jinan×3+Hangzhou×2+拓扑3场景，      │
+  │    gen_event          事件迁移：Jinan×1+Hangzhou×1+拓扑3场景，      │
   │                       每场景 2 个混合事件路由文件                   │
   │                       输出：results/gen_topology_result.csv         │
   │                             results/gen_scale_result.csv            │
   │                             results/gen_event_emergy_bus_result.csv  │
   │                             results/gen_event_accident_debris_result.csv │
   ├─────────────────────────────────────────────────────────────────────┤
-  │  模块三（ablation）   消融实验，四个子任务：                         │
-  │    abl_train          训练阶段消融：Zero-shot / SFT / E2ELight      │
+  │  模块三（ablation）   消融实验，六个子任务：                         │
+  │    abl_train          训练阶段消融：Zero-shot / SFT-full /          │
+  │                       SFT-vit-frozen / E2ELight（常规路由）         │
+  │    abl_train_event_*  训练阶段消融：同上（事件混合路由）            │
   │    abl_action         动作空间消融：Phase-only / Phase+Duration     │
   │    abl_cot            快慢思考消融：Fast-only / Slow-only / Adaptive│
   │    abl_bulletin       广播机制消融：No / All / Directed             │
   │                       输出：results/abl_train_result.csv            │
+  │                             results/abl_train_event_emergy_bus_result.csv │
+  │                             results/abl_train_event_accident_debris_result.csv │
   │                             results/abl_action_result.csv           │
   │                             results/abl_cot_result.csv              │
   │                             results/abl_bulletin_result.csv         │
@@ -46,11 +50,15 @@ Description: 统一评估指标收集入口。
   python src/evaluation/collect_metrics.py --type main
   python src/evaluation/collect_metrics.py --type gen_topology
   python src/evaluation/collect_metrics.py --type gen_scale
-  python src/evaluation/collect_metrics.py --type gen_event
+  python src/evaluation/collect_metrics.py --type gen_event_emergy_bus
+  python src/evaluation/collect_metrics.py --type gen_event_accident_debris
   python src/evaluation/collect_metrics.py --type abl_train
+  python src/evaluation/collect_metrics.py --type abl_train_event_emergy_bus
+  python src/evaluation/collect_metrics.py --type abl_train_event_accident_debris
   python src/evaluation/collect_metrics.py --type abl_action
   python src/evaluation/collect_metrics.py --type abl_cot
-  python src/evaluation/collect_metrics.py --type abl_bulletin
+  python src/evaluation/collect_metrics.py --type abl_bulletin_emergy
+  python src/evaluation/collect_metrics.py --type abl_bulletin_accident
   # 运行全部（按顺序）
   python src/evaluation/collect_metrics.py --type all
 '''
@@ -80,7 +88,19 @@ VLMLIGHT  = "vlmlight"
 
 # E2ELight 变体（实际目录名可能有别名，用列表兼容多种命名）
 ZERO_SHOT = "qwen3-vl-8b"                                      # 零样本预训练模型
-SFT_ONLY  = ["sft", "qwen3-vl-8b-sft", "Qwen3-VL-8B-SFT-Merged"]   # 仅 SFT
+SFT_FULL  = [
+    "sft-full",
+    "qwen3-vl-8b-sft-full",
+    "Qwen3-VL-8B-SFT-Full-Merged",
+    "sft",
+    "qwen3-vl-8b-sft",
+    "Qwen3-VL-8B-SFT-Merged",
+]   # 完整 SFT（兼容旧目录别名）
+SFT_VIT_FROZEN = [
+    "sft-vit-frozen",
+    "qwen3-vl-8b-sft-vit-frozen",
+    "Qwen3-VL-8B-SFT-ViT-Frozen-Merged",
+]   # SFT + 冻结视觉主干
 E2ELIGHT  = ["sft-rlvr", "qwen3-vl-8b-sft-rlvr",
              "Qwen3-VL-8B-SFT-RLVR-Merged"]                   # SFT + RLVR（完整模型）
 
@@ -174,12 +194,14 @@ NEWYORK_SCENE = ("NewYork", "anon_28_7_newyork_real_double")
 EVENT_EMERGY_BUS      = "_emergy_bus"      # 紧急车辆 + 公交/校车
 EVENT_ACCIDENT_DEBRIS = "_accident_debris" # 交通事故 + 路面占道
 
-# 消融实验使用的事件基础场景（Jinan×3 + Hangzhou×2）
-ABLATION_EVENT_BASE_SCENES = [
-    ("JiNan",    s) for s in JINAN_SCENES
-] + [
-    ("Hangzhou", s) for s in HANGZHOU_SCENES
-]
+# 事件泛化/事件消融统一使用 5 个基础场景：
+# JiNan 使用 anon_3_4_jinan_real，
+# Hangzhou 使用 anon_4_4_hangzhou_real_5816，
+# 其余为三个拓扑迁移场景。
+EVENT_BASE_SCENES = [
+    ("JiNan", "anon_3_4_jinan_real"),
+    ("Hangzhou", "anon_4_4_hangzhou_real_5816"),
+] + TOPOLOGY_SCENES
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 配置字典：每个实验类型的完整定义
@@ -265,23 +287,18 @@ _CONFIGS = {
     },
 
     # ── 2c. 事件迁移（emergy_bus）：紧急车辆 + 公交校车混合路由 ──────────────
-    # 场景：Jinan×3 + Hangzhou×2 + Songdo×1 + Massy×1 + YMT×1 = 7 个
+    # 场景：Jinan×1 + Hangzhou×1 + Songdo×1 + Massy×1 + YMT×1 = 5 个
     # 每场景路由文件名 = base_scene + EVENT_EMERGY_BUS
     # 指标：ATT / AWT / AQL / EATT / EAWT / BATT / BAWT（7 项）
     "gen_event_emergy_bus": {
         "csv_path":      "results/gen_event_emergy_bus_result.csv",
         "metric_keys":   ["ATT", "AWT", "AQL", "Special_ATT", "Special_AWT"],
         "scene_to_cols": _build_scene_to_cols(
-            # 为每个基础场景拼接事件后缀，生成事件路由场景键
-            [("JiNan",              s + EVENT_EMERGY_BUS) for s in JINAN_SCENES] +
-            [("Hangzhou",           s + EVENT_EMERGY_BUS) for s in HANGZHOU_SCENES] +
-            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in TOPOLOGY_SCENES],
+            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in EVENT_BASE_SCENES],
             5
         ),
         "eval_plan": _build_eval_plan(
-            [("JiNan",              s + EVENT_EMERGY_BUS) for s in JINAN_SCENES] +
-            [("Hangzhou",           s + EVENT_EMERGY_BUS) for s in HANGZHOU_SCENES] +
-            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in TOPOLOGY_SCENES],
+            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in EVENT_BASE_SCENES],
             LIGHT_METHODS
         ),
         # 紧急车辆专项指标：按 vType 过滤 tripinfo
@@ -296,15 +313,11 @@ _CONFIGS = {
         "csv_path":      "results/gen_event_accident_debris_result.csv",
         "metric_keys":   ["ATT", "AWT", "AQL", "MaxQL", "TPT"],
         "scene_to_cols": _build_scene_to_cols(
-            [("JiNan",              s + EVENT_ACCIDENT_DEBRIS) for s in JINAN_SCENES] +
-            [("Hangzhou",           s + EVENT_ACCIDENT_DEBRIS) for s in HANGZHOU_SCENES] +
-            [(ds, ss + EVENT_ACCIDENT_DEBRIS) for ds, ss in TOPOLOGY_SCENES],
+            [(ds, ss + EVENT_ACCIDENT_DEBRIS) for ds, ss in EVENT_BASE_SCENES],
             5
         ),
         "eval_plan": _build_eval_plan(
-            [("JiNan",              s + EVENT_ACCIDENT_DEBRIS) for s in JINAN_SCENES] +
-            [("Hangzhou",           s + EVENT_ACCIDENT_DEBRIS) for s in HANGZHOU_SCENES] +
-            [(ds, ss + EVENT_ACCIDENT_DEBRIS) for ds, ss in TOPOLOGY_SCENES],
+            [(ds, ss + EVENT_ACCIDENT_DEBRIS) for ds, ss in EVENT_BASE_SCENES],
             LIGHT_METHODS
         ),
         # accident_* 和 debris_* 前缀车辆为占道假车，需从普通车辆统计中排除
@@ -317,7 +330,7 @@ _CONFIGS = {
     # 模块三：消融实验
     # =========================================================================
 
-    # ── 3a. 训练阶段消融：Zero-shot / SFT-only / E2ELight ────────────────────
+    # ── 3a. 训练阶段消融：Zero-shot / SFT-full / SFT-vit-frozen / E2ELight ──
     # 数据集：Jinan×3 + Hangzhou×2（常规路由）
     "abl_train": {
         "csv_path":      "results/abl_train_result.csv",
@@ -327,11 +340,56 @@ _CONFIGS = {
             _MAIN_SCENES,
             [
                 (ZERO_SHOT, "Zero-shot"),
-                (SFT_ONLY,  "SFT-only"),
+                (SFT_FULL,  "SFT-full"),
+                (SFT_VIT_FROZEN, "SFT-vit-frozen"),
                 (E2ELIGHT,  "E2ELight"),
             ]
         ),
         "calc_kwargs": {},
+    },
+
+    # ── 3a-ext. 训练阶段消融（emergy_bus 事件路由）──────────────────────────
+    "abl_train_event_emergy_bus": {
+        "csv_path":      "results/abl_train_event_emergy_bus_result.csv",
+        "metric_keys":   ["ATT", "AWT", "AQL", "Special_ATT", "Special_AWT"],
+        "scene_to_cols": _build_scene_to_cols(
+            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in EVENT_BASE_SCENES],
+            5
+        ),
+        "eval_plan": _build_eval_plan(
+            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in EVENT_BASE_SCENES],
+            [
+                (ZERO_SHOT, "Zero-shot"),
+                (SFT_FULL, "SFT-full"),
+                (SFT_VIT_FROZEN, "SFT-vit-frozen"),
+                (E2ELIGHT, "E2ELight"),
+            ]
+        ),
+        "calc_kwargs": {
+            "special_vtypes": {"emergency", "police", "fire_engine"},
+        },
+    },
+
+    # ── 3a-ext. 训练阶段消融（accident_debris 事件路由）────────────────────
+    "abl_train_event_accident_debris": {
+        "csv_path":      "results/abl_train_event_accident_debris_result.csv",
+        "metric_keys":   ["ATT", "AWT", "AQL", "MaxQL", "TPT"],
+        "scene_to_cols": _build_scene_to_cols(
+            [(ds, ss + EVENT_ACCIDENT_DEBRIS) for ds, ss in EVENT_BASE_SCENES],
+            5
+        ),
+        "eval_plan": _build_eval_plan(
+            [(ds, ss + EVENT_ACCIDENT_DEBRIS) for ds, ss in EVENT_BASE_SCENES],
+            [
+                (ZERO_SHOT, "Zero-shot"),
+                (SFT_FULL, "SFT-full"),
+                (SFT_VIT_FROZEN, "SFT-vit-frozen"),
+                (E2ELIGHT, "E2ELight"),
+            ]
+        ),
+        "calc_kwargs": {
+            "event_id_prefixes": ["accident_", "debris_"],
+        },
     },
 
     # ── 3b. 动作空间消融：Phase-only vs Phase+Duration ────────────────────────
@@ -351,16 +409,16 @@ _CONFIGS = {
     },
 
     # ── 3c. 快慢思考 CoT 消融：Fast-only / Slow-only / Adaptive ──────────────
-    # 数据集：Jinan×3 + Hangzhou×2，emergy_bus 事件路由（测试事件识别能力）
+    # 数据集：5 个事件基础场景，emergy_bus 事件路由（测试事件识别能力）
     "abl_cot": {
         "csv_path":      "results/abl_cot_result.csv",
         "metric_keys":   ["ATT", "AWT", "AQL", "Special_ATT", "Special_AWT"],
         "scene_to_cols": _build_scene_to_cols(
-            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in ABLATION_EVENT_BASE_SCENES],
+            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in EVENT_BASE_SCENES],
             5
         ),
         "eval_plan": _build_eval_plan(
-            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in ABLATION_EVENT_BASE_SCENES],
+            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in EVENT_BASE_SCENES],
             [
                 (FAST_ONLY, "Fast-only"),
                 (SLOW_ONLY, "Slow-only"),
@@ -373,17 +431,17 @@ _CONFIGS = {
     },
 
     # ── 3d. EventBulletin 广播机制消融 ───────────────────────────────────────
-    # 数据集：Jinan×3 + Hangzhou×2，两类事件路由各跑一次
+    # 数据集：5 个事件基础场景，两类事件路由各跑一次
     # emergy_bus：ATT/AWT/AQL + EATT/EAWT（5 项）
     "abl_bulletin_emergy": {
         "csv_path":      "results/abl_bulletin_result.csv",
         "metric_keys":   ["ATT", "AWT", "AQL", "Special_ATT", "Special_AWT"],
         "scene_to_cols": _build_scene_to_cols(
-            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in ABLATION_EVENT_BASE_SCENES],
+            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in EVENT_BASE_SCENES],
             5
         ),
         "eval_plan": _build_eval_plan(
-            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in ABLATION_EVENT_BASE_SCENES],
+            [(ds, ss + EVENT_EMERGY_BUS) for ds, ss in EVENT_BASE_SCENES],
             [
                 (NO_BULLETIN,  "No-Bulletin"),
                 (ALL_BULLETIN, "Broadcast-All"),
@@ -401,11 +459,11 @@ _CONFIGS = {
         "csv_path":      "results/abl_bulletin_result.csv",
         "metric_keys":   ["ATT", "AWT", "AQL", "MaxQL", "TPT"],
         "scene_to_cols": _build_scene_to_cols(
-            [(ds, ss + EVENT_ACCIDENT_DEBRIS) for ds, ss in ABLATION_EVENT_BASE_SCENES],
+            [(ds, ss + EVENT_ACCIDENT_DEBRIS) for ds, ss in EVENT_BASE_SCENES],
             5
         ),
         "eval_plan": _build_eval_plan(
-            [(ds, ss + EVENT_ACCIDENT_DEBRIS) for ds, ss in ABLATION_EVENT_BASE_SCENES],
+            [(ds, ss + EVENT_ACCIDENT_DEBRIS) for ds, ss in EVENT_BASE_SCENES],
             [
                 (NO_BULLETIN,  "No-Bulletin"),
                 (ALL_BULLETIN, "Broadcast-All"),
@@ -678,7 +736,9 @@ if __name__ == "__main__":
         "  gen_scale              泛化：规模迁移（NewYork 196路口）",
         "  gen_event_emergy_bus   泛化：事件迁移（紧急车辆+公交）",
         "  gen_event_accident_debris  泛化：事件迁移（事故+占道）",
-        "  abl_train              消融：训练阶段（Zero-shot/SFT/E2ELight）",
+        "  abl_train              消融：训练阶段（Zero-shot/SFT-full/SFT-vit-frozen/E2ELight）",
+        "  abl_train_event_emergy_bus      消融：训练阶段（emergy_bus事件路由）",
+        "  abl_train_event_accident_debris 消融：训练阶段（accident_debris事件路由）",
         "  abl_action             消融：动作空间（Phase-only/Phase+Duration）",
         "  abl_cot                消融：快慢思考（Fast/Slow/Adaptive）",
         "  abl_bulletin_emergy    消融：广播机制（emergy_bus场景）",
