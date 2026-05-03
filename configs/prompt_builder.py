@@ -181,6 +181,7 @@ W(6): L1(L):<Level>, L2(S):<Level>, L3(S):<Level>, L4(S):<Level>, L5(S):<Level>
 - **Accident-Aware Capacity Reduction**: If an accident partially blocks a movement, prioritize the affected phase when abnormal congestion or upstream spillback risk exists. If the movement is completely blocked, avoid serving that phase and allocate green time to other phases with longer queues or higher discharge potential.
 - **Queue Discharge Rate**: A fully loaded lane (Long or Critical queue) requires significantly more green time to complete discharge compared to a Short or Medium queue.
 - **Minimum Green Time**: Assign a minimum green duration even for empty queues to allow safe reaction and start-up times.
+- **Cyclic Fairness**: If all phases have identical priority conditions, queue levels, vehicle detections, and waiting-time conditions, ensure phase rotation by selecting the NEXT phase relative to the Current Phase rather than repeatedly serving the same phase.
    '''
 
     DENSITY_LEVELS = """
