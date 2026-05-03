@@ -58,6 +58,12 @@
  #                 # 默认也会覆盖 normal + 两类 event
  #                 bash scripts/run_batch_event_eval.sh --port 8000 --model_name qwen3-vl-8b-sft-rlvr
  #
+ #                 # 指定本机渲染使用 GPU 1
+ #                 # 说明：
+ #                 #   - 该参数只影响当前评测进程（EGL/VirtualGL 渲染 + 本地 CUDA 模型）
+ #                 #   - 若 VLM 是远程 vLLM/OpenAI 兼容服务，服务端实际跑在哪张卡不受此参数影响
+ #                 bash scripts/run_batch_event_eval.sh --port 8000 --model_name qwen3-vl-8b-sft-rlvr --gpu_id 1
+ #
  #                 # 同时跑基线 + VLM（推荐用于生成完整对比结果）
  #                 bash scripts/run_batch_event_eval.sh --port 8000 --model_name qwen3-vl-8b-sft-rlvr --with-baseline
  #
@@ -99,6 +105,18 @@ API_PORT=""
 MODEL_NAME=""
 TEMPERATURE=""
 MAX_NEW_TOKENS=""
+# GPU_ID:
+#   用于指定“当前这次批量评测任务”绑定哪一张本机 GPU。
+#   它会继续透传到：
+#     1. vgl_python.sh：在 Python 进程启动前设置 CUDA/EGL 可见设备；
+#     2. src/evaluation/run_eval.py：在环境初始化和模型加载前再次显式设置。
+#   这样可以同时约束两类资源：
+#     1. 离屏 3D 渲染（xvfb + vglrun + EGL）；
+#     2. 评测过程中可能加载的本地 CUDA 模型。
+#   注意：
+#     1. 该参数主要服务于 VLM 分支；
+#     2. baseline-only 分支内部已关闭 3D 渲染，通常不会实际消耗 GPU；
+#     3. 若 VLM 走远端 API，请求发往哪张远端卡不受这里控制。
 GPU_ID=""
 BASELINE_ONLY=false
 WITH_BASELINE=false
@@ -110,6 +128,11 @@ while [[ "$#" -gt 0 ]]; do
         --model_name)     MODEL_NAME="$2";     shift ;;
         --temperature)    TEMPERATURE="$2";    shift ;;
         --max_new_tokens) MAX_NEW_TOKENS="$2"; shift ;;
+        # 这里解析用户传入的 GPU 编号，例如：
+        #   --gpu_id 0
+        #   --gpu_id 1
+        # 本脚本不会直接在这里 export CUDA_VISIBLE_DEVICES，
+        # 而是把参数继续向下透传给真正负责启动渲染/评测进程的脚本。
         --gpu_id)         GPU_ID="$2";         shift ;;
         --baseline-only)  BASELINE_ONLY=true   ;;
         --with-baseline)  WITH_BASELINE=true   ;;
@@ -246,6 +269,15 @@ run_vlm() {
 
     cleanup_sumo
     echo "  [VLM] ${DATASET}/${ROUTE_FILE}  sumo_s=${MAX_SUMO_S}"
+    # 统一通过 vgl_python.sh 启动，确保：
+    #   1. EGL/VirtualGL 渲染链路已启用；
+    #   2. 若传入 --gpu_id，则当前进程只看到目标 GPU。
+    # GPU 参数传递链路如下：
+    #   run_batch_event_eval.sh
+    #     -> vgl_python.sh
+    #     -> run_eval.py
+    # 最终效果是：真正执行评测的 Python 进程以及它创建的渲染环境，
+    # 都只会“看到”指定编号的那张物理卡。
     ./vgl_python.sh src/evaluation/run_eval.py \
         --scenario         "$DATASET" \
         --log_dir          "$LOG_DIR" \
@@ -263,6 +295,11 @@ if [ -n "$API_PORT" ] && [ -n "$MODEL_NAME" ]; then
 fi
 [ -n "$TEMPERATURE"    ] && EXTRA_VLM_ARGS="${EXTRA_VLM_ARGS} --temperature ${TEMPERATURE}"
 [ -n "$MAX_NEW_TOKENS" ] && EXTRA_VLM_ARGS="${EXTRA_VLM_ARGS} --max_new_tokens ${MAX_NEW_TOKENS}"
+# 如果指定了 GPU_ID，则把它拼进下游 VLM 参数。
+# 这里选择“参数透传”而不是“当前 shell 全局 export”的原因是：
+#   1. 让 GPU 约束只作用在 VLM 评测子进程，避免污染整个批处理脚本环境；
+#   2. 让 vgl_python.sh、run_eval.py 都能明确感知这是一次显式的 GPU 绑定请求；
+#   3. 后续排查时，命令行里能直接看到 --gpu_id，行为更直观。
 [ -n "$GPU_ID"         ] && EXTRA_VLM_ARGS="${EXTRA_VLM_ARGS} --gpu_id ${GPU_ID}"
 
 # ─── 打印头部信息 ──────────────────────────────────────────────────────────────

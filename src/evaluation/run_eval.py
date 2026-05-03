@@ -61,7 +61,13 @@ NORMAL_SCENE_TYPES = {"normal", "normal_triple"}
 
 
 def configure_gpu_visibility(gpu_id):
-    """在创建渲染环境和加载模型前限制当前进程可见 GPU。"""
+    """在创建渲染环境和加载模型前限制当前进程可见 GPU。
+
+    说明：
+      - 仅影响当前 Python 进程及其子进程；
+      - 对本地 EGL 渲染与本地 CUDA 模型生效；
+      - 若 VLM 走远端 API，请求发往哪台服务/哪张卡不受这里控制。
+    """
     if gpu_id is None:
         return None
 
@@ -69,6 +75,10 @@ def configure_gpu_visibility(gpu_id):
     if not gpu_id_str:
         return None
 
+    # 这里在 Python 入口层再设置一遍，而不是只依赖外部 shell 脚本，原因是：
+    #   1. 直接用 `python run_eval.py --gpu_id N` 启动时也应当生效；
+    #   2. 让 GPU 选择尽可能靠近环境初始化/模型加载时刻，行为更稳定；
+    #   3. 即使后续有人绕过 vgl_python.sh 调试，也不会出现“参数传了但没生效”。
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id_str
     os.environ["EGL_VISIBLE_DEVICES"] = gpu_id_str
@@ -660,6 +670,11 @@ if __name__ == "__main__":
                         help="限制当前评测进程使用的 GPU 编号，如 0 或 1；同时影响 EGL 渲染与本地 CUDA 模型")
 
     args = parser.parse_args()
+    # 必须在 Evaluator 初始化前执行。
+    # 原因是 Evaluator 内部会：
+    #   1. 创建 3D 仿真与渲染环境；
+    #   2. 在需要时加载本地 VLM 模型。
+    # 如果在这些步骤之后才设置 CUDA/EGL 可见设备，GPU 绑定可能已经来不及生效。
     selected_gpu = configure_gpu_visibility(args.gpu_id)
     if selected_gpu is not None:
         logger.info(
