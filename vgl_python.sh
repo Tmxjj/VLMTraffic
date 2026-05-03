@@ -60,37 +60,64 @@ resolve_vgl_device() {
     # 对 EGL 后端来说，如果只写 -d egl，VirtualGL 会自己挑一个可用设备，
     # 这正是当前“明明传了 GPU 1 但实际仍跑到 GPU 0”最可能的原因。
     #
-    # 这里改为在本地尽量把 GPU 编号解析成一个明确的 DRI render device：
-    #   1. 优先读取 /dev/dri/by-path/*-render（更稳，且与 PCI Bus 顺序关联）；
-    #   2. 再退化到 /dev/dri/renderD12x 的常见编号规则；
+    # 这里改为在本地尽量把 GPU 编号解析成一个明确的 DRI card device：
+    #   1. 优先读取 /dev/dri/by-path/*-card（更稳，且与 PCI Bus 顺序关联）；
+    #   2. 再退化到 /dev/dri/cardN 的常见编号规则；
     #   3. 如果都找不到，则退回到 egl，让旧行为继续可用。
     #
     # 由于脚本前面已经设置 CUDA_DEVICE_ORDER=PCI_BUS_ID，若服务器枚举正常，
-    # 则这里按 PCI 顺序拿到的第 N 个 render device 通常就对应 nvidia-smi 中的 GPU N。
+    # 则这里按 PCI 顺序拿到的第 N 个 card device 通常就对应 nvidia-smi 中的 GPU N。
 
     if [[ ! "$gpu_id" =~ ^[0-9]+$ ]]; then
         return 1
     fi
 
     if [[ -d /dev/dri/by-path ]]; then
-        local -a render_devices=()
+        local -a card_devices=()
         while IFS= read -r path; do
-            render_devices+=("$path")
-        done < <(find /dev/dri/by-path -maxdepth 1 -type l -name '*-render' | sort)
+            card_devices+=("$path")
+        done < <(find /dev/dri/by-path -maxdepth 1 -type l -name '*-card' | sort)
 
-        if (( gpu_id < ${#render_devices[@]} )); then
-            readlink -f "${render_devices[$gpu_id]}"
+        if (( gpu_id < ${#card_devices[@]} )); then
+            readlink -f "${card_devices[$gpu_id]}"
             return 0
         fi
     fi
 
-    local fallback_render="/dev/dri/renderD$((128 + gpu_id))"
-    if [[ -e "${fallback_render}" ]]; then
-        echo "${fallback_render}"
+    local fallback_card="/dev/dri/card${gpu_id}"
+    if [[ -e "${fallback_card}" ]]; then
+        echo "${fallback_card}"
         return 0
     fi
 
     return 1
+}
+
+sanitize_omp_num_threads() {
+    # libgomp 要求 OMP_NUM_THREADS 是合法的 OpenMP 线程数配置。
+    # 常见合法值：
+    #   1
+    #   8
+    #   4,2
+    # 若外层环境把它设成了空串、带引号字符串、None、auto 之类的值，
+    # Python 还没真正启动前，底层依赖库就可能直接报：
+    #   libgomp: Invalid value for environment variable OMP_NUM_THREADS
+    #
+    # 这里做启动前兜底：
+    #   - 未设置：默认设为 1，避免底层库继承到宿主环境里的奇怪默认值；
+    #   - 已设置且格式合法：保留用户原值；
+    #   - 已设置但格式非法：强制回退到 1，避免评测进程启动时就报警或异常。
+    if [[ -z "${OMP_NUM_THREADS+x}" ]]; then
+        export OMP_NUM_THREADS=1
+        return 0
+    fi
+
+    if [[ "${OMP_NUM_THREADS}" =~ ^[0-9]+([[:space:]]*,[[:space:]]*[0-9]+)*$ ]]; then
+        return 0
+    fi
+
+    echo "[vgl_python.sh] Warning: invalid OMP_NUM_THREADS='${OMP_NUM_THREADS}', fallback to 1" >&2
+    export OMP_NUM_THREADS=1
 }
 
 if [[ -n "${GPU_ID}" ]]; then
@@ -108,7 +135,7 @@ if [[ -n "${GPU_ID}" ]]; then
 
     # 对 VirtualGL/EGL 来说，仅设置 CUDA_VISIBLE_DEVICES 往往还不够，
     # 因为 vglrun 自己仍可能默认选到第一个 DRI 设备。
-    # 因此这里再尝试把 GPU 编号转换成明确的 DRI device 路径，并传给 vglrun -d。
+    # 因此这里再尝试把 GPU 编号转换成明确的 DRI card device 路径，并传给 vglrun -d。
     resolved_device="$(resolve_vgl_device "${GPU_ID}")"
     if [[ -n "${resolved_device}" ]]; then
         VGL_DEVICE="${resolved_device}"
@@ -119,6 +146,8 @@ if [[ -n "${GPU_ID}" ]]; then
     fi
     echo "[vgl_python.sh] Using GPU ${GPU_ID} for EGL/CUDA visibility"
 fi
+
+sanitize_omp_num_threads
 
 # 启动链路说明：
 #   xvfb-run        -> 提供无显示器场景下的虚拟显示环境
