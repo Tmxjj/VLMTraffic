@@ -1,7 +1,7 @@
 '''
 Author: yufei Ji
 Date: 2026-04-20
-Description: 端到端 LVLM 交通信号控制评测主脚本，支持 VLM / FixedTime / MaxPressure 三种模式。
+Description: 端到端 LVLM 交通信号控制评测主脚本，支持 VLM / FixedTime / MaxPressure / Random 四种模式。
 
 异步决策框架：
   - 每次 env.step() 返回时（任一路口 can_perform_action=True），
@@ -30,6 +30,7 @@ import copy
 import cv2
 import json
 import time
+import random
 import argparse
 from typing import Dict, List
 
@@ -88,22 +89,25 @@ def configure_gpu_visibility(gpu_id):
 
 class Evaluator:
     """
-    端到端评测主类，支持三种运行模式：
+    端到端评测主类，支持四种运行模式：
       - VLM 模式（默认）：调用视觉语言模型进行信号决策（异步，各路口独立绿灯时长）
       - FixedTime 模式（--fixed_time）：固定配时基线（27s+3s黄灯=30s整步）
       - MaxPressure 模式（--max_pressure）：排队最大压力基线
+      - Random 模式（--random）：随机选择相位和绿灯时长
 
     输出路径：data/eval/{scenario_key}/{route_stem}/{model_name}/{intersection_id}/{sumo_step}/
     """
 
     def __init__(self, scenario_key="JiNan", log_dir="./log/eval_results", route_file=None,
                  batch_size=12, use_fixed_time=False, use_max_pressure=False,
+                 use_random=False,
                  api_url=None, model_name_override=None, scene_type="normal",
                  temperature=None, max_new_tokens=None):
         self.scenario_key = scenario_key
         self.log_dir = log_dir
         self.use_fixed_time = use_fixed_time
         self.use_max_pressure = use_max_pressure
+        self.use_random = use_random
         self.api_url = api_url
         self.model_name_override = model_name_override
         self.scene_type = scene_type
@@ -129,6 +133,8 @@ class Evaluator:
         # 根据运行模式确定 model_name（用于目录命名）
         if self.use_max_pressure:
             model_name = "max_pressure"
+        elif self.use_random:
+            model_name = "random"
         elif self.use_fixed_time:
             model_name = "fixed_time"
         else:
@@ -229,12 +235,18 @@ class Evaluator:
             'tshub_env_cfg':    TSHUB_ENV_CONFIG,
         }
 
-        # MaxPressure / FixedTime 不需要图像，禁用 3D 渲染节省资源
+        # MaxPressure / FixedTime / Random 不需要图像，禁用 3D 渲染节省资源
         if self.use_max_pressure:
             logger.info("[EVAL] MaxPressure mode: disabling 3D rendering.")
             mp_cfg = copy.deepcopy(self.env_params.get('renderer_cfg') or {})
             mp_cfg['is_render'] = False
             self.env_params['renderer_cfg'] = mp_cfg
+            self.env_params['sensor_cfg'] = None
+        elif self.use_random:
+            logger.info("[EVAL] Random mode: disabling 3D rendering.")
+            rand_cfg = copy.deepcopy(self.env_params.get('renderer_cfg') or {})
+            rand_cfg['is_render'] = False
+            self.env_params['renderer_cfg'] = rand_cfg
             self.env_params['sensor_cfg'] = None
         elif self.use_fixed_time:
             logger.info("[EVAL] FixedTime mode: disabling 3D rendering.")
@@ -258,10 +270,15 @@ class Evaluator:
             raise
 
         # --- 3. 初始化 VLM Agent ---
-        if self.use_max_pressure or self.use_fixed_time:
+        if self.use_max_pressure or self.use_fixed_time or self.use_random:
+            if self.use_max_pressure:
+                baseline_mode = "MaxPressure"
+            elif self.use_fixed_time:
+                baseline_mode = "FixedTime"
+            else:
+                baseline_mode = "Random"
             logger.info(
-                f"[EVAL] Running in "
-                f"{'MaxPressure' if self.use_max_pressure else 'FixedTime'} mode. VLM skipped."
+                f"[EVAL] Running in {baseline_mode} mode. VLM skipped."
             )
             self.agent = None
         else:
@@ -508,6 +525,16 @@ class Evaluator:
                     )
                     continue
 
+                # ── Random ──
+                if self.use_random:
+                    rand_phase = random.randrange(num_phases)
+                    rand_duration = random.choice(GREEN_DURATION_CANDIDATES)
+                    last_action[jid] = {'phase_id': rand_phase, 'duration': rand_duration}
+                    logger.info(
+                        f"[Random] {jid} | phase={rand_phase} | dur={rand_duration}s"
+                    )
+                    continue
+
                 # ── VLM 模式 ──
                 cur_phase = render_json.get('tls', {}).get(jid, {}).get('this_phase_index', 0)
                 coord_ctx = (
@@ -545,7 +572,7 @@ class Evaluator:
 
                     results = self.agent.get_batch_decision(b_imgs, b_prompts)
 
-                    for jid, step_dir, cur_phase, (vlm_resp, latency, _, thought) in zip(b_jids, b_dirs, b_cur_phs, results):
+                    for jid, step_dir, cur_phase, (vlm_resp, latency, parsed_action, thought) in zip(b_jids, b_dirs, b_cur_phs, results):
                         # 保存 VLM 响应文本
                         gt_counts = {}
                         if 'bev_lane_vehicle_counts' in sensor_datas:
@@ -561,9 +588,9 @@ class Evaluator:
                         )
 
                         # 解析并校验动作
-                        parsed = self._parse_phase_duration(vlm_resp)
-                        if parsed is not None:
-                            p_id, raw_dur = parsed
+                        if parsed_action is not None:
+                            p_id, raw_dur = parsed_action
+                            parsed = parsed_action
                             if not 0 <= p_id < num_phases:
                                 logger.warning(
                                     f"[VLM] {jid} | 非法 phase_id={p_id}，"
@@ -596,6 +623,9 @@ class Evaluator:
                                         green_duration=actual_dur,
                                         current_sumo_step=sumo_sim_step,
                                     )
+                        else:
+                            parsed = None
+
                         if parsed is None:
                             next_phase = (cur_phase + 1) % num_phases
                             last_action[jid] = {'phase_id': next_phase, 'duration': FIXED_TIME_GREEN_DURATION}
@@ -642,15 +672,15 @@ class Evaluator:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="交通信号控制评测主入口（异步决策，支持 VLM / FixedTime / MaxPressure）"
+        description="交通信号控制评测主入口（异步决策，支持 VLM / FixedTime / MaxPressure / Random）"
     )
-    parser.add_argument("--scenario",    "-sc", type=str, default="France_Massy",
+    parser.add_argument("--scenario",    "-sc", type=str, default="JiNan",
                         help="场景键名 (e.g., JiNan, Hangzhou, Hongkong_YMT, SouthKorea_Songdo, France_Massy)")
     parser.add_argument("--log_dir",     "-l",  type=str, default="./log/eval_results",
                         help="日志输出目录")
-    parser.add_argument("--route_file",  "-r",  type=str, default=None,
+    parser.add_argument("--route_file",  "-r",  type=str, default="data/raw/JiNan/env/anon_3_4_jinan_real.rou.xml",
                         help=".rou.xml 路由文件名（SUMO 将在 env/ 下查找）")
-    parser.add_argument("--max_sumo_seconds",   "-n",  type=int, default=3600,
+    parser.add_argument("--max_sumo_seconds",   "-n",  type=int, default=3000,
                         help="最大 SUMO 仿真时间（秒），默认 3600s = 1 小时")
     parser.add_argument("--scene_type",  "-st", type=str, default="normal",
                         choices=VALID_SCENE_TYPES,
@@ -659,10 +689,11 @@ if __name__ == "__main__":
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--fixed_time",   action="store_true", help="固定配时基线")
     mode_group.add_argument("--max_pressure", action="store_true", help="MaxPressure 基线")
+    mode_group.add_argument("--random",       action="store_true", help="随机相位与时长基线")
 
-    parser.add_argument("--api_url",    type=str, default=None, help="覆盖 model_config 中的 api_url")
-    parser.add_argument("--model_name", type=str, default=None, help="覆盖 model_config 中的 model_name")
-    parser.add_argument("--temperature", type=float, default=None,
+    parser.add_argument("--api_url",    type=str, default="http://localhost:8000/v1/chat/completions", help="覆盖 model_config 中的 api_url")
+    parser.add_argument("--model_name", type=str, default="qwen3-vl-8b", help="覆盖 model_config 中的 model_name")
+    parser.add_argument("--temperature", type=float, default=0,
                         help="覆盖 model_config 中的 temperature（如推理用 0）")
     parser.add_argument("--max_new_tokens", type=int, default=None,
                         help="覆盖 model_config 中的 max_new_tokens")
@@ -688,6 +719,7 @@ if __name__ == "__main__":
         route_file=args.route_file,
         use_fixed_time=args.fixed_time,
         use_max_pressure=args.max_pressure,
+        use_random=args.random,
         api_url=args.api_url,
         model_name_override=args.model_name,
         scene_type=args.scene_type,
