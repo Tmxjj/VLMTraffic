@@ -60,6 +60,22 @@ VALID_SCENE_TYPES = [
 NORMAL_SCENE_TYPES = {"normal", "normal_triple"}
 
 
+def configure_gpu_visibility(gpu_id):
+    """在创建渲染环境和加载模型前限制当前进程可见 GPU。"""
+    if gpu_id is None:
+        return None
+
+    gpu_id_str = str(gpu_id).strip()
+    if not gpu_id_str:
+        return None
+
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ["CUDA_VISIBLE_DEVICES"] = gpu_id_str
+    os.environ["EGL_VISIBLE_DEVICES"] = gpu_id_str
+    os.environ["VGL_GPU"] = gpu_id_str
+    return gpu_id_str
+
+
 class Evaluator:
     """
     端到端评测主类，支持三种运行模式：
@@ -640,8 +656,16 @@ if __name__ == "__main__":
                         help="覆盖 model_config 中的 temperature（如推理用 0）")
     parser.add_argument("--max_new_tokens", type=int, default=None,
                         help="覆盖 model_config 中的 max_new_tokens")
+    parser.add_argument("--gpu_id", type=str, default=None,
+                        help="限制当前评测进程使用的 GPU 编号，如 0 或 1；同时影响 EGL 渲染与本地 CUDA 模型")
 
     args = parser.parse_args()
+    selected_gpu = configure_gpu_visibility(args.gpu_id)
+    if selected_gpu is not None:
+        logger.info(
+            f"[EVAL] GPU visibility configured before env/model init: "
+            f"CUDA_VISIBLE_DEVICES={selected_gpu}"
+        )
 
     evaluator = Evaluator(
         scenario_key=args.scenario,

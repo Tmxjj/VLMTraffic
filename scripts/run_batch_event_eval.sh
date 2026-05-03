@@ -99,6 +99,7 @@ API_PORT=""
 MODEL_NAME=""
 TEMPERATURE=""
 MAX_NEW_TOKENS=""
+GPU_ID=""
 BASELINE_ONLY=false
 WITH_BASELINE=false
 EVENT_FILTER=""   # 可选：normal / emergy_bus / accident_debris（不指定则三类都跑）
@@ -109,6 +110,7 @@ while [[ "$#" -gt 0 ]]; do
         --model_name)     MODEL_NAME="$2";     shift ;;
         --temperature)    TEMPERATURE="$2";    shift ;;
         --max_new_tokens) MAX_NEW_TOKENS="$2"; shift ;;
+        --gpu_id)         GPU_ID="$2";         shift ;;
         --baseline-only)  BASELINE_ONLY=true   ;;
         --with-baseline)  WITH_BASELINE=true   ;;
         --event)          EVENT_FILTER="$2";   shift ;;
@@ -261,6 +263,7 @@ if [ -n "$API_PORT" ] && [ -n "$MODEL_NAME" ]; then
 fi
 [ -n "$TEMPERATURE"    ] && EXTRA_VLM_ARGS="${EXTRA_VLM_ARGS} --temperature ${TEMPERATURE}"
 [ -n "$MAX_NEW_TOKENS" ] && EXTRA_VLM_ARGS="${EXTRA_VLM_ARGS} --max_new_tokens ${MAX_NEW_TOKENS}"
+[ -n "$GPU_ID"         ] && EXTRA_VLM_ARGS="${EXTRA_VLM_ARGS} --gpu_id ${GPU_ID}"
 
 # ─── 打印头部信息 ──────────────────────────────────────────────────────────────
 echo "================================================================"
@@ -271,6 +274,7 @@ if [ "$BASELINE_ONLY" = true ]; then
 elif [ -n "$MODEL_NAME" ]; then
     echo "  模式   : VLM [${MODEL_NAME}]$([ "$WITH_BASELINE" = true ] && echo " + 基线")"
 fi
+[ -n "$GPU_ID"         ] && echo "  GPU_ID: ${GPU_ID}"
 [ -n "$TEMPERATURE"    ] && echo "  temperature:    ${TEMPERATURE}"
 [ -n "$MAX_NEW_TOKENS" ] && echo "  max_new_tokens: ${MAX_NEW_TOKENS}"
 [ -n "$EVENT_FILTER"   ] && echo "  场景过滤: ${EVENT_FILTER}" || echo "  场景类型: normal + emergy_bus + accident_debris"
