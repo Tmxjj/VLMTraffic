@@ -114,6 +114,7 @@ class Evaluator:
         self.enable_event_bulletin = self.scene_type not in NORMAL_SCENE_TYPES
         self.temperature = temperature
         self.max_new_tokens = max_new_tokens
+        self.route_file = route_file
 
         # --- 1. 加载场景配置 ---
         self.scenario_config = SCENARIO_CONFIGS.get(scenario_key)
@@ -191,9 +192,13 @@ class Evaluator:
             route_stem = route_stem[:-4]
 
         # 日志路径
-        self.logger_path = os.path.join(self.log_dir, self.scenario_key, route_stem, model_name)
-        create_folder(self.logger_path)
-        set_logger(self.logger_path, terminal_log_level='INFO')
+        self.logger_root_path = os.path.join(self.log_dir, self.scenario_key, route_stem, model_name)
+        create_folder(self.logger_root_path)
+        log_session = set_logger(self.logger_root_path, terminal_log_level='INFO')
+        if isinstance(log_session, dict) and log_session.get("log_dir"):
+            self.logger_path = log_session["log_dir"]
+        else:
+            self.logger_path = self.logger_root_path
         logger.info(f"[EVAL] Log dir: {self.logger_path}")
         logger.info(
             f"[EVAL] Scene type: {self.scene_type} | "
@@ -206,6 +211,8 @@ class Evaluator:
             _PROJECT_ROOT, "data", "eval", self.scenario_key, route_stem, model_name
         )
         create_folder(self.output_folder)
+        self.route_stem = route_stem
+        self.model_name = model_name
 
         trip_info        = os.path.join(self.output_folder, "tripinfo.out.xml")
         statistic_output = os.path.join(self.output_folder, "statistic_output.xml")
@@ -258,6 +265,31 @@ class Evaluator:
         # 本场景的进口道方向列表（T字路口等非标准路口可能少于4个方向）
         self.approach_dirs = self.scenario_config.get("APPROACH_DIRS", ['N', 'E', 'S', 'W'])
         logger.info(f"[EVAL] Approach directions: {self.approach_dirs}")
+        self._write_eval_metadata()
+
+    def _write_eval_metadata(self):
+        metadata = {
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+            "scenario_key": self.scenario_key,
+            "scenario_name": self.scenario_name,
+            "route_file": self.route_file,
+            "route_stem": self.route_stem,
+            "scene_type": self.scene_type,
+            "model_name": self.model_name,
+            "output_folder": self.output_folder,
+            "log_root_path": self.logger_root_path,
+            "log_path": self.logger_path,
+            "use_fixed_time": self.use_fixed_time,
+            "use_max_pressure": self.use_max_pressure,
+            "use_random": self.use_random,
+            "api_url": self.api_url,
+            "temperature": self.temperature,
+            "max_new_tokens": self.max_new_tokens,
+            "prompt_saved_in_response_txt": not (
+                self.use_fixed_time or self.use_max_pressure or self.use_random
+            ),
+        }
+        save_to_json(metadata, os.path.join(self.output_folder, "eval_metadata.json"))
 
         self._log_configurations()
 
@@ -572,14 +604,16 @@ class Evaluator:
 
                     results = self.agent.get_batch_decision(b_imgs, b_prompts)
 
-                    for jid, step_dir, cur_phase, (vlm_resp, latency, parsed_action, thought) in zip(b_jids, b_dirs, b_cur_phs, results):
+                    for jid, step_dir, cur_phase, prompt, (vlm_resp, latency, parsed_action, thought) in zip(
+                        b_jids, b_dirs, b_cur_phs, b_prompts, results
+                    ):
                         # 保存 VLM 响应文本
                         gt_counts = {}
                         if 'bev_lane_vehicle_counts' in sensor_datas:
                             gt_counts = sensor_datas['bev_lane_vehicle_counts'].get(
                                 f'aircraft_{jid}', {}
                             )
-                        resp_content = vlm_resp
+                        resp_content = f"[User Prompt]\n{prompt}\n\n[Model Response]\n{vlm_resp}"
                         if thought:
                             resp_content += f"\n\n[Thinking Process]\n{thought}"
                         write_response_to_file(
@@ -678,9 +712,9 @@ if __name__ == "__main__":
                         help="场景键名 (e.g., JiNan, Hangzhou, Hongkong_YMT, SouthKorea_Songdo, France_Massy)")
     parser.add_argument("--log_dir",     "-l",  type=str, default="./log/eval_results",
                         help="日志输出目录")
-    parser.add_argument("--route_file",  "-r",  type=str, default="data/raw/JiNan/env/anon_3_4_jinan_real.rou.xml",
+    parser.add_argument("--route_file",  "-r",  type=str, default="data/raw/JiNan/env/anon_3_4_jinan_real_emergy_bus.rou.xml",
                         help=".rou.xml 路由文件名（SUMO 将在 env/ 下查找）")
-    parser.add_argument("--max_sumo_seconds",   "-n",  type=int, default=3000,
+    parser.add_argument("--max_sumo_seconds",   "-n",  type=int, default=30,
                         help="最大 SUMO 仿真时间（秒），默认 3600s = 1 小时")
     parser.add_argument("--scene_type",  "-st", type=str, default="normal",
                         choices=VALID_SCENE_TYPES,

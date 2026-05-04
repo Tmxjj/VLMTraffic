@@ -40,9 +40,10 @@
  #
  #                 # 仅跑基线（本地，无需 GPU）
  #                 # 会顺序执行：
- #                 #   normal(主实验 + 拓扑迁移 + 规模迁移)
- #                 #   emergy_bus(5个事件基础场景)
- #                 #   accident_debris(5个事件基础场景)
+ #                 #   FixedTime / MaxPressure / Random
+ #                 #   覆盖 normal(主实验 + 拓扑迁移 + 规模迁移)
+ #                 #   覆盖 emergy_bus(5个事件基础场景)
+ #                 #   覆盖 accident_debris(5个事件基础场景)
  #                 bash scripts/run_batch_event_eval.sh --baseline-only
  #
  #                 # 仅跑 normal（包含主实验 + gen_topology + gen_scale）
@@ -161,29 +162,29 @@ declare -a EVENT_ENTRIES
 
 # JiNan × 3
 NORMAL_ENTRIES+=("JiNan|data/raw/JiNan/env|anon_3_4_jinan_real")
-NORMAL_ENTRIES+=("JiNan|data/raw/JiNan/env|anon_3_4_jinan_real_2000")
-NORMAL_ENTRIES+=("JiNan|data/raw/JiNan/env|anon_3_4_jinan_real_2500")
-EVENT_ENTRIES+=("JiNan|data/raw/JiNan/env|anon_3_4_jinan_real")
+# NORMAL_ENTRIES+=("JiNan|data/raw/JiNan/env|anon_3_4_jinan_real_2000")
+# NORMAL_ENTRIES+=("JiNan|data/raw/JiNan/env|anon_3_4_jinan_real_2500")
+# EVENT_ENTRIES+=("JiNan|data/raw/JiNan/env|anon_3_4_jinan_real")
 
-# Hangzhou × 2
-NORMAL_ENTRIES+=("Hangzhou|data/raw/Hangzhou/env|anon_4_4_hangzhou_real")
-NORMAL_ENTRIES+=("Hangzhou|data/raw/Hangzhou/env|anon_4_4_hangzhou_real_5816")
-EVENT_ENTRIES+=("Hangzhou|data/raw/Hangzhou/env|anon_4_4_hangzhou_real_5816")
+# # Hangzhou × 2
+# NORMAL_ENTRIES+=("Hangzhou|data/raw/Hangzhou/env|anon_4_4_hangzhou_real")
+# NORMAL_ENTRIES+=("Hangzhou|data/raw/Hangzhou/env|anon_4_4_hangzhou_real_5816")
+# EVENT_ENTRIES+=("Hangzhou|data/raw/Hangzhou/env|anon_4_4_hangzhou_real_5816")
 
-# SouthKorea_Songdo × 1
-NORMAL_ENTRIES+=("SouthKorea_Songdo|data/raw/SouthKorea_Songdo/env|songdo")
-EVENT_ENTRIES+=("SouthKorea_Songdo|data/raw/SouthKorea_Songdo/env|songdo")
+# # SouthKorea_Songdo × 1
+# NORMAL_ENTRIES+=("SouthKorea_Songdo|data/raw/SouthKorea_Songdo/env|songdo")
+# EVENT_ENTRIES+=("SouthKorea_Songdo|data/raw/SouthKorea_Songdo/env|songdo")
 
-# France_Massy × 1
-NORMAL_ENTRIES+=("France_Massy|data/raw/France_Massy/env|massy")
-EVENT_ENTRIES+=("France_Massy|data/raw/France_Massy/env|massy")
+# # France_Massy × 1
+# NORMAL_ENTRIES+=("France_Massy|data/raw/France_Massy/env|massy")
+# EVENT_ENTRIES+=("France_Massy|data/raw/France_Massy/env|massy")
 
-# Hongkong_YMT × 1
-NORMAL_ENTRIES+=("Hongkong_YMT|data/raw/Hongkong_YMT/env|YMT")
-EVENT_ENTRIES+=("Hongkong_YMT|data/raw/Hongkong_YMT/env|YMT")
+# # Hongkong_YMT × 1
+# NORMAL_ENTRIES+=("Hongkong_YMT|data/raw/Hongkong_YMT/env|YMT")
+# EVENT_ENTRIES+=("Hongkong_YMT|data/raw/Hongkong_YMT/env|YMT")
 
 # NewYork × 1（规模迁移，只加入 normal 分支）
-NORMAL_ENTRIES+=("NewYork|data/raw/NewYork/env|anon_28_7_newyork_real_double")
+# NORMAL_ENTRIES+=("NewYork|data/raw/NewYork/env|anon_28_7_newyork_real_double")
 
 # 场景类型列表
 SCENE_TYPES=("normal" "emergy_bus" "accident_debris")
@@ -307,7 +308,7 @@ echo "================================================================"
 echo "  E2ELight 常规 + 泛化 + 事件迁移场景批量评测"
 echo "  LOG_DIR: $LOG_DIR"
 if [ "$BASELINE_ONLY" = true ]; then
-    echo "  模式   : 仅基线 (FixedTime + MaxPressure)"
+    echo "  模式   : 仅基线 (FixedTime + MaxPressure + Random)"
 elif [ -n "$MODEL_NAME" ]; then
     echo "  模式   : VLM [${MODEL_NAME}]$([ "$WITH_BASELINE" = true ] && echo " + 基线")"
 fi
@@ -323,7 +324,7 @@ echo "================================================================"
 
 run_all_baselines() {
     echo ""
-    echo "=== [基线] FixedTime + MaxPressure ==="
+    echo "=== [基线] FixedTime + MaxPressure + Random ==="
 
     for EVENT in "${SCENE_TYPES[@]}"; do
         [ -n "$EVENT_FILTER" ] && [ "$EVENT" != "$EVENT_FILTER" ] && continue
@@ -347,6 +348,7 @@ run_all_baselines() {
             MAX_S=$(get_max_sumo_seconds "$FULL_PATH")
             run_baseline "$DATASET" "$ROUTE_FILE" "$EVENT" "--fixed_time"   "FixedTime"   "$MAX_S"
             run_baseline "$DATASET" "$ROUTE_FILE" "$EVENT" "--max_pressure" "MaxPressure" "$MAX_S"
+            run_baseline "$DATASET" "$ROUTE_FILE" "$EVENT" "--random"       "Random"      "$MAX_S"
         done < <(get_entries_for_scene_type "$EVENT")
     done
 }
